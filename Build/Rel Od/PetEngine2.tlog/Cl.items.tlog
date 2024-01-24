@@ -1,0 +1,14 @@
+F:\Code\C++\PetEngine2\Source\Editor\UI\Font.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\Font.obj
+F:\Code\C++\PetEngine2\Source\Editor\UI\UI.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\UI.obj
+F:\Code\C++\PetEngine2\Source\Editor\UI\Widgets.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\Widgets.obj
+F:\Code\C++\PetEngine2\source\main.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\main.obj
+F:\Code\C++\PetEngine2\Source\Runtime\Platform\Window.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\Window.obj
+F:\Code\C++\PetEngine2\source\Runtime\Platform\WindowsPlatform.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\WindowsPlatform.obj
+F:\Code\C++\PetEngine2\source\Runtime\System\IODispatcher.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\IODispatcher.obj
+F:\Code\C++\PetEngine2\source\Runtime\System\JobDispatcher.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\JobDispatcher.obj
+F:\Code\C++\PetEngine2\Source\Runtime\System\Renderer\UIRenderer.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\UIRenderer.obj
+F:\Code\C++\PetEngine2\thirdparty\imgui\imgui.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\imgui.obj
+F:\Code\C++\PetEngine2\thirdparty\imgui\imgui_draw.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\imgui_draw.obj
+F:\Code\C++\PetEngine2\thirdparty\imgui\imgui_tables.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\imgui_tables.obj
+F:\Code\C++\PetEngine2\thirdparty\imgui\imgui_widgets.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\imgui_widgets.obj
+F:\Code\C++\PetEngine2\thirdparty\pugixml\pugixml.cpp;F:\Code\C++\PetEngine2\Build\Rel Od\pugixml.obj
