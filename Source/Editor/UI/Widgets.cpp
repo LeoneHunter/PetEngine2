@@ -188,6 +188,7 @@ bool UI::Flexbox::OnEvent(IEvent* inEvent) {
 		return true;
 
 	} else if(auto* event = inEvent->As<DrawEvent>()) {
+		if(!Super::IsVisible()) return true;
 		event->DrawList->DrawRect(Super::GetRect().Translate(event->ParentOriginGlobal), Colors::Blue);
 
 		auto eventCopy = *event;
@@ -550,6 +551,8 @@ bool UI::Guideline::OnEvent(IEvent* inEvent) {
 		}
 
 	} else if(auto * event = inEvent->As<DrawEvent>()) {
+		if(!Super::IsVisible()) return true;
+
 		auto color = m_State == ButtonState::Hovered ? Colors::HoveredDark : m_State == ButtonState::Pressed ? Colors::PressedDark : Colors::PrimaryDark;
 		event->DrawList->DrawRectFilled(Super::GetRect().Translate(event->ParentOriginGlobal), color);
 		return true;
@@ -693,15 +696,17 @@ void UI::SplitBox::UpdateLayout() {
 		ParentEvent onParent(Super::GetSize());
 		m_Second->OnEvent(&onParent);
 		m_Second->SetPos(float2(0.f));
-		m_Separator->SetVisibility(true);
+		m_Separator->SetVisibility(false);
 
 	} else if(!m_Second || !m_Second->IsVisible()) {
 		ParentEvent onParent(Super::GetSize());
 		m_First->OnEvent(&onParent);
 		m_First->SetPos(float2(0.f));
-		m_Separator->SetVisibility(true);
+		m_Separator->SetVisibility(false);
 
 	} else {		
+		m_Separator->SetVisibility(true);
+
 		const auto mainAxisSize = Super::GetSize(m_MainAxis);
 		const auto crossAxisSize = Super::GetSize(!m_MainAxis);		
 		const auto separatorThickness = m_Separator->GetSize(m_MainAxis);

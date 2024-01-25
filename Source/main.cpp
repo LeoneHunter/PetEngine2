@@ -1,16 +1,4 @@
 #include <iostream>
-#include <Assert.h>
-#include <chrono>
-#include <thread>
-#include <vector>
-#include <format>
-#include <regex>
-#include <functional>
-#include <deque>
-#include <mutex>
-#include <random>
-#include <set>
-#include <semaphore>
 
 #include "Runtime/Core/BaseTypes.h"
 #include "Runtime/System/JobDispatcher.h"
@@ -248,13 +236,13 @@ int main(int argc, char* argv[]) {
 	// save working directory
 	Init("App", 800, 600);
 
-	auto* root = GetRoot();{
+	auto* root = GetRoot(); {
 
-		auto* centered = new Centered(root, "Root_Centered");{
+		auto* centered = new Centered(root, "Root_Centered"); {
 
-			auto* column = Flexbox::Column(centered, "Main_Column", true);{
+			auto* column = Flexbox::Column(centered, "Main_Column", true); {
 
-				auto menuBar = Flexbox::Row(column, "Menu_Bar");{
+				auto menuBar = Flexbox::Row(column, "Menu_Bar"); {
 
 					auto leftGroup = new Flexbox(menuBar, FlexboxDesc{.ID = "Left_Group", .Direction = ContentDirection::Row});{
 						Button::TextButton(leftGroup, "Menu Item 1");
@@ -271,9 +259,41 @@ int main(int argc, char* argv[]) {
 				auto exp = new Expanded(column);
 				auto middleRow = Flexbox::Row(exp, "Main_Middle_Row"); {
 
-					auto leftVerticalToolbar = Flexbox::Column(middleRow, "Left_Vertical_Toolbar_Column");{					
-						auto* toolbarBtn1 = Button::TextButton(leftVerticalToolbar, "Tool 1");
-						auto* toolbarBtn2 = Button::TextButton(leftVerticalToolbar, "Tool 2");
+					struct ToolbarController {
+
+						void SetToolbarWindow(Widget* inWindow) {
+							m_Toolbar = inWindow;
+						}
+
+						void OpenToolbar() {
+							m_Toolbar->SetVisibility(true);
+							m_Toolbar->NotifyParentOnVisibilityChanged();
+						}
+
+						void CloseToolbar() {
+							m_Toolbar->SetVisibility(false);
+							m_Toolbar->NotifyParentOnVisibilityChanged();
+						}
+
+					private:
+						Widget* m_Toolbar = nullptr;
+					};
+					auto toolbarController = new ToolbarController();
+
+
+					auto leftSplitColumn = Flexbox::Column(middleRow, "leftSplitColumn"); {
+						auto* toolbarBtn1 = Button::TextButton(leftSplitColumn, "Tool 1\nOpen sidebar");
+
+						toolbarBtn1->SetCallback([=](bool bPressed) {
+							if(!bPressed) return;
+							static auto bVisible = true;
+							bVisible = !bVisible;
+
+							if(bVisible) toolbarController->OpenToolbar();
+							else toolbarController->CloseToolbar();
+						});
+
+						auto* toolbarBtn2 = Button::TextButton(leftSplitColumn, "Tool 2\nIncrease size");
 
 						toolbarBtn2->SetCallback([btn = toolbarBtn2](bool bPressed) {
 							if(!bPressed) return;
@@ -284,14 +304,21 @@ int main(int argc, char* argv[]) {
 							btn->NotifyParentOnSizeChanged(AxisX);
 						});
 					}
+					
+					auto leftToolboxSplitBox = new SplitBox(middleRow, true, "Left_Tool_Main_Area_Split"); {
+						
+						auto leftToolboxColumn = Flexbox::Column(leftToolboxSplitBox, "Left_Toolbar_Column", true); {
+							Button::TextButton(leftToolboxColumn, "Tool Content");
+						}
+						toolbarController->SetToolbarWindow(leftToolboxColumn);
 
-					auto mainSplitBox = new SplitBox(middleRow, true, "Main_Split");{
-						Button::TextButton(mainSplitBox, "Left");
-						Button::TextButton(mainSplitBox, "Right");
+						auto rightMainAreaColumn = Flexbox::Column(leftToolboxSplitBox, "Right_Main_Area_Column", true); {
+							Button::TextButton(rightMainAreaColumn, "Main Area Content");
+						}
 					}
 				}
 
-				auto bottomRow = Flexbox::Row(column, "Status_Bar_Row");{				
+				auto bottomRow = Flexbox::Row(column, "Status_Bar_Row"); {				
 					auto* b = Button::TextButton(bottomRow, "Status bar");
 				}
 			}

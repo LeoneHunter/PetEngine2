@@ -581,6 +581,16 @@ namespace UI {
 			m_Parent->OnEvent(&onChild);
 		}
 
+		void	NotifyParentOnVisibilityChanged() {
+			if(!m_Parent) return;
+
+			ChildEvent onChild;
+			onChild.Child = this;
+			onChild.Size = m_Size;
+			onChild.Subtype = ChildEvent::OnVisibility;
+			m_Parent->OnEvent(&onChild);
+		}
+
 	private:
 
 		// Optional user defined ID
