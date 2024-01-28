@@ -1,11 +1,13 @@
 #pragma once
 #include <string>
+#include <assert.h>
+#include <chrono>
 
 #include "BaseTypes.h"
 #include "Math.h"
-#include <assert.h>
 
-constexpr Vec4 fromHexCode(std::string_view inHexCode) {
+
+constexpr Vec4 HashColorToVec4(std::string_view inHexCode) {
 	assert(!inHexCode.empty() && inHexCode.starts_with('#') && (inHexCode.size() == 7 || inHexCode.size() == 9));
 	Vec4 out;
 	out.x = 0.f;
@@ -100,12 +102,12 @@ public:
 		A = 24
 	};
 
-	constexpr ColorU32(): rgb(0) {}
+	constexpr ColorU32(): rgb(0xff) {}
 
-	constexpr ColorU32(HexCodeString inHexColor)
-		: rgb(0) 
+	constexpr ColorU32(std::string_view inHexColor)
+		: rgb(0xff) 
 	{
-		auto result = fromHexCode(inHexColor.get());
+		auto result = HashColorToVec4(inHexColor);
 
 		rgb = ((u32)F32toInt8(result.x)) << BitOffsets::R;
 		rgb |= ((u32)F32toInt8(result.y)) << BitOffsets::G;
@@ -113,8 +115,8 @@ public:
 		rgb |= ((u32)F32toInt8(result.w)) << BitOffsets::A;
 	}
 
-	constexpr ColorU32& operator= (HexCodeString inHexCode) {
-		auto result = fromHexCode(inHexCode.get());
+	constexpr ColorU32& operator= (std::string_view inHexCode) {
+		auto result = HashColorToVec4(inHexCode);
 		SetComponent(BitOffsets::R, result.x);
 		SetComponent(BitOffsets::G, result.y);
 		SetComponent(BitOffsets::B, result.z);
@@ -171,7 +173,7 @@ struct ColorFloat4 {
 
 	constexpr ColorFloat4(std::string_view inHexColor)
 		: r(0.0f), g(0.0f), b(0.0f), a(1.0f) {
-		auto result = fromHexCode(inHexColor);
+		auto result = HashColorToVec4(inHexColor);
 		r = result.x;
 		g = result.y;
 		b = result.z;
@@ -187,6 +189,104 @@ struct ColorFloat4 {
 };
 
 namespace Util {
+
+	/*
+	* Simple timer
+	* Wrapper around std::chrono
+	*/
+	template<typename T = std::chrono::milliseconds>
+	struct Timer {
+
+		using value_type = std::chrono::milliseconds;
+
+		Timer()
+			: SetPointDuration(0)
+			, StartTimePoint()
+		{}
+				
+		void Reset(u32 inValue) {
+			SetPointDuration = value_type(inValue);
+			StartTimePoint = std::chrono::high_resolution_clock::now();
+		}
+
+		bool IsTicking() const { return SetPointDuration.count() != 0; }
+
+		bool IsReady() const { 
+			return IsTicking() ? 
+				std::chrono::duration_cast<value_type>(std::chrono::high_resolution_clock::now() - StartTimePoint) >= SetPointDuration : 
+				false;
+		}
+
+		void Clear() { SetPointDuration = value_type(0); }
+
+		value_type SetPointDuration;
+		std::chrono::high_resolution_clock::time_point StartTimePoint;
+	};
+
+
+	/*
+	* Helper to create string of serialized data
+	*/
+	class StringBuilder {
+	public:
+
+		StringBuilder(std::string* inBuffer, u32 inIndentSize = 2)
+			: m_Buffer(inBuffer)
+			, m_Indent(0)
+			, m_IndentSize(inIndentSize)
+		{}
+
+		template <typename... ArgTypes>
+		StringBuilder& Line(const std::format_string<ArgTypes...> inFormat, ArgTypes&&... inArgs) {
+			AppendIndent();
+			m_Buffer->append(std::format(inFormat, std::forward<ArgTypes>(inArgs)...));
+			EndLine();
+			return *this;
+		}
+
+		StringBuilder& Line(std::string_view inStr) {
+			AppendIndent();
+			m_Buffer->append(inStr);
+			EndLine();
+			return *this;
+		}
+
+		StringBuilder& SetIndent(u32 inIndent = 1) {
+			m_Indent = inIndent;
+			return *this;
+		}
+
+		StringBuilder& PushIndent(u32 inIndent = 1) {
+			m_Indent += inIndent;
+			return *this;
+		}
+
+		StringBuilder& PopIndent(u32 inIndent = 1) {
+			if(m_Indent) m_Indent -= inIndent;
+			return *this;
+		}
+
+		StringBuilder& EndLine() {
+			m_Buffer->append("\n");
+			return *this;
+		}
+
+	private:
+
+		void AppendIndent() {
+			if(!m_Indent) return;
+			for(auto i = m_Indent * m_IndentSize; i; --i) {
+				m_Buffer->append(" ");
+			}
+		}
+
+	private:
+		u32			 m_IndentSize;
+		u32			 m_Indent;
+		std::string* m_Buffer;
+	};
+
+
 
 	struct Sides {
 		u16		Left;

@@ -197,9 +197,6 @@ void SearchingJob(JobSystem::JobContext&) {
 	std::cerr << "Number of twos found " << numberOfTwosFoundPerThread[0];
 }
 
-
-
-
 /*buttonToggleExpand->SetCallback(
 						[button = buttonToggleExpand](bool bPressed) {
 							if(!bPressed) return;
@@ -228,15 +225,94 @@ void SearchingJob(JobSystem::JobContext&) {
 					);*/
 
 
-int main(int argc, char* argv[]) {
 
+UI::Application* g_Application = nullptr;
+
+void CreateTheme() {
+
+	auto theme = new UI::Theme();
+	
+	// Layout parameters for all widgets
+	theme->Layout("").Margins(10, 10).Paddings(10, 10);
+	// Layout parameters for class "Button"
+	theme->Layout("Button").Margins(5, 5).Paddings(10, 10);
+	
+	// Style parameters for class:state:shape
+	theme->Box("Button:Normal:MainShape").FillColor("#454545").Borders(1.f).BorderColor("#343434");
+	theme->Box("Button:Normal:SecondShape").FillColor("#454545").Borders(1.f).BorderColor("#343434");
+	
+	theme->Box("Button:Hovered:MainShape", "Button:Normal:MainShape").FillColor("#505050");
+	theme->Box("Button:Hovered:SecondShape", "Button:Normal:SecondShape").FillColor("#505050");
+	
+	theme->Text("Text").Color("#ffffff").Size(20);
+	theme->Text("Text:Inactive", "Text").Color("#dddddd");
+	theme->Box("Text:Selected:SelectionBox").FillColor("#1010dd");
+	
+	g_Application->SetTheme(theme);
+}
+
+void BuildSimpleLayout() {
+	using namespace UI;
+	auto* root = g_Application->GetRoot();
+
+	auto middleRow = Flexbox::Row(root, "Main_Middle_Row", true);
+
+	auto column1 = Flexbox::Column(middleRow, "Column 1"); {
+		Button::TextButton(column1, "Tool 1\nOpen sidebar");
+		Button::TextButton(column1, "Tool 2\nIncrease size");
+	}
+
+	auto column2 = Flexbox::Column(middleRow, "Column 2"); {
+		Button::TextButton(column2, "Tool 1\nOpen sidebar");
+		Button::TextButton(column2, "Tool 2\nIncrease size");
+	}
+}
+
+void BuildFlexboxOverflowTestLayout() {
+	using namespace UI;
+	auto* root = g_Application->GetRoot();
+
+	
+	auto splitBox = new SplitBox(root, true, "Splitbox"); {
+
+		auto row = new Flexbox(splitBox, FlexboxDesc{
+			.ID = "Main Row", 
+			.Direction = ContentDirection::Row, 
+			.JustifyContent = JustifyContent::Start,
+			.bExpandMainAxis = true}); 
+		{
+
+			auto leftRow = new Flexbox(row, FlexboxDesc{
+				.ID = "Left Row", 
+				.Direction = ContentDirection::Row,
+				.JustifyContent = JustifyContent::Start,
+				.OverflowPolicy = OverflowPolicy::ShrinkWrap,
+				.bExpandMainAxis = true}); 
+			{
+				Button::TextButton(leftRow, "Button 1");
+				Button::TextButton(leftRow, "Button 2");
+			}
+
+			auto rightRow = new Flexbox(row, FlexboxDesc{
+				.ID = "Right Row", 
+				.Direction = ContentDirection::Row, 
+				.JustifyContent = JustifyContent::End,
+				.OverflowPolicy = OverflowPolicy::ShrinkWrap, 
+				.bExpandMainAxis = true}); 
+			{
+				Button::TextButton(rightRow, "Button 1");
+				Button::TextButton(rightRow, "Button 2");
+			}
+		}
+		Button::TextButton(splitBox, "Placeholder");
+	}
+	
+}
+
+void BuildAverageApp() {
 	using namespace UI;
 
-	//TODO Save command line
-	// save working directory
-	Init("App", 800, 600);
-
-	auto* root = GetRoot(); {
+	auto* root = g_Application->GetRoot(); {
 
 		auto* centered = new Centered(root, "Root_Centered"); {
 
@@ -244,24 +320,23 @@ int main(int argc, char* argv[]) {
 
 				auto menuBar = Flexbox::Row(column, "Menu_Bar"); {
 
-					auto leftGroup = new Flexbox(menuBar, FlexboxDesc{.ID = "Left_Group", .Direction = ContentDirection::Row});{
+					auto leftGroup = new Flexbox(menuBar, FlexboxDesc{.ID = "Left_Group", .Direction = ContentDirection::Row}); {
 						Button::TextButton(leftGroup, "Menu Item 1");
 						Button::TextButton(leftGroup, "Menu Item 2");
 					}
 
-					auto rightGroup = new Flexbox(menuBar, 
-												  FlexboxDesc{.ID = "Right_Group", .Direction = ContentDirection::Row, .JustifyContent = JustifyContent::End});{
+					auto rightGroup = new Flexbox(menuBar,
+												  FlexboxDesc{.ID = "Right_Group", .Direction = ContentDirection::Row, .JustifyContent = JustifyContent::End}); {
 						Button::TextButton(rightGroup, "Menu Item 3");
 						Button::TextButton(rightGroup, "Menu Item 4");
-					}					
+					}
 				}
 
-				auto exp = new Expanded(column);
-				auto middleRow = Flexbox::Row(exp, "Main_Middle_Row"); {
+				auto middleRow = Flexbox::Row(column, "Main_Middle_Row", true); {
 
 					struct ToolbarController {
 
-						void SetToolbarWindow(Widget* inWindow) {
+						void SetToolbarWindow(LayoutWidget* inWindow) {
 							m_Toolbar = inWindow;
 						}
 
@@ -276,13 +351,13 @@ int main(int argc, char* argv[]) {
 						}
 
 					private:
-						Widget* m_Toolbar = nullptr;
+						LayoutWidget* m_Toolbar = nullptr;
 					};
 					auto toolbarController = new ToolbarController();
 
 
 					auto leftSplitColumn = Flexbox::Column(middleRow, "leftSplitColumn"); {
-						auto* toolbarBtn1 = Button::TextButton(leftSplitColumn, "Tool 1\nOpen sidebar");
+						auto* toolbarBtn1 = Button::TextButton(new TooltipSpawner(leftSplitColumn, []() { return Tooltip::Text("Press me to toggle toolbar"); }), "Tool 1\nOpen sidebar");
 
 						toolbarBtn1->SetCallback([=](bool bPressed) {
 							if(!bPressed) return;
@@ -300,13 +375,13 @@ int main(int argc, char* argv[]) {
 							static int size = 0;
 							size += 10;
 
-							btn->SetSize(btn->GetChild()->GetSize() + float2(10) * 2.f + float2(size, 0.f));
+							btn->SetSize(btn->GetChild<LayoutWidget>()->GetSize() + float2(10) * 2.f + float2(size, 0.f));
 							btn->NotifyParentOnSizeChanged(AxisX);
 						});
 					}
-					
+
 					auto leftToolboxSplitBox = new SplitBox(middleRow, true, "Left_Tool_Main_Area_Split"); {
-						
+
 						auto leftToolboxColumn = Flexbox::Column(leftToolboxSplitBox, "Left_Toolbar_Column", true); {
 							Button::TextButton(leftToolboxColumn, "Tool Content");
 						}
@@ -318,12 +393,27 @@ int main(int argc, char* argv[]) {
 					}
 				}
 
-				auto bottomRow = Flexbox::Row(column, "Status_Bar_Row"); {				
+				auto bottomRow = Flexbox::Row(column, "Status_Bar_Row"); {
 					auto* b = Button::TextButton(bottomRow, "Status bar");
 				}
 			}
 		}
-	}	
+	}
+}
+
+
+
+int main(int argc, char* argv[]) {
+
+	const auto commandLine = std::vector<std::string>(argv, argv + argc);
+
+	using namespace UI;
+
+	g_Application = Application::Create("App", 1600, 1200);
+
+	CreateTheme();
+	//BuildFlexboxOverflowTestLayout();
+	BuildAverageApp();
 	
-	while(Tick());
+	while(g_Application->Tick());
 }

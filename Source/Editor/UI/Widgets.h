@@ -3,6 +3,10 @@
 
 namespace UI {
 
+	class Style;
+	class TextStyle;
+	class BoxStyle;
+	class LayoutStyle;
 
 	/*
 	* Takes all allocated space from the parent
@@ -68,9 +72,10 @@ namespace UI {
 	};
 	
 	enum class OverflowPolicy {
-		Clip,
-		Scroll,
-		Wrap
+		Clip,		// Just clip without scrolling
+		Scroll,		// Enable scrolling
+		Wrap,		// Wrap children on another line
+		ShrinkWrap, // Do not decrease containter size below content size
 	};
 
 	struct FlexboxDesc {
@@ -91,10 +96,10 @@ namespace UI {
 	* Vertical or horizontal flex container
 	* Similar to Flutter and CSS
 	* Default size behavior is shrink to fit children
-	* No scrolling
 	* 
 	* TODO
 	*	Batch updates when many children are added
+	*	Add scrolling when overflown
 	*/
 	class Flexbox: public MultiChildContainer {
 		DEFINE_CLASS_META(Flexbox, MultiChildContainer)
@@ -144,8 +149,8 @@ namespace UI {
 
 
 
-	class Text: public Widget {
-		DEFINE_CLASS_META(Text, Widget)
+	class Text: public LayoutWidget {
+		DEFINE_CLASS_META(Text, LayoutWidget)
 	public:
 
 		Text(Widget* inParent, const std::string& inText, const std::string& inID = {});
@@ -154,7 +159,8 @@ namespace UI {
 		bool OnEvent(IEvent* inEvent) override;
 
 	private:
-		std::string m_Text;
+		std::string		m_Text;
+		TextStyle*		m_Style;
 	};
 
 
@@ -208,8 +214,8 @@ namespace UI {
 	* Calls a callback when dragged
 	* Moving should be handled externally
 	*/
-	class Guideline: public Widget {
-		DEFINE_CLASS_META(Guideline, Widget)
+	class Guideline: public LayoutWidget {
+		DEFINE_CLASS_META(Guideline, LayoutWidget)
 	public:
 
 		// @param float Delta - a dragged amount in one axis
@@ -261,6 +267,83 @@ namespace UI {
 		std::unique_ptr<Widget>		m_Second;
 		std::unique_ptr<Guideline>	m_Separator;
 	};
+
+
+
+
+
+
+	class Tooltip: public SingleChildContainer {
+		DEFINE_CLASS_META(Tooltip, SingleChildContainer)
+	public:
+
+		static Tooltip* Text(const std::string& inText) {
+			auto tooltip = new Tooltip();
+			auto text = new UI::Text(tooltip, inText);
+			return tooltip;
+		}
+
+		Tooltip(float2 inSize = {});
+		bool OnEvent(IEvent* inEvent) override;
+	};
+
+
+	/*
+	* Wrapper that spawns a user defined tooltip when hovered for some time
+	*/
+	class TooltipSpawner: public Controller {
+		DEFINE_CLASS_META(TooltipSpawner, Controller)
+	public:
+
+		TooltipSpawner(Widget* inParent, const SpawnerFunction& inSpawner);
+		LayoutWidget* Spawn();
+
+	private:
+		SpawnerFunction m_Spawner;
+	};
+
+
+
+
+
+
+
+
+
+
+
+
+	///*
+	//* Maps button events into controlled widget visibility change
+	//* Each button aka tab controls one widget
+	//* 
+	//*/
+	//class TabController: public Controller {
+	//	DEFINE_CLASS_META(TabController, Controller)
+	//public:
+
+	//	TabController(Widget* inParent, u32 inDefaultTabIndex = 0, const std::string& inID = {});
+	//	bool OnEvent(IEvent* inEvent) override;
+
+	//	void BindButton(Button* inWidget, u32 inControlIndex);
+	//	void BindWindow(Widget* inControlled, u32 inControlIndex);
+
+	//private:
+
+	//	struct Binding {
+	//		Button* Button = nullptr;
+	//		Widget* Controlled = nullptr;
+	//	};
+
+	//	std::vector<Binding> m_Controls;
+	//};
+
+
+
+
+
+
+
 
 
 

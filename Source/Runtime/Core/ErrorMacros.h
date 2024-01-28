@@ -13,3 +13,12 @@
 #define Assertm(x, msg) do { if(!(x)) { LOGF(msg); __debugbreak(); assert(x); } } while(0)
 
 #define Assertf(x, fmt, ...) do { if(!(x)) { LOGF(fmt, __VA_ARGS__); __debugbreak(); assert(x); } } while(0)
+
+#define PLATFORM_BREAK() (__debugbreak())
+//#define PLATFORM_BREAK() 
+
+#define DEBUG_BREAK_CONDITIONAL(cond)			\
+	if(!!(cond)) {			\
+		PLATFORM_BREAK();	\
+	} else					\
+		((void)0)

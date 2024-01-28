@@ -7,15 +7,20 @@
 
 namespace UI {
 
-	void	Init(std::string_view inWindowTitle, u32 inWidth, u32 inHeight);
+	class Application {
+	public:
 
-	// For now we do all ui here
-	bool	Tick();
+		static Application* Create(std::string_view inWindowTitle, u32 inWidth, u32 inHeight);
+		static Application* Get();
 
-	// Returns top level root widget containter
-	Widget* GetRoot();
+		~Application() = default;
 
-	Theme*	GetDefaultTheme();
-
-	void	Shutdown();
+		// For now we do all ui here
+		virtual bool	Tick() = 0;
+		// Returns top level root widget containter
+		virtual Widget* GetRoot() = 0;
+		virtual void	Shutdown() = 0;
+		virtual Theme*	GetTheme() = 0;
+		virtual void	SetTheme(Theme*) = 0;
+	};
 }

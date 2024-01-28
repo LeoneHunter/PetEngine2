@@ -10,17 +10,7 @@
 
 GAVAUI_BEGIN
 
-class RootWindow;
-
-constexpr u8	g_DefaultFontSize = 13;
-
-RootWindow*		g_RootWindow = nullptr;
-INativeWindow*	g_OSWindow = nullptr;
-Theme*			g_DefaultTheme = nullptr;
-Renderer*		g_Renderer = nullptr;
-
-// Draw hitstack and mouse pos
-bool			g_bDrawDebugInfo = false;
+using Timer = Util::Timer<std::chrono::milliseconds>;
 
 /*
 * Helper to draw text vertically in a sinle column
@@ -36,8 +26,7 @@ public:
 		: m_DrawList(inDrawList)
 		, m_Cursor(inCursor)
 		, m_Color(inColor)
-		, m_Indent(0)
-	{}
+		, m_Indent(0) {}
 
 	void DrawText(const std::string& inText) {
 		m_DrawList->DrawText(m_Cursor + float2(m_Indent, 0.f), m_Color, inText);
@@ -71,6 +60,17 @@ private:
 };
 
 
+class RootWindow;
+class Application;
+class ApplicationImpl;
+
+constexpr u32	 g_TooltipDelayMs = 500;
+constexpr u8	 g_DefaultFontSize = 13;
+
+INativeWindow*	 g_OSWindow = nullptr;
+Renderer*		 g_Renderer = nullptr;
+ApplicationImpl* g_Application = nullptr;
+
 
 
 /*
@@ -80,68 +80,147 @@ class RootWindow: public SingleChildContainer {
 	DEFINE_CLASS_META(RootWindow, SingleChildContainer)
 public:
 
-	enum class StateFlags {
-		Default,
-		MouseButtonHold,
-	};
-	DEFINE_ENUM_FLAGS_OPERATORS_FRIEND(StateFlags)
+	RootWindow() { Super::SetAxisMode(AxisModeExpand); }
 
+	bool OnEvent(IEvent* inEvent) override {
+		return Super::OnEvent(inEvent);
+	}
+};
+
+/*
+* Overlay that is drawn over root window
+*/
+class DebugOverlayWindow: public SingleChildContainer {
+	DEFINE_CLASS_META(DebugOverlayWindow, SingleChildContainer)
 public:
 
-	RootWindow() {
-		Super::SetAxisMode(AxisModeExpand);
+	DebugOverlayWindow() { 
+		Super::SetAxisMode(AxisModeShrink); 
+		Text = new UI::Text(this, "");
 	}
-		
-	// Ignore all events
-	bool	OnEvent(IEvent* inEvent) override {
 
-		if(auto event = inEvent->As<ChildEvent>()) {
-			return Super::OnEvent(inEvent);
+	bool OnEvent(IEvent* inEvent) override {	
+
+		if(auto* event = inEvent->As<DrawEvent>()) {
+			if(!Super::IsVisible()) return true;
+			event->DrawList->DrawRectFilled(Super::GetRect().Translate(event->ParentOriginGlobal).Expand(20.f), Color("#454545dd"));
+
+			auto eventCopy = *event;
+			eventCopy.ParentOriginGlobal += Super::GetOriginLocal();
+			Super::DispatchToChildren(&eventCopy);
+			return true;
 		}
-		return false;
+		return Super::OnEvent(inEvent);
+	}
+
+	Text* Text = nullptr;
+};
+
+enum class MouseState {
+	Default,	// When hovering an empty space or widget without a tooltip
+	Tooltip,	// After some time hovering
+	Held,		// When pressed and holding
+	Dragged,	// When dragged threshold crossed
+	DragDrop,	// When DragDrop active
+};
+
+enum Modifiers {
+	LeftShift,
+	RightShift,
+	LeftControl,
+	RightControl,
+	LeftAlt,
+	RightAlt,
+	CapsLock,
+	Count,
+};
+
+
+/*
+* Top object that handles input events and drawing
+*/
+class ApplicationImpl: public UI::Application {
+public:
+
+	void	Init() {
+
+		g_Renderer = CreateRendererDX12();
+		g_Renderer->Init(g_OSWindow);
+
+		m_Theme = std::make_unique<Theme>(g_DefaultFontSize);
+
+		// Layout parameters for all widgets
+		m_Theme->Layout("").Margins(10, 10).Paddings(10, 10);
+		m_Theme->Text("Text").Color("#ffffff").Size(13);
+		m_Theme->LoadFonts();
+
+		RebuildFonts();
+
+		m_Layers.RootWindow = std::make_unique<RootWindow>();
+		m_Layers.RootWindow->SetSize(g_OSWindow->GetSize());
+
+		m_Layers.DebugOverlayWindow = std::make_unique<DebugOverlayWindow>();
+		m_Layers.DebugOverlayWindow->SetVisibility(false);
+
+		g_OSWindow->SetOnCursorMoveCallback([](float x, float y) { g_Application->HandleMouseMoveEvent(x, y); });
+		g_OSWindow->SetOnMouseButtonCallback([](KeyCode inButton, bool bPressed) { g_Application->HandleMouseButtonEvent(inButton, bPressed); });
+		g_OSWindow->SetOnMouseScrollCallback([](float inScroll) { g_Application->HandleMouseScrollEvent(inScroll); });
+		g_OSWindow->SetOnWindowResizedCallback([](float2 inWindowSize) { g_Application->HandleNativeWindowResizeEvent(inWindowSize); });
+		g_OSWindow->SetOnKeyboardButtonCallback([](KeyCode inButton, bool bPressed) { g_Application->HandleKeyInputEvent(inButton, bPressed); });
+		g_OSWindow->SetOnCharInputCallback([](wchar_t inCharacter) { g_Application->HandleKeyCharInputEvent(inCharacter); });
 	}
 
 	void	HandleMouseMoveEvent(float x, float y) {
+		const auto mousePosGlobal = Point(x, y);
+		const auto mouseDelta = mousePosGlobal - m_LastMousePosGlobal;
 
-		if(m_HeldMouseButton != MouseButtonEnum::None) {
+		if(m_MouseState == MouseState::Default || m_MouseState == MouseState::Tooltip) {
+			HitStack hitStack;
 
-			if(m_CapturesMouse) {
-				auto mousePosGlobal = float2(x, y);
-				auto mousePosLocal = mousePosGlobal;
+			HitTestEvent hitTest;
+			hitTest.HitPosGlobal = mousePosGlobal;
+			hitTest.HitStack = &hitStack;
 
-				// Convert global to local using hit test data
-				const auto parentHitData = m_LastHitTest.FindHitDataFor(m_CapturesMouse->GetParent());
+			auto bHandled = false;
 
-				if(parentHitData.has_value()) {
-					mousePosLocal = parentHitData->HitPosLocal + (mousePosGlobal - m_LastHitTest.HitPosGlobal);
+			if(m_Layers.Popup) {
+				m_Layers.Popup->OnEvent(&hitTest);
+
+				if(!hitStack.Empty()) {
+					bHandled = true;
 				}
-
-				MouseDragEvent dragEvent;
-				dragEvent.CursorPosGlobalSpace = {x, y};				
-				dragEvent.CursorPosLocalSpace = mousePosLocal;
-				dragEvent.CursorDelta = dragEvent.CursorPosGlobalSpace - m_LastMousePosGlobal;
-				m_CapturesMouse->OnEvent(&dragEvent);
 			}
 
-		} else {
-			HitTestEvent hitTest;
-			hitTest.HitPosGlobal = {x, y};
-			Super::DispatchToChildren(&hitTest);
+			if(!bHandled) {
+				m_Layers.RootWindow->OnEvent(&hitTest);
 
+				if(!hitStack.Empty()) {
+					bHandled = true;
+				}
+			}
+
+			if(hitStack.Empty()) return;
 			Widget* hovered = nullptr;
 
-			// Notify last widget in the stack that it's hovered
-			if(!hitTest.HitStack.empty()) {
-				//LOGF("Last hit widget class: {}", hitTest.HitStack.back().Widget->_GetClassName());
-				HoverEvent hoverEvent{true};
+			// Notify last widget in the stack that it's hovered			
+			HoverEvent hoverEvent{true};
 
-				for(auto* last = hitTest.HitStack.back().Widget; last; last = last->GetParent()) {
-					auto bHandled = last->OnEvent(&hoverEvent);
+			for(auto& hit : hitStack) {
+				auto bHandled = hit.Widget->OnEvent(&hoverEvent);
 
-					if(bHandled) {
-						hovered = last;
-						break;
-					}
+				if(bHandled) {
+					hovered = hit.Widget;
+					break;
+				}
+			}
+
+			// Update tooltip when hovered item has changed
+			if(hovered != m_LastHovered) {
+				m_Layers.Tooltip.Timer.Reset(g_TooltipDelayMs);
+
+				if(m_MouseState == MouseState::Tooltip) {
+					m_Layers.Tooltip.Widget.reset();
+					m_MouseState = MouseState::Default;
 				}
 			}
 
@@ -151,105 +230,150 @@ public:
 				m_LastHovered->OnEvent(&hoverEvent);
 			}
 			m_LastHovered = hovered;
-			m_LastHitTest = hitTest;
+			m_LastHitStack = hitStack;
+
+		} else if(m_MouseState == MouseState::Held) {
+
+			if(m_CapturesMouse) {
+				const auto mousePosGlobal = float2(x, y);				
+				const auto mouseDeltaFromInitial = mousePosGlobal - m_MousePosOnCaptureGlobal;
+				auto mousePosLocal = mousePosGlobal;
+
+				// Convert global to local using hit test data
+				const auto parentHitData = m_LastHitStack.Find(m_CapturesMouse->GetParent<LayoutWidget>());
+
+				if(parentHitData.has_value()) {
+					mousePosLocal = parentHitData->HitPosLocal + mouseDeltaFromInitial;
+				}
+				//LOGF("Mouse delta {}", mouseDelta);
+				//LOGF("Mouse pos {}", mousePosLocal);
+
+				MouseDragEvent dragEvent;
+				dragEvent.InitPosLocal = mousePosLocal - mouseDeltaFromInitial;
+				dragEvent.PosLocal = mousePosLocal;
+				dragEvent.Delta = mouseDelta;
+				m_CapturesMouse->OnEvent(&dragEvent);
+			}
 		}
 		m_LastMousePosGlobal = {x, y};
 	}
 
 	void	HandleMouseButtonEvent(KeyCode inButton, bool bPressed) {
 
-		if(bPressed && m_HeldMouseButton == MouseButtonEnum::None) {
-			m_HeldMouseButton = (MouseButtonEnum)inButton;
+		if(inButton == KeyCode::KEY_LEFT_SHIFT) m_ModifiersState[LeftShift] = !m_ModifiersState[LeftShift];
+		if(inButton == KeyCode::KEY_RIGHT_SHIFT) m_ModifiersState[RightShift] = !m_ModifiersState[RightShift];
 
-			if(!m_LastHitTest.HitStack.empty()) {
+		if(inButton == KeyCode::KEY_LEFT_CONTROL) m_ModifiersState[LeftControl] = !m_ModifiersState[LeftControl];
+		if(inButton == KeyCode::KEY_RIGHT_CONTROL) m_ModifiersState[RightControl] = !m_ModifiersState[RightControl];
+
+		if(inButton == KeyCode::KEY_LEFT_ALT) m_ModifiersState[LeftAlt] = !m_ModifiersState[LeftAlt];
+		if(inButton == KeyCode::KEY_RIGHT_ALT) m_ModifiersState[RightAlt] = !m_ModifiersState[RightAlt];
+
+		if(inButton == KeyCode::KEY_CAPS_LOCK) m_ModifiersState[CapsLock] = !m_ModifiersState[CapsLock];
+
+		bPressed ? ++m_MouseButtonHeldNum : --m_MouseButtonHeldNum;
+
+		if(m_MouseState == MouseState::Tooltip) {
+			m_Layers.Tooltip.Widget.reset();
+			m_MouseState = MouseState::Default;
+		}
+
+		// When pressed first time from default
+		if(m_MouseState == MouseState::Default && bPressed && m_MouseButtonHeldNum == 1) {
+
+			if(!m_LastHitStack.Empty()) {
 				MouseButtonEvent event;
+				event.MousePosGlobal = m_LastMousePosGlobal;
 				event.bButtonPressed = bPressed;
 				event.Button = (MouseButtonEnum)inButton;
 
-				for(auto* last = m_LastHitTest.GetLastWidget(); last; last = last->GetParent()) {
-					auto bHandled = last->OnEvent(&event);
+				for(auto& hit: m_LastHitStack) {
+					event.MousePosLocal = hit.HitPosLocal;
+					auto bHandled = hit.Widget->OnEvent(&event);
 
 					if(bHandled) {
-						m_CapturesMouse = last;
+						m_CapturesMouse = hit.Widget;
+						m_MousePosOnCaptureGlobal = m_LastMousePosGlobal;
+						m_MouseState = MouseState::Held;
 						break;
 					}
 				}
 			}
 
-		} else if(!bPressed && (MouseButtonEnum)inButton == m_HeldMouseButton) {
-			m_HeldMouseButton = MouseButtonEnum::None;
+		} else if(!bPressed && !m_MouseButtonHeldNum) {
 			m_CapturesMouse = nullptr;
+			m_MouseState = MouseState::Default;
 		}
 	}
 
 	void	HandleKeyInputEvent(KeyCode inButton, bool bPressed) {
+
+		if(m_MouseState == MouseState::Tooltip) {
+			m_Layers.Tooltip.Widget.reset();
+		}
+
 		if(inButton == KeyCode::KEY_P && bPressed) {
 			LogWidgetTree();
 		} else if(inButton == KeyCode::KEY_D && bPressed) {
-			g_bDrawDebugInfo = !g_bDrawDebugInfo;
+			m_bDrawDebugInfo = !m_bDrawDebugInfo;
+			m_Layers.DebugOverlayWindow->SetVisibility(m_bDrawDebugInfo);
 		}
 	}
 
 	void	HandleMouseScrollEvent(float inScroll) {}
 
-	void	HandleNativeWindowResizeEvent(float2 inWindowSize) { 
+	void	HandleNativeWindowResizeEvent(float2 inWindowSize) {
 		// Ignore minimized state for now
-		if(inWindowSize == float2()) return;		
+		if(inWindowSize == float2()) return;
 
-		Super::SetSize(inWindowSize); 
-		g_Renderer->ResizeFramebuffers(inWindowSize);
-
-		ParentEvent layoutEvent;
+		ParentLayoutEvent layoutEvent;
 		layoutEvent.Constraints = inWindowSize;
 		layoutEvent.bAxisChanged = {true, true};
-		Super::DispatchToChildren(&layoutEvent);
+
+		m_Layers.RootWindow->OnEvent(&layoutEvent);
+		m_Layers.DebugOverlayWindow->OnEvent(&layoutEvent);
+
+		g_Renderer->ResizeFramebuffers(inWindowSize);
 	}
 
 	void	HandleKeyCharInputEvent(wchar_t inChar) {}
 
-	void	Draw(DrawList* inDrawList) {
-		DrawEvent drawEvent;
-		drawEvent.DrawList = inDrawList;
-		drawEvent.ParentOriginGlobal = Point(0.f, 0.f);
-		Super::DispatchToChildren(&drawEvent);
-	}
-
 	// Draws debug hit stack
-	void	DrawHitStack(VerticalTextDrawer& inDrawer) {
+	void	PrintHitStack(Util::StringBuilder& inBuffer) {
 		Debug::PropertyArchive ar;
 
-		for(auto& hitData : m_LastHitTest.HitStack) {
-			ar.PushObject(hitData.Widget->_GetClassName(), hitData.Widget, nullptr);
+		for(auto& hitData : m_LastHitStack) {
+			ar.PushObject(hitData.Widget->GetClassName(), hitData.Widget, nullptr);
 			hitData.Widget->DebugSerialize(ar);
 		}
 
 		for(auto& object : ar.m_RootObjects) {
-			inDrawer.DrawText(object->m_ClassName);
-			inDrawer.PushIndent();
+			inBuffer.Line(object->m_ClassName);
+			inBuffer.PushIndent();
 
 			for(auto& property : object->m_Properties) {
-				inDrawer.DrawTextF("{}: {}", property.Name, property.Value);
+				inBuffer.Line("{}: {}", property.Name, property.Value);
 			}
-			inDrawer.PopIndent();
+			inBuffer.PopIndent();
 		}
 	}
 
 	void	DrawDebug(DrawList* inDrawList) {
-		VerticalTextDrawer drawer(inDrawList, Point(), Color("#dddddd"));
-		drawer.DrawTextF("MousePosGlobal: {}", m_LastMousePosGlobal);
-		drawer.DrawTextF("MousePosLocal: {}", GetLocalHoveredPos());
-		drawer.DrawText("HitStack: ");
-		drawer.PushIndent();
-		DrawHitStack(drawer);
+		std::string buf;
+		auto sb = Util::StringBuilder(&buf);
+
+		sb.Line("MousePosGlobal: {}", m_LastMousePosGlobal);
+		sb.Line("MousePosLocal: {}", GetLocalHoveredPos());
+		sb.Line("HitStack: ");
+		sb.PushIndent();
+		PrintHitStack(sb);
+
+		m_Layers.DebugOverlayWindow->Text->SetText(buf);
 	}
 
 	Point	GetLocalHoveredPos() {
 		if(m_LastHovered) {
-			for(auto& obj : m_LastHitTest.HitStack) {
-				if(obj.Widget == m_LastHovered) {
-					return obj.HitPosLocal;
-				}
-			}
+			return m_LastHitStack.Find(m_LastHovered->As<LayoutWidget>())->HitPosLocal;
 		}
 		return m_LastMousePosGlobal;
 	}
@@ -259,7 +383,7 @@ public:
 		DebugLogEvent onDebugLog;
 		onDebugLog.Archive = &archive;
 
-		DispatchToChildren(&onDebugLog);
+		m_Layers.RootWindow->OnEvent(&onDebugLog);
 
 		std::deque<Debug::PropertyArchive::ObjectID> parentIDStack;
 		std::stringstream ss;
@@ -282,8 +406,8 @@ public:
 
 			} else if(parentID != parentIDStack.back()) {
 				// Unwind intil the parent is found
-				for(auto stackParentID = parentIDStack.back(); 
-					stackParentID != parentID; 
+				for(auto stackParentID = parentIDStack.back();
+					stackParentID != parentID;
 					parentIDStack.pop_back(), stackParentID = parentIDStack.back());
 			}
 			parentIDStack.push_back(inObject.m_ObjectID);
@@ -297,117 +421,173 @@ public:
 				ss << std::format("{}: {}", property.Name, property.Value) << '\n';
 			}
 			return true;
-		};
+			};
 		archive.VisitRecursively(visitor);
 		LOGF("Widget tree: \n{}", ss.str());
 	}
 
-	bool	HasAnyFlags(StateFlags inFlags) const { return m_StateFlags & inFlags; }
-	void	SetFlags(StateFlags inFlags) { m_StateFlags |= inFlags; }
-	void	ClearFlags(StateFlags inFlags) { m_StateFlags &= ~inFlags; }
+	Widget* GetRootWindow() { return m_Layers.RootWindow.get(); }
+
+	Font*	GetDefaultFont() { return m_Theme->GetDefaultFont(); }
+
+	// Rebuild font of the theme if needed
+	void	RebuildFonts() {
+		std::vector<Font*> fonts;
+		m_Theme->GetFonts(&fonts);
+
+		for(auto& font : fonts) {
+
+			if(font->NeedsRebuild()) {
+				Image fontImageAtlas;
+				font->Build(&fontImageAtlas);
+				auto oldTexture = (TextureHandle)font->GetAtlasTexture();
+				TextureHandle fontTexture = g_Renderer->CreateTexture(fontImageAtlas);
+
+				font->SetAtlasTexture(fontTexture);
+				g_Renderer->DeleteTexture(oldTexture);
+			}
+		}
+	}
+
+public:
+
+	bool	Tick() override {
+		const auto frameStartTimePoint = std::chrono::high_resolution_clock::now();
+
+		// Rebuild fonts if needed for different size
+		RebuildFonts();
+
+		// Update layout of new widgets
+		// Process input events
+		// Update layout of changed widgets
+		// Draw
+		if(!g_OSWindow->PollEvents()) {
+			return false;
+		}
+
+		// Process tooltip
+		if(m_MouseState == MouseState::Default && m_Layers.Tooltip.Timer.IsReady()) {
+
+			m_LastHitStack.Top().Widget->VisitParent([&](Widget* inWidget) {
+
+				if(auto* tooltipSpawner = inWidget->As<TooltipSpawner>()) {
+					m_Layers.Tooltip.Widget.reset(tooltipSpawner->Spawn());
+					m_Layers.Tooltip.Widget->SetPos(m_LastMousePosGlobal);
+					m_MouseState = MouseState::Tooltip;
+					return false;
+				}
+				return true;
+			});
+			m_Layers.Tooltip.Timer.Clear();
+		}
+
+		// Draw views
+		g_Renderer->ResetDrawLists();
+		auto& frameDrawList = *g_Renderer->GetFrameDrawList();
+		frameDrawList.PushFont(m_Theme->GetDefaultFont(), g_DefaultFontSize);
+
+		DrawEvent drawEvent;
+		drawEvent.DrawList = &frameDrawList;
+		drawEvent.ParentOriginGlobal = Point(0.f, 0.f);
+
+		m_Layers.RootWindow->OnEvent(&drawEvent);
+
+		if(m_Layers.Popup) {
+			m_Layers.Popup->OnEvent(&drawEvent);
+		}
+
+		if(m_Layers.DragDrop) {
+			m_Layers.DragDrop->OnEvent(&drawEvent);
+		}
+
+		if(m_Layers.DebugOverlayWindow->IsVisible()) {
+			m_Layers.DebugOverlayWindow->OnEvent(&drawEvent);
+		}
+
+		if(m_Layers.Tooltip.Widget) {
+			m_Layers.Tooltip.Widget->OnEvent(&drawEvent);
+		}
+
+		if(m_bDrawDebugInfo) {
+			DrawDebug(&frameDrawList);
+		}
+		g_Renderer->RenderFrame(true);
+
+
+		const auto frameEndTimePoint = std::chrono::high_resolution_clock::now();
+
+		++m_FrameNum;
+		m_LastFrameTimeMs = std::chrono::duration_cast<std::chrono::microseconds>(frameEndTimePoint - frameStartTimePoint).count() / 1000.f;
+		return true;
+	}
+
+	// Returns top level root widget containter
+	Widget* GetRoot() override { return m_Layers.RootWindow.get(); }
+
+	void	Shutdown() override {}
+
+	Theme*	GetTheme() override { return m_Theme.get(); }
+
+	void	SetTheme(Theme* inTheme) override { 
+		m_Theme.reset(inTheme); 
+		m_Theme->LoadFonts();
+		RebuildFonts();
+	}
 
 private:
-	Point			m_LastMousePosGlobal;
-	Widget*			m_LastHovered = nullptr;
-	Widget*			m_CapturesMouse = nullptr;
-	HitTestEvent	m_LastHitTest;
-	StateFlags		m_StateFlags = StateFlags::Default;
 
-	// Currently held mouse button
-	MouseButtonEnum	m_HeldMouseButton = MouseButtonEnum::None;
+	u64						m_FrameNum = 0;
+	float					m_LastFrameTimeMs = 0;
+
+	// Draw hitstack and mouse pos
+	bool					m_bDrawDebugInfo = false;
+	// Whether the native window is minimized
+	bool					m_bMinimized = false;
+
+	Point					m_LastMousePosGlobal;
+	Widget*					m_LastHovered = nullptr;
+	// A widget which has received a mouse click event
+	Widget*					m_CapturesMouse = nullptr;
+
+	HitStack				m_LastHitStack;
+
+	// Number of buttons currently held
+	u8						m_MouseButtonHeldNum = 0;
+	MouseState				m_MouseState = MouseState::Default;
+	// Position of the mouse cursor when button has been pressed
+	Point					m_MousePosOnCaptureGlobal;
+
+	bool					m_ModifiersState[(int)Modifiers::Count] = {false};
+
+	struct {
+		// Tooltip drawn on top of all other widgets
+		// to allow tooltips over debug overlays
+		struct {
+			std::unique_ptr<LayoutWidget>	Widget;
+			Timer							Timer;
+		}								Tooltip;
+
+		std::unique_ptr<DebugOverlayWindow>	DebugOverlayWindow;
+		std::unique_ptr<LayoutWidget>		Popup;
+		std::unique_ptr<LayoutWidget>		DragDrop;
+		// Currently unused
+		//std::list<Widget*>	FloatingWindowsStack;
+		std::unique_ptr<RootWindow>		RootWindow;
+	}						m_Layers;
+
+	std::unique_ptr<Theme>	m_Theme;
 
 };
 
-void Init(std::string_view inWindowTitle, u32 inWidth, u32 inHeight) {
-
-	// Take window position and size from command line
-	// Take window parameters from config file
-
-	g_RootWindow = new RootWindow();
-	g_OSWindow = INativeWindow::createWindow(inWindowTitle, inWidth, inHeight);
-
-	g_OSWindow->SetOnCursorMoveCallback([](float x, float y) { g_RootWindow->HandleMouseMoveEvent(x, y); });
-	g_OSWindow->SetOnMouseButtonCallback([](KeyCode inButton, bool bPressed) { g_RootWindow->HandleMouseButtonEvent(inButton, bPressed); });
-	g_OSWindow->SetOnMouseScrollCallback([](float inScroll) { g_RootWindow->HandleMouseScrollEvent(inScroll); });
-	g_OSWindow->SetOnWindowResizedCallback([](float2 inWindowSize) { g_RootWindow->HandleNativeWindowResizeEvent(inWindowSize); });
-	g_OSWindow->SetOnKeyboardButtonCallback([](KeyCode inButton, bool bPressed) { g_RootWindow->HandleKeyInputEvent(inButton, bPressed); });
-	g_OSWindow->SetOnCharInputCallback([](wchar_t inCharacter) { g_RootWindow->HandleKeyCharInputEvent(inCharacter); });
-
-	g_Renderer = CreateRendererDX12();
-	g_Renderer->Init(g_OSWindow);
-
-	//m_WorkingDirectoryFilename = Path(argv[0]).parent_path();
-	//LOGF("Info: Application has been initialized. Window size: {}x{}, Working directory: {}.", inWidth, inHeight, m_WorkingDirectoryFilename);
-	g_DefaultTheme = new Theme();
-
-	if(!g_DefaultTheme->Font) {
-		auto* font = CreateFontInternal();
-		g_DefaultTheme->Font.reset(font);
-		font->RasterizeFace(g_DefaultFontSize);
-	}
-
-	if(g_DefaultTheme->Font->NeedsRebuild()) {
-		Image fontImageAtlas;
-		g_DefaultTheme->Font->Build(&fontImageAtlas);
-		auto oldTexture = (TextureHandle)g_DefaultTheme->Font->GetAtlasTexture();
-		TextureHandle fontTexture = g_Renderer->CreateTexture(fontImageAtlas);
-
-		g_DefaultTheme->Font->SetAtlasTexture(fontTexture);
-		g_Renderer->DeleteTexture(oldTexture);
-	}
+UI::Application* UI::Application::Create(std::string_view inWindowTitle, u32 inWidth, u32 inHeight) {
+	if(!g_OSWindow) { g_OSWindow = INativeWindow::createWindow(inWindowTitle, inWidth, inHeight); }
+	if(!g_Application) g_Application = new ApplicationImpl();
+	g_Application->Init();
+	return g_Application;
 }
 
-bool Tick() {
-		
-	// Update layout of new widgets
-	// Process input events
-	// Update layout of changed widgets
-	// Draw
-	if(g_DefaultTheme->Font->NeedsRebuild()) {
-		Image fontImageAtlas;
-		g_DefaultTheme->Font->Build(&fontImageAtlas);
-		auto oldTexture = (TextureHandle)g_DefaultTheme->Font->GetAtlasTexture();
-		TextureHandle fontTexture = g_Renderer->CreateTexture(fontImageAtlas);
-
-		g_DefaultTheme->Font->SetAtlasTexture(fontTexture);
-		g_Renderer->DeleteTexture(oldTexture);
-	}
-
-	if(!g_OSWindow->PollEvents()) {
-		return false;
-	}
-
-	// Draw views
-	g_Renderer->ResetDrawLists();
-	auto& frameDrawList = *g_Renderer->GetFrameDrawList();
-	frameDrawList.PushFont(g_DefaultTheme->Font.get(), g_DefaultFontSize);
-
-	g_RootWindow->Draw(&frameDrawList);
-
-	if(g_bDrawDebugInfo) {
-		g_RootWindow->DrawDebug(&frameDrawList);
-	}	
-	g_Renderer->RenderFrame(true);
-
-	//DrawEventData drawContext;
-	//drawContext.DrawList = &frameDrawList;
-	//drawContext.Style = *m_SelectedStyle;
-	//drawContext.CursorPosViewportSpace = m_LastMousePos;
-
-	//for(auto* window : m_FloatWindowStack) {
-	//	// If window has parent, parent will be responsible for drawing
-	//	if(!window->IsDocked() && window->IsVisible()) {
-	//		window->OnDraw(drawContext);
-	//	}
-	//}
-}
-
-UI::Widget* UI::GetRoot() {
-	return g_RootWindow;
-}
-
-UI::Theme* UI::GetDefaultTheme() {
-	return g_DefaultTheme;
+UI::Application* UI::Application::Get() {
+	return g_Application;
 }
 
 GAVAUI_END

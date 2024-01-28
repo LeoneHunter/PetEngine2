@@ -9,33 +9,27 @@
 	public:\
 	using Super = superClassName;\
 	static inline const ClassMeta* _StaticClass = StaticClassRegistrator{#className, #superClassName}.Class;\
-	virtual const ClassMeta* _GetClass() const override { return _StaticClass; }\
-	static const ClassMeta* _GetStaticClass() { return _StaticClass; }\
-	virtual std::string_view _GetClassName() const override { return #className; }\
-	static std::string_view _GetStaticClassName() { return #className; }
+	virtual const ClassMeta* GetClass() const override { return _StaticClass; }\
+	static const ClassMeta* GetStaticClass() { return _StaticClass; }\
+	virtual std::string_view GetClassName() const override { return #className; }\
+	static std::string_view GetStaticClassName() { return #className; }
 
 #define DEFINE_ROOT_CLASS_META(className) \
 	public:\
 	static inline const ClassMeta* _StaticClass = StaticClassRegistrator{#className, ""}.Class;\
-	virtual const ClassMeta* _GetClass() const { return _StaticClass; }\
-	static const ClassMeta* _GetStaticClass() { return _StaticClass; }\
-	virtual std::string_view _GetClassName() const { return #className; }\
-	static std::string_view _GetStaticClassName() { return #className; }\
+	virtual const ClassMeta* GetClass() const { return _StaticClass; }\
+	static const ClassMeta* GetStaticClass() { return _StaticClass; }\
+	virtual std::string_view GetClassName() const { return #className; }\
+	static std::string_view GetStaticClassName() { return #className; }\
 	public:\
 	template<class ClassType>\
 	bool IsA() const {\
-		return ClassType::_GetStaticClass() == _GetClass();\
-	}\
-	\
-	template<class ClassType>\
-	bool IsSubclassOf() const {\
-		if(IsA<ClassType>()) {\
+		if(ClassType::GetStaticClass() == GetClass()) {\
 			return true;\
 		}\
-		auto* super = _GetClass()->Super;\
-		\
-		for(auto* super = _GetClass()->Super; super; super = super->Super) {\
-			if(super == ClassType::_GetStaticClass()) {\
+		auto* super = GetClass()->Super;\
+		for(auto* super = GetClass()->Super; super; super = super->Super) {\
+			if(super == ClassType::GetStaticClass()) {\
 				return true;\
 			}\
 		}\
@@ -44,7 +38,7 @@
 	\
 	template<class ClassType>\
 	ClassType* As() {\
-		if(IsSubclassOf<ClassType>()) {\
+		if(IsA<ClassType>()) {\
 			return static_cast<ClassType*>(this);\
 		}\
 		return nullptr;\
@@ -52,7 +46,7 @@
 	\
 	template<class ClassType>\
 	const ClassType* As() const {\
-		if(IsSubclassOf<ClassType>()) {\
+		if(IsA<ClassType>()) {\
 			return static_cast<const ClassType*>(this);\
 		}\
 		return nullptr;\

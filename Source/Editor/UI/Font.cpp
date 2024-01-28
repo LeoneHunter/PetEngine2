@@ -549,10 +549,10 @@ private:
 	std::map<FontKey, ImFont*>		m_PendingFaces;
 };
 
-Font* UI::CreateFontInternal() {
+Font* UI::Font::CreateInternal() {
 	return new ImGuiFont("");
 }
 
-Font* UI::CreateFontFromFile(const Path& inFilepath) {
+Font* UI::Font::CreateFromFile(const Path& inFilepath) {
 	return new ImGuiFont(inFilepath);
 }

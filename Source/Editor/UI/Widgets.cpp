@@ -15,28 +15,27 @@ UI::Centered::Centered(Widget* inParent, const std::string& inID)
 }
 
 void UI::Centered::OnParented(Widget* inParent) {
-	Super::SetAxisMode(inParent->GetAxisMode());
+	Super::OnParented(inParent);
+	auto layoutParent = Super::GetNearestLayoutParent();		
+	Super::SetAxisMode(layoutParent->GetAxisMode());
 }
 
 bool UI::Centered::OnEvent(IEvent* inEvent) {
 
-	if(auto* event = inEvent->As<ParentEvent>()) {
-		// Update size in Super
+	if(auto* event = inEvent->As<ParentLayoutEvent>()) {
+		// Update our size and the child size in super
 		Super::OnEvent(inEvent);
 
-		if(auto* child = Super::GetChild()) {
-			// Pass size constrains to the child
-			child->OnEvent(inEvent);
-
-			// Now the child has updated it's size and we can set it's position
+		if(auto* child = Super::GetChild<LayoutWidget>()) {
+			// Child size is updated by the super
 			const auto childSize = child->GetSize();
 			const auto position = (event->Constraints - childSize) * 0.5f;
 			child->SetPos(position);
 		}
 		return true;
 
-	} else if(auto* event = inEvent->As<ChildEvent>()) {
-		// Update size in Super
+	} else if(auto* event = inEvent->As<ChildLayoutEvent>()) {
+		// Update our size and the child size in super
 		Super::OnEvent(inEvent);
 		
 		const auto childSize = event->Child->GetSize();
@@ -67,7 +66,7 @@ AxisIndex GetMainAxisIdx(UI::Widget* inFlexbox) {
 }
 
 AxisIndex UI::Expanded::GetMainAxis() const {
-	auto* parent = Super::GetParent();
+	auto* parent = Super::GetParent<Flexbox>();
 	Assert(parent);
 	
 	const auto parentDirection = parent->As<UI::Flexbox>()->GetDirection();
@@ -76,22 +75,21 @@ AxisIndex UI::Expanded::GetMainAxis() const {
 
 void UI::Expanded::OnParented(Widget* inParent) {
 	Super::OnParented(inParent);
-	Assertm(inParent->IsA<Flexbox>(), "Expanded parent can be only a Flexbox widget");
-	auto parent = inParent->As<Flexbox>();
-	Super::SetAxisMode(inParent->GetAxisMode());
+	auto layoutParent = Super::GetNearestLayoutParent();
+	Assertm(layoutParent->IsA<Flexbox>(), "Expanded layout parent can be only a Flexbox widget");
+	Super::SetAxisMode(layoutParent->GetAxisMode());
 }
 
 bool UI::Expanded::OnEvent(IEvent* inEvent) {
 	// Layout event will be handled in Super based on AxisMode
 
-	if(auto* event = inEvent->As<ParentEvent>()) {
-		Super::OnEvent(inEvent);
+	if(auto* event = inEvent->As<ParentLayoutEvent>()) {
+		Super::OnEvent(inEvent);		
 		
-		if(auto child = Super::GetChild()) {
-			ParentEvent onParent(*event);
-			onParent.bForceExpand[GetMainAxis()] = true;
-			child->OnEvent(&onParent);
-		}
+		ParentLayoutEvent onParent(*event);
+		onParent.Parent = this;
+		onParent.bForceExpand[GetMainAxis()] = true;
+		Super::DispatchToChildren(&onParent);		
 		return true;
 
 	} else if(auto* event = inEvent->As<DrawEvent>()) {
@@ -110,6 +108,7 @@ bool UI::Expanded::OnEvent(IEvent* inEvent) {
 /*-------------------------------------------------------------------------------------------------*/
 UI::Text::Text(Widget* inParent, const std::string& inText, const std::string& inID) 
 	: Super(inID)
+	, m_Style(UI::Application::Get()->GetTheme()->FindStyle<TextStyle>("Text"))
 {
 	SetText(inText);
 	if(inParent) {
@@ -119,9 +118,6 @@ UI::Text::Text(Widget* inParent, const std::string& inText, const std::string& i
 
 void UI::Text::SetText(const std::string& inText) {
 	m_Text = inText;
-	const auto* style = UI::GetDefaultTheme()->DefaultTextStyle.get();
-	Assertf(style, "Widget type and style type mismatch");
-
 	float2 size;
 
 	if(inText.empty()) {
@@ -129,8 +125,8 @@ void UI::Text::SetText(const std::string& inText) {
 		/// Maybe do not update parent
 		/// For now we set it to some random values
 		size = float2(15, 15);
-	} else {
-		size = style->CalculateTextSize(m_Text);
+	} else if(m_Style && m_Style->Font) {
+		size = m_Style->CalculateTextSize(m_Text);
 		Super::SetSize(size);
 	}
 	Super::NotifyParentOnSizeChanged(AxisX);
@@ -142,12 +138,12 @@ bool UI::Text::OnEvent(IEvent* inEvent) {
 		// Ignore, we cannot be hovered
 		return false;
 
-	} else if(auto* event = inEvent->As<ParentEvent>()) {
+	} else if(auto* event = inEvent->As<ParentLayoutEvent>()) {
 		// Ignore, our size depends only on text
 		return false;
 
 	} else if(auto* event = inEvent->As<DrawEvent>()) {
-		event->DrawList->DrawText(event->ParentOriginGlobal + Super::GetOriginLocal(), Color("#dddddd"), m_Text, 13);
+		event->DrawList->DrawText(event->ParentOriginGlobal + Super::GetOriginLocal(), m_Style->Color, m_Text, m_Style->FontSize);
 		return true;
 	}
 	return Super::OnEvent(inEvent);
@@ -166,7 +162,7 @@ UI::Flexbox::Flexbox(Widget* inParent, const FlexboxDesc& inDesc)
 	, m_Alignment(inDesc.Alignment)
 	, m_OverflowPolicy(inDesc.OverflowPolicy)
 {
-	Assertm(inDesc.bExpandMainAxis || !inDesc.bExpandMainAxis && inDesc.JustifyContent == JustifyContent::Start, "If main axis is shrinked, justification has no effect");
+	//Assertm(inDesc.bExpandMainAxis || !inDesc.bExpandMainAxis && inDesc.JustifyContent == JustifyContent::Start, "If main axis is shrinked, justification has no effect");
 
 	const auto mainAxis = m_Direction == ContentDirection::Row ? 0 : 1;
 	Super::SetAxisMode(mainAxis, inDesc.bExpandMainAxis ? AxisMode::Expand : AxisMode::Shrink);
@@ -177,12 +173,19 @@ UI::Flexbox::Flexbox(Widget* inParent, const FlexboxDesc& inDesc)
 
 bool UI::Flexbox::OnEvent(IEvent* inEvent) {
 
-	if(auto* event = inEvent->As<ParentEvent>()) {
-		Super::OnEvent(inEvent);
+	if(auto* event = inEvent->As<ParentLayoutEvent>()) {
+		// Update our size if expanded
+		LayoutWidget::OnEvent(inEvent);
 		UpdateLayout();
 		return true;
 
-	} else if(auto* event = inEvent->As<ChildEvent>()) {
+	} else if(auto* event = inEvent->As<ChildLayoutEvent>()) {
+
+		if(event->Subtype == ChildLayoutEvent::OnAdded) {
+			const auto crossAxis = m_Direction == ContentDirection::Row ? AxisY : AxisX;
+			Assertm(Super::GetAxisMode()[crossAxis] == AxisMode::Expand || event->Child->GetAxisMode()[crossAxis] == AxisMode::Shrink,
+								"Parent child axis shrink/expand mismatch. A child with an expanded axis has been added to the containter with that axis shrinked.");
+		}
 		UpdateLayout();		
 		Super::NotifyParentOnSizeChanged();
 		return true;
@@ -201,9 +204,6 @@ bool UI::Flexbox::OnEvent(IEvent* inEvent) {
 
 void UI::Flexbox::Parent(Widget* inChild) {
 	Super::Parent(inChild);
-	const auto mainAxisMode = GetAxisMode()[GetMainAxisIdx(this)];
-	Assertm(mainAxisMode == AxisMode::Expand || inChild->GetAxisMode()[mainAxisMode] == AxisMode::Shrink, 
-			"Flexbox with shrinked main axis cannot have expanding children on that axis");
 }
 
 struct TempData {
@@ -234,8 +234,8 @@ void UI::Flexbox::UpdateLayout() {
 	// Calculate positions
 	// Align on the cross axis
 	const bool bDirectionRow = m_Direction == ContentDirection::Row;
-	const bool mainAxisIndex = bDirectionRow ? 0 : 1;
-	const bool crossAxisIndex = bDirectionRow ? 1 : 0;
+	const auto mainAxisIndex = bDirectionRow ? AxisX : AxisY;
+	const auto crossAxisIndex = bDirectionRow ? AxisY : AxisX;
 
 	const auto thisMainAxisSize = Super::GetSize()[mainAxisIndex];
 	const auto thisCrossAxisSize = Super::GetSize()[crossAxisIndex];
@@ -243,9 +243,9 @@ void UI::Flexbox::UpdateLayout() {
 	const auto axisMode = Super::GetAxisMode();
 
 	// These options require extra space left on the main axis to work so we need to find it
-	bool bJustifyContent = m_JustifyContent != JustifyContent::Start;
+	bool bJustifyContent = m_JustifyContent != JustifyContent::Start;	
 
-	std::vector<Widget*> visibleChildren;
+	std::vector<LayoutWidget*> visibleChildren;
 	Super::GetVisibleChildren(&visibleChildren);
 
 	std::vector<TempData> tempBuffer;
@@ -255,7 +255,8 @@ void UI::Flexbox::UpdateLayout() {
 	// Our size and sizes of expaned widgets should be this
 	float maxChildSizeCrossAxis = 0.f;
 	float totalFlexFactor = 0;
-	float shrinkedChildrenSizeMainAxis = 0;
+	// Widgets which size doesn't depend on our size
+	float staticChildrenSizeMainAxis = 0;
 
 	// Find available space after fixed size widgets
 	for(auto i = 0; i < visibleChildren.size(); ++i) {
@@ -283,7 +284,7 @@ void UI::Flexbox::UpdateLayout() {
 
 			} else {
 				temp.MainAxisSize = child->GetSize()[mainAxisIndex];
-				shrinkedChildrenSizeMainAxis += temp.MainAxisSize;
+				staticChildrenSizeMainAxis += temp.MainAxisSize;
 			}
 		}
 
@@ -297,17 +298,18 @@ void UI::Flexbox::UpdateLayout() {
 		}		
 		maxChildSizeCrossAxis = Math::Max(temp.CrossAxisSize, maxChildSizeCrossAxis);
 	}
-	float mainAxisRemainingSpace = thisMainAxisSize - shrinkedChildrenSizeMainAxis;
+	float mainAxisFlexibleSpace = Math::Clamp(thisMainAxisSize - staticChildrenSizeMainAxis, 0.f);
 
 	// Check for overflow
-	if(axisMode[mainAxisIndex] == AxisMode::Expand && mainAxisRemainingSpace <= 0.f) {
+	/// TODO use min size from theme here
+	if(axisMode[mainAxisIndex] == AxisMode::Expand && mainAxisFlexibleSpace <= 0.f) {
 
-		if(m_OverflowPolicy == OverflowPolicy::Clip) {
-			// Just clip overflown children
+		if(m_OverflowPolicy == OverflowPolicy::Scroll) {
+			// Set up scrolling
 		} else if(m_OverflowPolicy == OverflowPolicy::Wrap) {
 			// Check if can expand in cross axis and put children there
-		} else {
-			// Set up scrolling
+		} else if(m_OverflowPolicy == OverflowPolicy::ShrinkWrap) {
+			// Do not decrease our size below content size
 		}
 	}
 
@@ -319,7 +321,7 @@ void UI::Flexbox::UpdateLayout() {
 			auto& temp = tempBuffer[i];
 
 			if(temp.MainAxisSize < 0.f) {
-				temp.MainAxisSize = mainAxisRemainingSpace * temp.MainAxisSize / totalFlexFactor;
+				temp.MainAxisSize = mainAxisFlexibleSpace * temp.MainAxisSize / totalFlexFactor;
 				/// TODO Child size shouldn't be less then Child.GetMinSize()
 				temp.MainAxisSize = Math::Clamp(temp.MainAxisSize, 0.f);
 			}
@@ -335,29 +337,29 @@ void UI::Flexbox::UpdateLayout() {
 		switch(m_JustifyContent) {
 			case JustifyContent::End:
 			{
-				justifyContentMargin = mainAxisRemainingSpace;
+				justifyContentMargin = mainAxisFlexibleSpace;
 				break;
 			}
 			case JustifyContent::Center:
 			{
-				justifyContentMargin = mainAxisRemainingSpace * 0.5f;
+				justifyContentMargin = mainAxisFlexibleSpace * 0.5f;
 				break;
 			}
 			case JustifyContent::SpaceBetween:
 			{
 				if(tempBuffer.size() == 1) {
-					justifyContentMargin = mainAxisRemainingSpace * 0.5f;
+					justifyContentMargin = mainAxisFlexibleSpace * 0.5f;
 				} else {
-					justifyContentMargin = mainAxisRemainingSpace / (tempBuffer.size() - 1);
+					justifyContentMargin = mainAxisFlexibleSpace / (tempBuffer.size() - 1);
 				}
 				break;
 			}
 			case JustifyContent::SpaceAround:
 			{
 				if(tempBuffer.size() == 1) {
-					justifyContentMargin = mainAxisRemainingSpace * 0.5f;
+					justifyContentMargin = mainAxisFlexibleSpace * 0.5f;
 				} else {
-					justifyContentMargin = mainAxisRemainingSpace / (tempBuffer.size() + 1);
+					justifyContentMargin = mainAxisFlexibleSpace / (tempBuffer.size() + 1);
 				}
 				break;
 			}
@@ -374,8 +376,22 @@ void UI::Flexbox::UpdateLayout() {
 
 	for(auto i = 0; i != tempBuffer.size(); ++i) {
 		auto& temp = tempBuffer[i];
+		auto& child = visibleChildren[i];
 		temp.MainAxisPos = mainAxisCursor;
-		mainAxisCursor += temp.MainAxisSize;
+
+		float2 childPos;
+		childPos[mainAxisIndex] = temp.MainAxisPos;
+		childPos[crossAxisIndex] = temp.CrossAxisPos;
+
+		ParentLayoutEvent layoutEvent;
+		layoutEvent.Parent = this;
+		layoutEvent.Constraints[mainAxisIndex] = temp.MainAxisSize;
+		layoutEvent.Constraints[crossAxisIndex] = temp.CrossAxisSize;
+
+		child->OnEvent(&layoutEvent);
+		child->SetPos(childPos);
+
+		mainAxisCursor += child->GetSize(mainAxisIndex);
 
 		if(bJustifyContent && m_JustifyContent == JustifyContent::SpaceBetween || m_JustifyContent == JustifyContent::SpaceAround) {
 			mainAxisCursor += justifyContentMargin;
@@ -387,25 +403,18 @@ void UI::Flexbox::UpdateLayout() {
 		} else if(m_Alignment == AlignContent::Center) {
 			temp.CrossAxisPos = 0.5f * (maxChildSizeCrossAxis - temp.CrossAxisSize);
 		}
-
-		float2 childPos;
-		childPos[mainAxisIndex] = temp.MainAxisPos;
-		childPos[crossAxisIndex] = temp.CrossAxisPos;
-
-		ParentEvent layoutEvent;
-		layoutEvent.Constraints[mainAxisIndex] = temp.MainAxisSize;
-		layoutEvent.Constraints[crossAxisIndex] = temp.CrossAxisSize;
-
-		visibleChildren[i]->OnEvent(&layoutEvent);
-		visibleChildren[i]->SetPos(childPos);
 	}
+	const auto totalMainAxisContentSize = mainAxisCursor;
 
 	if(axisMode[crossAxisIndex] == AxisMode::Shrink) {
 		Super::SetSize(crossAxisIndex, maxChildSizeCrossAxis);
 	}
 
-	if(axisMode[mainAxisIndex] == AxisMode::Shrink) {
-		Super::SetSize(mainAxisIndex, shrinkedChildrenSizeMainAxis);
+	if(axisMode[mainAxisIndex] == AxisMode::Shrink || m_OverflowPolicy == OverflowPolicy::ShrinkWrap && totalMainAxisContentSize > thisMainAxisSize) {
+		Super::SetSize(mainAxisIndex, totalMainAxisContentSize);
+
+	} else if(m_OverflowPolicy == OverflowPolicy::Scroll && totalMainAxisContentSize <= 0.f) {
+
 	}
 }
 
@@ -456,17 +465,7 @@ bool UI::Button::OnEvent(IEvent* inEvent) {
 		}
 		return false;
 
-	} else if(auto* event = inEvent->As<HitTestEvent>()) {
-		auto hitPosLocalSpace = event->GetLastHitPos();
-
-		if(Super::GetRect().Contains(hitPosLocalSpace)) {
-			event->PushItem(this, hitPosLocalSpace - Super::GetOriginLocal());
-			Super::DispatchToChildren(inEvent);
-			return true;
-		}
-		return false;
-
-	} else if(auto* event = inEvent->As<ChildEvent>()) {
+	} else if(auto* event = inEvent->As<ChildLayoutEvent>()) {
 		auto thisSize = event->Child->GetSize() + ButtonPaddings * 2.f;
 		auto childPosCentered = ButtonPaddings;
 
@@ -491,7 +490,7 @@ bool UI::Button::OnEvent(IEvent* inEvent) {
 
 
 /*-------------------------------------------------------------------------------------------------*/
-//										SPLITBOX
+//										GUIDELINE
 /*-------------------------------------------------------------------------------------------------*/
 UI::Guideline::Guideline(Widget* inParent, bool bIsVertical /*= true*/, OnDraggedFunc inCallback /*= {}*/, const std::string& inID /*= {}*/) 
 	: Super(inID)
@@ -514,7 +513,7 @@ bool UI::Guideline::OnEvent(IEvent* inEvent) {
 		}
 		return true;
 
-	} else if(auto* event = inEvent->As<ParentEvent>()) {
+	} else if(auto* event = inEvent->As<ParentLayoutEvent>()) {
 		float2 size;
 		size[m_MainAxis] = event->Constraints[m_MainAxis];
 		size[!m_MainAxis] = 5.f;
@@ -534,21 +533,13 @@ bool UI::Guideline::OnEvent(IEvent* inEvent) {
 		}
 		return false;
 
-	} else if(auto* event = inEvent->As<HitTestEvent>()) {
-		auto hitPosLocalSpace = event->GetLastHitPos();
-
-		if(Super::GetRect().Contains(hitPosLocalSpace)) {
-			event->PushItem(this, hitPosLocalSpace - Super::GetOriginLocal());
-			return true;
-		}
-		return false;
-
 	} else if(auto* event = inEvent->As<MouseDragEvent>()) {
 		
 		if(m_State == ButtonState::Pressed) {
-			const auto delta = event->CursorDelta[!m_MainAxis];
+			const auto delta = event->Delta[!m_MainAxis];
 			if(m_Callback) m_Callback(event);
 		}
+		return true;
 
 	} else if(auto * event = inEvent->As<DrawEvent>()) {
 		if(!Super::IsVisible()) return true;
@@ -599,12 +590,6 @@ void UI::SplitBox::Parent(Widget* inChild) {
 	} else {
 		Assertm(false, "A Splitbox can contain only two children");
 	}
-
-	ChildEvent onChild;
-	onChild.Child = inChild;
-	onChild.Size = inChild->GetSize();
-	onChild.Subtype = ChildEvent::OnAdded;
-	this->OnEvent(&onChild);
 }
 
 void UI::SplitBox::Unparent(Widget* inChild) {
@@ -615,21 +600,16 @@ void UI::SplitBox::Unparent(Widget* inChild) {
 	} else {
 		m_Second.release();
 	}
-	ChildEvent onChild;
-	onChild.Child = inChild;
-	onChild.Size = inChild->GetSize();
-	onChild.Subtype = ChildEvent::OnRemoved;
-	this->OnEvent(&onChild);
 }
 
 bool UI::SplitBox::OnEvent(IEvent* inEvent) {
 
-	if(auto* event = inEvent->As<ParentEvent>()) {
-		Super::OnEvent(inEvent);
+	if(auto* event = inEvent->As<ParentLayoutEvent>()) {
+		LayoutWidget::OnEvent(inEvent);
 		UpdateLayout();
 		return true;
 
-	} else if(auto* event = inEvent->As<ChildEvent>()) {
+	} else if(auto* event = inEvent->As<ChildLayoutEvent>()) {
 		UpdateLayout();
 		return true;
 
@@ -676,7 +656,7 @@ void UI::SplitBox::DebugSerialize(Debug::PropertyArchive& inArchive) {
 
 void UI::SplitBox::OnSeparatorDragged(MouseDragEvent* inDragEvent) {
 	const auto mainAxisSize = Super::GetSize(m_MainAxis);
-	const auto clampedPos = Math::Clamp(inDragEvent->CursorPosLocalSpace[m_MainAxis], 10.f, mainAxisSize - 10.f);
+	const auto clampedPos = Math::Clamp(inDragEvent->PosLocal[m_MainAxis], 10.f, mainAxisSize - 10.f);
 	const auto posNorm = clampedPos / mainAxisSize;
 	m_SplitRatio = posNorm;
 	UpdateLayout();
@@ -690,18 +670,38 @@ void UI::SplitBox::SetSplitRatio(float inRatio) {
 
 void UI::SplitBox::UpdateLayout() {
 
-	if(!m_First && !m_Second) return;
+	LayoutWidget* firstLayoutWidget = nullptr;
 
-	if(!m_First || !m_First->IsVisible()) {	
-		ParentEvent onParent(Super::GetSize());
-		m_Second->OnEvent(&onParent);
-		m_Second->SetPos(float2(0.f));
+	if(m_First) {
+		firstLayoutWidget = m_First->As<LayoutWidget>();
+
+		if(!firstLayoutWidget) {
+			firstLayoutWidget = m_First->GetChild<LayoutWidget>();
+		}
+	}
+
+	LayoutWidget* secondLayoutWidget = nullptr;
+
+	if(m_Second) {
+		secondLayoutWidget = m_Second->As<LayoutWidget>();
+
+		if(!secondLayoutWidget) {
+			secondLayoutWidget = m_Second->GetChild<LayoutWidget>();
+		}
+	}
+
+	if(!firstLayoutWidget && !secondLayoutWidget) return;
+
+	if(!firstLayoutWidget || !firstLayoutWidget->IsVisible()) {
+		ParentLayoutEvent onParent(this, Super::GetSize());
+		secondLayoutWidget->OnEvent(&onParent);
+		secondLayoutWidget->SetPos(float2(0.f));
 		m_Separator->SetVisibility(false);
 
-	} else if(!m_Second || !m_Second->IsVisible()) {
-		ParentEvent onParent(Super::GetSize());
-		m_First->OnEvent(&onParent);
-		m_First->SetPos(float2(0.f));
+	} else if(!secondLayoutWidget || !secondLayoutWidget->IsVisible()) {
+		ParentLayoutEvent onParent(this, Super::GetSize());
+		firstLayoutWidget->OnEvent(&onParent);
+		firstLayoutWidget->SetPos(float2(0.f));
 		m_Separator->SetVisibility(false);
 
 	} else {		
@@ -718,12 +718,12 @@ void UI::SplitBox::UpdateLayout() {
 			childConstraints[m_MainAxis] = firstChildConstraint;
 			childConstraints[!m_MainAxis] = crossAxisSize;
 
-			ParentEvent onParent(childConstraints);
-			m_First->OnEvent(&onParent);
-			m_First->SetPos(float2(0.f));
+			ParentLayoutEvent onParent(this, childConstraints);
+			firstLayoutWidget->OnEvent(&onParent);
+			firstLayoutWidget->SetPos(float2(0.f));
 		}
 		{
-			ParentEvent onParent(GetSize());
+			ParentLayoutEvent onParent(this, GetSize());
 			m_Separator->OnEvent(&onParent);
 
 			float2 pos;
@@ -734,12 +734,58 @@ void UI::SplitBox::UpdateLayout() {
 			childConstraints[m_MainAxis] = secondChildConstraint;
 			childConstraints[!m_MainAxis] = crossAxisSize;
 
-			ParentEvent onParent(childConstraints);
-			m_Second->OnEvent(&onParent);
+			ParentLayoutEvent onParent(this, childConstraints);
+			secondLayoutWidget->OnEvent(&onParent);
 
 			float2 secondChildPos;
 			secondChildPos[m_MainAxis] = firstChildConstraint + separatorThickness;
-			m_Second->SetPos(secondChildPos);
+			secondLayoutWidget->SetPos(secondChildPos);
 		}
 	}
+}
+
+
+
+
+/*-------------------------------------------------------------------------------------------------*/
+//										TOOLTIP
+/*-------------------------------------------------------------------------------------------------*/
+UI::Tooltip::Tooltip(float2 inSize /*= {}*/)
+	: Super() 
+{}
+
+bool UI::Tooltip::OnEvent(IEvent* inEvent) {
+
+	if(auto* event = inEvent->As<ChildLayoutEvent>()) {
+		auto thisSize = event->Child->GetSize() + ButtonPaddings * 2.f;
+		auto childPosCentered = ButtonPaddings;
+
+		Super::SetSize(thisSize);
+		event->Child->SetPos(childPosCentered);
+
+		Super::NotifyParentOnSizeChanged(AxisX);
+		return true;
+
+	} else if(auto* event = inEvent->As<DrawEvent>()) {
+		auto color = Colors::Red;
+		event->DrawList->DrawRectFilled(Super::GetRect().Translate(event->ParentOriginGlobal), color);
+
+		auto eventCopy = *event;
+		eventCopy.ParentOriginGlobal += Super::GetOriginLocal();
+		Super::DispatchToChildren(&eventCopy);
+		return true;
+	}
+	return Super::OnEvent(inEvent);
+}
+
+UI::TooltipSpawner::TooltipSpawner(Widget* inParent, const SpawnerFunction& inSpawner) 
+	: Super()
+	, m_Spawner(inSpawner)
+{
+	if(inParent) inParent->Parent(this);
+}
+
+UI::LayoutWidget* UI::TooltipSpawner::Spawn() {
+	if(m_Spawner) return m_Spawner();
+	return nullptr;
 }
