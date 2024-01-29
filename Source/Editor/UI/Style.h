@@ -21,6 +21,11 @@ namespace UI {
 		constexpr auto Blue				= Color("#3951C4");
 	}
 
+	constexpr std::string_view kStyleClassStateSeparator = ":";
+	constexpr auto kDefaultMargins = 5;
+	constexpr auto kDefaultPaddings = 5;
+	constexpr auto kDefaultFontSize = 5;
+
 	// Flags for selecting sides of a rect
 	enum class SideMask {
 		None = 0,
@@ -67,11 +72,12 @@ namespace UI {
 		DEFINE_CLASS_META(BoxStyle, Style)
 	public:
 
-		using Sides = Util::Sides;
+		using Sides = RectSides<u16>;
 
 		BoxStyle(std::string_view inSelector, const BoxStyle* inParent = nullptr) 
 			: Opacity(1.f)
 			, Rounding(0)
+			, RoundingMask(UI::CornerMask::All)
 		{
 			if(inParent) {
 				*this = *inParent;				
@@ -99,7 +105,7 @@ namespace UI {
 
 		TextStyle(std::string_view inSelector, const TextStyle* inParent = nullptr) 
 			: Font(nullptr)
-			, FontSize(0)
+			, FontSize(kDefaultFontSize)
 			, FontWeightBold(false)
 			, FontStyleItalic(false) 
 		{
@@ -156,11 +162,13 @@ namespace UI {
 		DEFINE_CLASS_META(LayoutStyle, Style)
 	public:
 
-		using Sides = Util::Sides;
+		using Sides = RectSides<u16>;
 
 		LayoutStyle(std::string_view inSelector, const LayoutStyle* inParent = nullptr) 
 			: MinHeight(0)
 			, MinWidth(0)
+			, Paddings(kDefaultPaddings)
+			, Margins(kDefaultMargins)
 		{
 			if(inParent) {
 				*this = *inParent;
@@ -328,49 +336,119 @@ namespace UI {
 
 	public:
 
-		Theme(u8 inDefaultFontSize = 13) {
+		Theme(u8 inDefaultFontSize = kDefaultFontSize) {
 			// ImGui font
 			m_Fonts.emplace_back(Font::CreateInternal());
 			m_Fonts.back()->RasterizeFace(inDefaultFontSize);
 		}
 
-		LayoutStyler Layout(std::string_view inSelector, std::string_view inParentStyleSelector = "") {
-			Assertm(!m_LayoutStyles.contains(inSelector), "Style with such selector already created");
+		LayoutStyler Layout(const std::string& inSelector, const std::string& inParentStyleSelector = "") {
+			auto selector = inSelector;
+			Assertm(!m_LayoutStyles.contains(selector), "Style with such selector already created");
 			UI::LayoutStyle* parent = nullptr;
 
 			if(!inParentStyleSelector.empty()) {
-				parent = FindLayout(inParentStyleSelector);
+				parent = FindStyle<LayoutStyle>(inParentStyleSelector);
 				Assertm(parent, "Parent style with specified selector and class not found");
 			}
-			auto out = new UI::LayoutStyle(inSelector, parent);
-			m_LayoutStyles.emplace(inSelector, out);
+
+			if(selector.empty()) {
+				selector = "$FALLBACK_LAYOUT$";
+			}
+			auto out = new UI::LayoutStyle(selector, parent);
+			m_LayoutStyles.emplace(selector, out);
 			return {out};
 		}
 
-		BoxStyler Box(std::string_view inSelector, std::string_view inParentStyleSelector = "") {
+		BoxStyler Box(const std::string& inSelector, const std::string& inParentStyleSelector = "") {
 			return Styler<BoxStyler, UI::BoxStyle>(inSelector, inParentStyleSelector);
 		}
 
-		TextStyler Text(std::string_view inSelector, std::string_view inParentStyleSelector = "") {
+		TextStyler Text(const std::string& inSelector, const std::string& inParentStyleSelector = "") {
 			return Styler<TextStyler, UI::TextStyle>(inSelector, inParentStyleSelector);
 		}
 
 	public:
 
-		template<typename T = Style>
-		T* FindStyle(std::string_view inSelector) {
-			auto it = m_Styles.find(inSelector);
-			return it == m_Styles.end() ? nullptr : it->second->As<T>();
+		constexpr static auto kFallbackBoxStyleName = "$FALLBACK_BOX$";
+		constexpr static auto kFallbackLayoutStyleName = "$FALLBACK_LAYOUT$";
+		constexpr static auto kFallbackTextStyleName = "$FALLBACK_TEXT$";
+
+		// Merges two themes together overriding current styles
+		void Merge(const Theme* inOther, bool bOverride = true) {
+
+			for(const auto& otherStyle : inOther->m_Styles) {
+				auto it = m_Styles.find(otherStyle.first);
+
+				if(it == m_Styles.end()) {
+					m_Styles.emplace(otherStyle.first, otherStyle.second.get());
+
+				} else if(bOverride) {
+					Assertm(it->second->GetClass() == otherStyle.second->GetClass(), "Two styles with the same key but different classes found");
+
+					if(auto boxStyle = it->second->As<BoxStyle>()) {
+						*boxStyle = *(otherStyle.second->As<BoxStyle>());
+
+					} else if(auto textStyle = it->second->As<TextStyle>()) {
+						*textStyle = *(otherStyle.second->As<TextStyle>());
+
+					} else {
+						Assertm(false, "Unknown class");
+					}
+				}
+			}
+
+			for(const auto& otherStyle : inOther->m_LayoutStyles) {
+				auto it = m_LayoutStyles.find(otherStyle.first);
+
+				if(it == m_LayoutStyles.end()) {
+					m_LayoutStyles.emplace(otherStyle.first, otherStyle.second.get());
+
+				} else if(bOverride) {
+					*(it->second->As<LayoutStyle>()) = *(otherStyle.second->As<LayoutStyle>());
+				}
+			}
 		}
 
-		LayoutStyle* FindLayout(std::string_view inSelector) {
-			auto it = m_LayoutStyles.find(inSelector);
-			return it == m_LayoutStyles.end() ? nullptr : it->second.get();
+		/*
+		* Tries to find a style with specified selectors and class
+		* If exact match not found, searches only for class
+		* If class also not found returns fallback style
+		*/
+		template<typename T>
+		T* FindStyle(const std::string& inClass, const std::string& inState = "") {
+			if constexpr(std::same_as<T, BoxStyle> || std::same_as<T, TextStyle>) {
+				return FindStyleInternal<T>(inClass, inState, m_Styles);
+			} else if constexpr(std::same_as<T, LayoutStyle>) {
+				return FindStyleInternal<T>(inClass, inState, m_LayoutStyles);
+			}
+			Assert("Unknown style type");
+			return nullptr;
 		}
 
 		// Gathers all fonts from styles and try to load them
-		void LoadFonts() {
+		void Finalize() {
+			// Ensure that we have empty style as a backup			
+			if(m_Styles.find(kFallbackBoxStyleName) == m_Styles.end()) {
+				m_Styles.emplace(kFallbackBoxStyleName, new BoxStyle(kFallbackBoxStyleName));
+			}
 
+			if(m_Styles.find(kFallbackTextStyleName) == m_Styles.end()) {
+				auto defaultStyle = new TextStyle(kFallbackTextStyleName);
+				defaultStyle->Color = "#eeeeee";
+				defaultStyle->FontSize = kDefaultFontSize;
+				defaultStyle->Font = m_Fonts.front().get();
+				m_Styles.emplace(kFallbackTextStyleName, defaultStyle);
+			}
+
+			if(m_LayoutStyles.find(kFallbackLayoutStyleName) == m_LayoutStyles.end()) {
+				auto defaultStyle = new LayoutStyle(kFallbackLayoutStyleName);
+				defaultStyle->Paddings = kDefaultPaddings;
+				defaultStyle->Margins = kDefaultMargins;
+				m_LayoutStyles.emplace(kFallbackLayoutStyleName, defaultStyle);
+			}			
+			
+			// Load fonts
 			for(auto& mapEntry : m_Styles) {
 				Style* style = mapEntry.second.get();
 
@@ -406,24 +484,66 @@ namespace UI {
 	private:
 
 		template<class StylerType, class StyleType>
-		StylerType Styler(std::string_view inSelector, std::string_view inParentStyleSelector = "") {
-			Assertm(!m_Styles.contains(inSelector), "Style with such selector already created");
+		StylerType Styler(const std::string& inSelector, const std::string& inParentStyleSelector = "") {
+			auto selector = inSelector;
+			Assertm(!m_Styles.contains(selector), "Style with such selector already created");
 			StyleType* parent = nullptr;
 
 			if(!inParentStyleSelector.empty()) {
 				parent = FindStyle<StyleType>(inParentStyleSelector);
 				Assertm(parent, "Parent style with specified selector and class not found");
 			}
-			auto out = new StyleType(inSelector, parent);
-			m_Styles.emplace(inSelector, out);
+
+			if(selector.empty()) {
+
+				if constexpr(std::same_as<StyleType, BoxStyle>) {
+					selector = kFallbackBoxStyleName;
+				} else if constexpr(std::same_as<StyleType, TextStyle>) {
+					selector = kFallbackTextStyleName;
+				}
+			}
+			auto out = new StyleType(selector, parent);
+			m_Styles.emplace(selector, out);
 			return {out};
 		}
 
+		template<class StyleType, class MapType>
+		StyleType* FindStyleInternal(const std::string& inClass, const std::string& inState, MapType& inMap) {
+			auto selector = std::string(inClass);
+
+			if(!inState.empty()) {
+				selector.append(kStyleClassStateSeparator).append(inState);
+			}
+			auto it = inMap.find(selector);
+
+			if(it != inMap.end()) {
+				return it->second->As<StyleType>();
+			}
+			it = inMap.find(inClass);
+
+			if(it != inMap.end()) {
+				return it->second->As<StyleType>();
+			}
+
+			std::string fallbackStyleSelector;
+
+			if constexpr(std::same_as<StyleType, BoxStyle>) {
+				fallbackStyleSelector = kFallbackBoxStyleName;
+			} else if constexpr(std::same_as<StyleType, TextStyle>) {
+				fallbackStyleSelector = kFallbackTextStyleName;
+			} else if constexpr(std::same_as<StyleType, LayoutStyle>) {
+				fallbackStyleSelector = kFallbackLayoutStyleName;
+			}
+
+			it = inMap.find(fallbackStyleSelector);
+			Assertm(it != inMap.end(), "Theme has to be finalized");
+			return it->second->As<StyleType>();
+		}
+
 	private:
-		std::map<std::string_view, std::unique_ptr<LayoutStyle>>	m_LayoutStyles;
-		std::map<std::string_view, std::unique_ptr<Style>>			m_Styles;
+		std::map<std::string, std::unique_ptr<LayoutStyle>>	m_LayoutStyles;
+		std::map<std::string, std::unique_ptr<Style>>		m_Styles;
 		// All fonts used by this theme
-		std::vector<std::unique_ptr<Font>>							m_Fonts;
+		std::vector<std::unique_ptr<Font>>					m_Fonts;
 	};
 }
-

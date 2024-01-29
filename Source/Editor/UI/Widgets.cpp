@@ -6,7 +6,8 @@
 //										CENTERED
 /*-------------------------------------------------------------------------------------------------*/
 UI::Centered::Centered(Widget* inParent, const std::string& inID) 
-	: SingleChildContainer(inID)
+	: Super(std::string(GetClassName()), 
+			Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())), inID)
 {
 	Super::SetAxisMode(AxisModeExpand);
 	if(inParent) {
@@ -53,7 +54,8 @@ bool UI::Centered::OnEvent(IEvent* inEvent) {
 //										EXPANDED
 /*-------------------------------------------------------------------------------------------------*/
 UI::Expanded::Expanded(Widget* inParent, const std::string& inID)
-	: Super(inID)
+	: Super(std::string(GetClassName()), 
+			Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())), inID)
 {
 	if(inParent) {
 		inParent->Parent(this);
@@ -103,12 +105,26 @@ bool UI::Expanded::OnEvent(IEvent* inEvent) {
 
 
 
+UI::Flexible::Flexible(Widget* inParent, float inFlexFactor, const std::string& inID)
+	: Super(std::string(GetClassName()), 
+			Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())), inID)
+	, m_FlexFactor(inFlexFactor) 
+{
+	if(inParent) {
+		inParent->Parent(this);
+	}
+}
+
+
+
+
+
 /*-------------------------------------------------------------------------------------------------*/
 //										TEXT
 /*-------------------------------------------------------------------------------------------------*/
 UI::Text::Text(Widget* inParent, const std::string& inText, const std::string& inID) 
-	: Super(inID)
-	, m_Style(UI::Application::Get()->GetTheme()->FindStyle<TextStyle>("Text"))
+	: Super(std::string(GetClassName()), 
+			Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())), inID)
 {
 	SetText(inText);
 	if(inParent) {
@@ -125,8 +141,9 @@ void UI::Text::SetText(const std::string& inText) {
 		/// Maybe do not update parent
 		/// For now we set it to some random values
 		size = float2(15, 15);
-	} else if(m_Style && m_Style->Font) {
-		size = m_Style->CalculateTextSize(m_Text);
+	} else {
+		auto style = UI::Application::Get()->GetTheme()->FindStyle<TextStyle>("Text");
+		size = style->CalculateTextSize(m_Text);
 		Super::SetSize(size);
 	}
 	Super::NotifyParentOnSizeChanged(AxisX);
@@ -143,7 +160,8 @@ bool UI::Text::OnEvent(IEvent* inEvent) {
 		return false;
 
 	} else if(auto* event = inEvent->As<DrawEvent>()) {
-		event->DrawList->DrawText(event->ParentOriginGlobal + Super::GetOriginLocal(), m_Style->Color, m_Text, m_Style->FontSize);
+		auto style = UI::Application::Get()->GetTheme()->FindStyle<TextStyle>("Text");
+		event->DrawList->DrawText(event->ParentOriginGlobal + Super::GetOriginLocal(), style->Color, m_Text, style->FontSize);
 		return true;
 	}
 	return Super::OnEvent(inEvent);
@@ -156,7 +174,8 @@ bool UI::Text::OnEvent(IEvent* inEvent) {
 /*-------------------------------------------------------------------------------------------------*/
 
 UI::Flexbox::Flexbox(Widget* inParent, const FlexboxDesc& inDesc)
-	: Super(inDesc.ID)
+	: Super(std::string(GetClassName()), 
+			Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())), inDesc.ID)
 	, m_Direction(inDesc.Direction)
 	, m_JustifyContent(inDesc.JustifyContent)
 	, m_Alignment(inDesc.Alignment)
@@ -168,7 +187,7 @@ UI::Flexbox::Flexbox(Widget* inParent, const FlexboxDesc& inDesc)
 	Super::SetAxisMode(mainAxis, inDesc.bExpandMainAxis ? AxisMode::Expand : AxisMode::Shrink);
 	Super::SetAxisMode(!mainAxis, inDesc.bExpandCrossAxis ? AxisMode::Expand : AxisMode::Shrink);
 
-	if(inParent) inParent->Parent(this);	
+	if(inParent) inParent->Parent(this);
 }
 
 bool UI::Flexbox::OnEvent(IEvent* inEvent) {
@@ -237,8 +256,8 @@ void UI::Flexbox::UpdateLayout() {
 	const auto mainAxisIndex = bDirectionRow ? AxisX : AxisY;
 	const auto crossAxisIndex = bDirectionRow ? AxisY : AxisX;
 
-	const auto thisMainAxisSize = Super::GetSize()[mainAxisIndex];
-	const auto thisCrossAxisSize = Super::GetSize()[crossAxisIndex];
+	const auto thisMainAxisSize = Super::GetInnerSize()[mainAxisIndex];
+	const auto thisCrossAxisSize = Super::GetInnerSize()[crossAxisIndex];
 
 	const auto axisMode = Super::GetAxisMode();
 
@@ -283,7 +302,7 @@ void UI::Flexbox::UpdateLayout() {
 				totalFlexFactor += temp.MainAxisSize;
 
 			} else {
-				temp.MainAxisSize = child->GetSize()[mainAxisIndex];
+				temp.MainAxisSize = child->GetOuterSize()[mainAxisIndex];
 				staticChildrenSizeMainAxis += temp.MainAxisSize;
 			}
 		}
@@ -294,7 +313,7 @@ void UI::Flexbox::UpdateLayout() {
 		if(childAxisMode == AxisMode::Expand) {
 			temp.CrossAxisSize = thisCrossAxisSize;
 		} else {
-			temp.CrossAxisSize = child->GetSize()[crossAxisIndex];
+			temp.CrossAxisSize = child->GetOuterSize()[crossAxisIndex];
 		}		
 		maxChildSizeCrossAxis = Math::Max(temp.CrossAxisSize, maxChildSizeCrossAxis);
 	}
@@ -391,7 +410,7 @@ void UI::Flexbox::UpdateLayout() {
 		child->OnEvent(&layoutEvent);
 		child->SetPos(childPos);
 
-		mainAxisCursor += child->GetSize(mainAxisIndex);
+		mainAxisCursor += child->GetOuterSize()[mainAxisIndex];
 
 		if(bJustifyContent && m_JustifyContent == JustifyContent::SpaceBetween || m_JustifyContent == JustifyContent::SpaceAround) {
 			mainAxisCursor += justifyContentMargin;
@@ -423,11 +442,11 @@ void UI::Flexbox::UpdateLayout() {
 /*-------------------------------------------------------------------------------------------------*/
 //										BUTTON
 /*-------------------------------------------------------------------------------------------------*/
-constexpr auto ButtonPaddings = float2(10.f, 10.f);
-
 UI::Button::Button(Widget* inParent, OnPressedFunc inCallback, const std::string& inID)
-	: Super(inID)
-	, m_Callback(inCallback) {
+	: Super(std::string(GetClassName()), 
+			Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())), inID)
+	, m_Callback(inCallback) 
+{
 	if(inParent) {
 		inParent->Parent(this);
 	}
@@ -444,7 +463,7 @@ bool UI::Button::OnEvent(IEvent* inEvent) {
 		if(event->bHovered) {
 			m_State = ButtonState::Hovered;
 		} else {
-			m_State = ButtonState::Default;
+			m_State = ButtonState::Normal;
 		}
 		return true;
 
@@ -455,7 +474,7 @@ bool UI::Button::OnEvent(IEvent* inEvent) {
 			if(event->bButtonPressed) {
 				m_State = ButtonState::Pressed;
 			} else {
-				m_State = ButtonState::Default;
+				m_State = ButtonState::Normal;
 			}
 
 			if(m_Callback) {
@@ -466,18 +485,20 @@ bool UI::Button::OnEvent(IEvent* inEvent) {
 		return false;
 
 	} else if(auto* event = inEvent->As<ChildLayoutEvent>()) {
-		auto thisSize = event->Child->GetSize() + ButtonPaddings * 2.f;
-		auto childPosCentered = ButtonPaddings;
-
-		Super::SetSize(thisSize);
-		event->Child->SetPos(childPosCentered);
+		Super::SetSizeFromInner(event->Child->GetSize());
+		event->Child->SetPos((Super::GetSize() - event->Child->GetSize()) * 0.5f);
 
 		Super::NotifyParentOnSizeChanged(AxisX);
 		return true;
 
 	} else if(auto* event = inEvent->As<DrawEvent>()) {
-		auto color = m_State == ButtonState::Hovered ? Colors::HoveredDark : m_State == ButtonState::Pressed ? Colors::PressedDark : Colors::PrimaryDark;
-		event->DrawList->DrawRectFilled(Super::GetRect().Translate(event->ParentOriginGlobal), color);
+		constexpr static std::string kStateMap[] = {"Normal", "Hovered", "Pressed"};
+
+		const auto rect = Super::GetRect().Translate(event->ParentOriginGlobal);
+		const auto style = event->Theme->FindStyle<BoxStyle>("Button", kStateMap[(u32)m_State]);
+
+		//auto color = m_State == ButtonState::Hovered ? Colors::HoveredDark : m_State == ButtonState::Pressed ? Colors::PressedDark : Colors::PrimaryDark;
+		event->DrawList->DrawRectFilled(rect, style->BackgroundColor, style->Rounding);
 
 		auto eventCopy = *event;
 		eventCopy.ParentOriginGlobal += Super::GetOriginLocal();
@@ -493,9 +514,10 @@ bool UI::Button::OnEvent(IEvent* inEvent) {
 //										GUIDELINE
 /*-------------------------------------------------------------------------------------------------*/
 UI::Guideline::Guideline(Widget* inParent, bool bIsVertical /*= true*/, OnDraggedFunc inCallback /*= {}*/, const std::string& inID /*= {}*/) 
-	: Super(inID)
+	: Super(std::string(GetClassName()), 
+			Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())), inID)
 	, m_MainAxis(bIsVertical ? AxisY : AxisX)
-	, m_State(ButtonState::Default)
+	, m_State(ButtonState::Normal)
 	, m_Callback(inCallback)
 {
 	if(inParent) inParent->Parent(this);
@@ -509,7 +531,7 @@ bool UI::Guideline::OnEvent(IEvent* inEvent) {
 		if(event->bHovered) {
 			m_State = ButtonState::Hovered;
 		} else {
-			m_State = ButtonState::Default;
+			m_State = ButtonState::Normal;
 		}
 		return true;
 
@@ -527,7 +549,7 @@ bool UI::Guideline::OnEvent(IEvent* inEvent) {
 			if(event->bButtonPressed) {
 				m_State = ButtonState::Pressed;
 			} else {
-				m_State = ButtonState::Default;
+				m_State = ButtonState::Normal;
 			}
 			return true;
 		}
@@ -558,7 +580,8 @@ bool UI::Guideline::OnEvent(IEvent* inEvent) {
 //										SPLITBOX
 /*-------------------------------------------------------------------------------------------------*/
 UI::SplitBox::SplitBox(Widget* inParent, bool bHorizontal /*= true*/, const std::string& inID /*= {}*/) 
-	: Super(inID)
+	: Super(std::string(GetClassName()), 
+			Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())), inID)
 	, m_MainAxis(bHorizontal ? AxisX : AxisY)
 	, m_SplitRatio(0.5f)
 {
@@ -707,9 +730,10 @@ void UI::SplitBox::UpdateLayout() {
 	} else {		
 		m_Separator->SetVisibility(true);
 
-		const auto mainAxisSize = Super::GetSize(m_MainAxis);
-		const auto crossAxisSize = Super::GetSize(!m_MainAxis);		
-		const auto separatorThickness = m_Separator->GetSize(m_MainAxis);
+		const auto paddingsTL = Super::GetLayoutStyle()->Paddings.TL();
+		const auto mainAxisSize = Super::GetInnerSize()[m_MainAxis];
+		const auto crossAxisSize = Super::GetInnerSize()[!m_MainAxis];
+		const auto separatorThickness = m_Separator->GetOuterSize()[m_MainAxis];
 		const auto firstChildConstraint = m_SplitRatio * mainAxisSize - separatorThickness;
 		const auto secondChildConstraint = mainAxisSize - separatorThickness - firstChildConstraint;
 
@@ -720,7 +744,7 @@ void UI::SplitBox::UpdateLayout() {
 
 			ParentLayoutEvent onParent(this, childConstraints);
 			firstLayoutWidget->OnEvent(&onParent);
-			firstLayoutWidget->SetPos(float2(0.f));
+			firstLayoutWidget->SetPos(paddingsTL);
 		}
 		{
 			ParentLayoutEvent onParent(this, GetSize());
@@ -728,6 +752,7 @@ void UI::SplitBox::UpdateLayout() {
 
 			float2 pos;
 			pos[m_MainAxis] = firstChildConstraint;
+			pos[!m_MainAxis] = paddingsTL.y;
 			m_Separator->SetPos(pos);
 		}
 		{
@@ -739,6 +764,7 @@ void UI::SplitBox::UpdateLayout() {
 
 			float2 secondChildPos;
 			secondChildPos[m_MainAxis] = firstChildConstraint + separatorThickness;
+			secondChildPos[!m_MainAxis] = paddingsTL.y;
 			secondLayoutWidget->SetPos(secondChildPos);
 		}
 	}
@@ -751,17 +777,15 @@ void UI::SplitBox::UpdateLayout() {
 //										TOOLTIP
 /*-------------------------------------------------------------------------------------------------*/
 UI::Tooltip::Tooltip(float2 inSize /*= {}*/)
-	: Super() 
+	: Super(std::string(GetClassName()), 
+			Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())), {})
 {}
 
 bool UI::Tooltip::OnEvent(IEvent* inEvent) {
 
 	if(auto* event = inEvent->As<ChildLayoutEvent>()) {
-		auto thisSize = event->Child->GetSize() + ButtonPaddings * 2.f;
-		auto childPosCentered = ButtonPaddings;
-
-		Super::SetSize(thisSize);
-		event->Child->SetPos(childPosCentered);
+		Super::SetSizeFromInner(event->Child->GetSize());
+		event->Child->SetPos((Super::GetSize() - event->Child->GetSize()) * 0.5f);
 
 		Super::NotifyParentOnSizeChanged(AxisX);
 		return true;

@@ -3,6 +3,7 @@
 
 #include "Runtime/Core/Core.h"
 #include "Runtime/System/Renderer/UIRenderer.h"
+#include "Style.h"
 
 using Point = Vec2<float>;
 
@@ -143,6 +144,7 @@ namespace UI {
 	class Widget;
 	class Style;
 	class LayoutWidget;
+	class Theme;
 
 	template<typename T>
 	concept WidgetSubclass = std::derived_from<T, Widget>;
@@ -392,6 +394,8 @@ namespace UI {
 	};
 
 
+
+
 	class DrawEvent : public IEvent {
 		DEFINE_CLASS_META(DrawEvent, IEvent)
 	public:
@@ -403,6 +407,7 @@ namespace UI {
 		// Each widget should update this before passing down
 		Point		ParentOriginGlobal;
 		DrawList*	DrawList = nullptr;
+		Theme*		Theme = nullptr;
 	};
 
 
@@ -688,7 +693,11 @@ namespace UI {
 		DEFINE_CLASS_META(LayoutWidget, Widget)
 	public:
 
-		LayoutWidget(const std::string& inID = {}): Widget(inID) {}
+		LayoutWidget(const std::string& inStyleClass, const LayoutStyle* inLayoutStyle, const std::string& inID = {})
+			: Widget(inID) 
+			, m_StyleClass(inStyleClass)
+			, m_LayoutStyle(inLayoutStyle)
+		{}
 
 		void OnParented(Widget* inParent) override {
 			Super::OnParented(inParent);
@@ -750,10 +759,43 @@ namespace UI {
 		void	SetSize(Axis inAxis, float inSize) { inAxis == Axis::X ? m_Size.x = inSize : m_Size.y = inSize; }
 		void	SetSize(bool inAxis, float inSize) { m_Size[inAxis] = inSize; }
 
+		// Helper to set our size based on the size of content inside. 
+		// Adds paddings to the content size. Used in a Button, Icon
+		void	SetSizeFromInner(float2 inContentSize) { 
+			m_Size.x = inContentSize.x + m_LayoutStyle->Paddings.Left + m_LayoutStyle->Paddings.Right;
+			m_Size.y = inContentSize.y + m_LayoutStyle->Paddings.Top + m_LayoutStyle->Paddings.Bottom;
+		}
+
+		// Helper to set our size based on the constraints passed from the parent
+		void	SetSizeFromOuter(float2 inConstraintsSize) {
+			m_Size.x = inConstraintsSize.x - m_LayoutStyle->Margins.Left + m_LayoutStyle->Margins.Right;
+			m_Size.y = inConstraintsSize.y - m_LayoutStyle->Margins.Top + m_LayoutStyle->Margins.Bottom;
+		}
+		void	SetSizeFromOuter(int inAxis, float inConstraintsSize) {
+			inAxis == AxisX ?
+				m_Size.x = inConstraintsSize - m_LayoutStyle->Margins.Left + m_LayoutStyle->Margins.Right :
+				m_Size.y = inConstraintsSize - m_LayoutStyle->Margins.Top + m_LayoutStyle->Margins.Bottom;
+		}
+
 		Rect	GetRect() const { return {m_LocalPos, m_LocalPos + m_Size}; }
 		float2	GetSize() const { return m_Size; }
 		float	GetSize(bool bYAxis) const { return bYAxis ? m_Size.y : m_Size.x; }
+
+		// Get main size minus paddings
+		float2	GetInnerSize() const {
+			return {m_Size.x - m_LayoutStyle->Paddings.Left + m_LayoutStyle->Paddings.Right,
+					m_Size.y - m_LayoutStyle->Paddings.Top + m_LayoutStyle->Paddings.Bottom};
+		}
+
+		// Get main size plus margins
+		float2  GetOuterSize() const {
+			return {m_Size.x + m_LayoutStyle->Margins.Left + m_LayoutStyle->Margins.Right,
+					m_Size.y + m_LayoutStyle->Margins.Top + m_LayoutStyle->Margins.Bottom};
+		}
+
 		Point	GetOriginLocal() const { return m_LocalPos; }
+
+		const LayoutStyle* GetLayoutStyle() const { return m_LayoutStyle; }
 
 		// Helper
 		void	NotifyParentOnSizeChanged(int inAxis = 2) {
@@ -802,12 +844,12 @@ namespace UI {
 				//   - A sibling has been added
 				//   - A sibling has been removed
 				//   - A sibling has been modified and has changed the layout
-				const auto prevSize = GetSize();
+				const auto prevSize = GetOuterSize();
 
 				for(auto axis = 0; axis != 2; ++axis) {
 
 					if(event->bAxisChanged[axis] && (GetAxisMode()[axis] == AxisMode::Expand || event->bForceExpand[axis])) {
-						SetSize(axis, event->Constraints[axis]);
+						SetSizeFromOuter(axis, event->Constraints[axis]);
 					}
 
 					if(event->bForceExpand[axis]) {
@@ -825,15 +867,22 @@ namespace UI {
 
 		void	DebugSerialize(Debug::PropertyArchive& inArchive) override {
 			Super::DebugSerialize(inArchive);
+			inArchive.PushProperty("StyleClass", m_StyleClass);
 			inArchive.PushProperty("Origin", m_LocalPos);
 			inArchive.PushProperty("Size", m_Size);
 		}
 
 	private:
+		// Margins and paddings
+		const LayoutStyle*	m_LayoutStyle;
+		// Class selector for styles
+		// Default is the c++ class name
+		// But user can override it
+		std::string			m_StyleClass;
 		// Position in pixels relative to parent origin
-		Point		m_LocalPos;
+		Point				m_LocalPos;
 		// Our size updated during constraints resolution
-		float2		m_Size;
+		float2				m_Size;
 	};
 
 
@@ -847,7 +896,9 @@ namespace UI {
 		DEFINE_CLASS_META(Container, LayoutWidget)
 	public:
 
-		Container(const std::string& inID = {}): LayoutWidget(inID) {}
+		Container(const std::string& inStyleClass, const LayoutStyle* inLayoutStyle, const std::string& inID = {})
+			: LayoutWidget(inStyleClass, inLayoutStyle, inID)
+		{}
 
 		virtual bool DispatchToChildren(IEvent* inEvent) = 0;
 
@@ -887,9 +938,10 @@ namespace UI {
 		DEFINE_CLASS_META(SingleChildContainer, Container)
 	public:
 
-		SingleChildContainer(const std::string& inID = {})
-			: Container(inID)
-			, m_Child(nullptr) {}
+		SingleChildContainer(const std::string& inStyleClass, const LayoutStyle* inLayoutStyle, const std::string& inID = {})
+			: Container(inStyleClass, inLayoutStyle, inID)
+			, m_Child(nullptr) 
+		{}
 
 		// Called by a subclass or a widget which wants to be a child
 		void Parent(Widget* inChild) override {
@@ -1023,8 +1075,9 @@ namespace UI {
 		DEFINE_CLASS_META(MultiChildContainer, Container)
 	public:
 
-		MultiChildContainer(const std::string& inID = {})
-			: Container(inID) {}
+		MultiChildContainer(const std::string& inStyleClass, const LayoutStyle* inLayoutStyle, const std::string& inID = {})
+			: Container(inStyleClass, inLayoutStyle, inID) 
+		{}
 
 		void Parent(Widget* inChild) override {
 			Assert(inChild);

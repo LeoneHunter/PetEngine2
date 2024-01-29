@@ -286,69 +286,6 @@ namespace Util {
 		std::string* m_Buffer;
 	};
 
-
-
-	struct Sides {
-		u16		Left;
-		u16		Right;
-		u16		Top;
-		u16		Bottom;
-
-		constexpr Sides(u16 val = 0) {
-			Left = val;
-			Right = val;
-			Top = val;
-			Bottom = val;
-		}
-
-		constexpr Sides(u16 horizontal, u16 vertical) {
-			Left = horizontal;
-			Right = horizontal;
-			Top = vertical;
-			Bottom = vertical;
-		}
-
-		// TRouBLe
-		constexpr Sides(u16 top, u16 right, u16 bottom, u16 left) {
-			Left = left;
-			Right = right;
-			Top = top;
-			Bottom = bottom;
-		}
-
-		constexpr u16 Vertical() const {
-			return Top + Bottom;
-		}
-
-		constexpr u16 Horizontal() const {
-			return Left + Right;
-		}
-
-		constexpr u16& operator[](Side inSide) {
-			switch(inSide) {
-				case SideTop:	return Top;
-				case SideBottom:return Bottom;
-				case SideLeft:	return Left;
-				case SideRight:	return Right;
-			}
-			return Left;
-		}
-
-		constexpr u16 operator[](Side inSide) const {
-			switch(inSide) {
-				case SideTop:	return Top;
-				case SideBottom:return Bottom;
-				case SideLeft:	return Left;
-				case SideRight:	return Right;
-			}
-			return Left;
-		}
-
-		constexpr operator Vec4() const {
-			return {(float)Top, (float)Right, (float)Bottom, (float)Left};
-		}
-	};
-
 	inline std::wstring ToWideString(const std::string& inStr) {
 		auto out = std::wstring(inStr.size() + 1, L'\0');
 		size_t convertedChars = 0;

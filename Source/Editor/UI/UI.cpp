@@ -2,6 +2,10 @@
 #include "Widget.h"
 #include "Runtime/Platform/Window.h"
 #include "Runtime/System/Renderer/UIRenderer.h"
+#include "Runtime/System/JobDispatcher.h"
+
+#include "ThirdParty/Optik/include/optick.config.h"
+#include "ThirdParty/Optik/include/optick.h"
 
 #include <stack>
 
@@ -60,6 +64,7 @@ private:
 };
 
 
+
 class RootWindow;
 class Application;
 class ApplicationImpl;
@@ -80,7 +85,12 @@ class RootWindow: public SingleChildContainer {
 	DEFINE_CLASS_META(RootWindow, SingleChildContainer)
 public:
 
-	RootWindow() { Super::SetAxisMode(AxisModeExpand); }
+	RootWindow()
+		: Super(std::string(GetClassName()), 
+				Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())))
+	{ 
+		Super::SetAxisMode(AxisModeExpand); 
+	}
 
 	bool OnEvent(IEvent* inEvent) override {
 		return Super::OnEvent(inEvent);
@@ -94,7 +104,10 @@ class DebugOverlayWindow: public SingleChildContainer {
 	DEFINE_CLASS_META(DebugOverlayWindow, SingleChildContainer)
 public:
 
-	DebugOverlayWindow() { 
+	DebugOverlayWindow()
+		: Super(std::string(GetClassName()), 
+				Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())))
+	{ 
 		Super::SetAxisMode(AxisModeShrink); 
 		Text = new UI::Text(this, "");
 	}
@@ -143,16 +156,16 @@ class ApplicationImpl: public UI::Application {
 public:
 
 	void	Init() {
-
+		OPTICK_EVENT("UI Init");
 		g_Renderer = CreateRendererDX12();
 		g_Renderer->Init(g_OSWindow);
 
-		m_Theme = std::make_unique<Theme>(g_DefaultFontSize);
+		m_Theme = std::make_unique<Theme>();
 
 		// Layout parameters for all widgets
-		m_Theme->Layout("").Margins(10, 10).Paddings(10, 10);
-		m_Theme->Text("Text").Color("#ffffff").Size(13);
-		m_Theme->LoadFonts();
+		m_Theme->Layout("").Margins(5, 5).Paddings(0);
+		m_Theme->Text("Text").Color("#ffffff").Size(g_DefaultFontSize);
+		m_Theme->Finalize();
 
 		RebuildFonts();
 
@@ -160,6 +173,7 @@ public:
 		m_Layers.RootWindow->SetSize(g_OSWindow->GetSize());
 
 		m_Layers.DebugOverlayWindow = std::make_unique<DebugOverlayWindow>();
+		m_Layers.DebugOverlayWindow->SetSize(g_OSWindow->GetSize());
 		m_Layers.DebugOverlayWindow->SetVisibility(false);
 
 		g_OSWindow->SetOnCursorMoveCallback([](float x, float y) { g_Application->HandleMouseMoveEvent(x, y); });
@@ -362,6 +376,7 @@ public:
 		std::string buf;
 		auto sb = Util::StringBuilder(&buf);
 
+		sb.Line("FrameTime: {:5.2f}ms", m_LastFrameTimeMs);
 		sb.Line("MousePosGlobal: {}", m_LastMousePosGlobal);
 		sb.Line("MousePosLocal: {}", GetLocalHoveredPos());
 		sb.Line("HitStack: ");
@@ -452,19 +467,26 @@ public:
 public:
 
 	bool	Tick() override {
+		OPTICK_FRAME("UI_Tick");
 		const auto frameStartTimePoint = std::chrono::high_resolution_clock::now();
 
 		// Rebuild fonts if needed for different size
-		RebuildFonts();
+		{
+			OPTICK_EVENT("Rebuilding fonts");		
+			RebuildFonts();
+		}
 
 		// Update layout of new widgets
 		// Process input events
 		// Update layout of changed widgets
 		// Draw
-		if(!g_OSWindow->PollEvents()) {
-			return false;
+		{
+			OPTICK_EVENT("Polling events");
+			if(!g_OSWindow->PollEvents()) {
+				return false;
+			}
 		}
-
+		
 		// Process tooltip
 		if(m_MouseState == MouseState::Default && m_Layers.Tooltip.Timer.IsReady()) {
 
@@ -489,35 +511,42 @@ public:
 		DrawEvent drawEvent;
 		drawEvent.DrawList = &frameDrawList;
 		drawEvent.ParentOriginGlobal = Point(0.f, 0.f);
+		drawEvent.Theme = m_Theme.get();
 
-		m_Layers.RootWindow->OnEvent(&drawEvent);
+		{
+			OPTICK_EVENT("Drawing UI");
 
-		if(m_Layers.Popup) {
-			m_Layers.Popup->OnEvent(&drawEvent);
+			m_Layers.RootWindow->OnEvent(&drawEvent);
+
+			if(m_Layers.Popup) {
+				m_Layers.Popup->OnEvent(&drawEvent);
+			}
+
+			if(m_Layers.DragDrop) {
+				m_Layers.DragDrop->OnEvent(&drawEvent);
+			}
+
+			if(m_Layers.DebugOverlayWindow->IsVisible()) {
+				m_Layers.DebugOverlayWindow->OnEvent(&drawEvent);
+			}
+
+			if(m_Layers.Tooltip.Widget) {
+				m_Layers.Tooltip.Widget->OnEvent(&drawEvent);
+			}
+
+			if(m_bDrawDebugInfo) {
+				DrawDebug(&frameDrawList);
+			}
 		}
-
-		if(m_Layers.DragDrop) {
-			m_Layers.DragDrop->OnEvent(&drawEvent);
-		}
-
-		if(m_Layers.DebugOverlayWindow->IsVisible()) {
-			m_Layers.DebugOverlayWindow->OnEvent(&drawEvent);
-		}
-
-		if(m_Layers.Tooltip.Widget) {
-			m_Layers.Tooltip.Widget->OnEvent(&drawEvent);
-		}
-
-		if(m_bDrawDebugInfo) {
-			DrawDebug(&frameDrawList);
-		}
-		g_Renderer->RenderFrame(true);
-
-
 		const auto frameEndTimePoint = std::chrono::high_resolution_clock::now();
 
 		++m_FrameNum;
 		m_LastFrameTimeMs = std::chrono::duration_cast<std::chrono::microseconds>(frameEndTimePoint - frameStartTimePoint).count() / 1000.f;
+
+		{
+			OPTICK_EVENT("Rendering UI vsync");
+			g_Renderer->RenderFrame(true);
+		}
 		return true;
 	}
 
@@ -529,8 +558,10 @@ public:
 	Theme*	GetTheme() override { return m_Theme.get(); }
 
 	void	SetTheme(Theme* inTheme) override { 
-		m_Theme.reset(inTheme); 
-		m_Theme->LoadFonts();
+		m_Theme->Merge(inTheme);
+		m_Theme->Finalize();
+		// Add our default font size
+		m_Theme->GetDefaultFont()->RasterizeFace(g_DefaultFontSize);
 		RebuildFonts();
 	}
 

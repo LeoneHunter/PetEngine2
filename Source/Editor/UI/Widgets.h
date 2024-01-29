@@ -43,7 +43,13 @@ namespace UI {
 		DEFINE_CLASS_META(Flexible, SingleChildContainer)
 	public:
 
-		Flexible(float inFlexFactor): m_FlexFactor(inFlexFactor) {}
+		Flexible(Widget* inParent, float inFlexFactor, const std::string& inID = {});
+
+		void  DebugSerialize(Debug::PropertyArchive& inArchive) override {
+			Super::DebugSerialize(inArchive);
+			inArchive.PushProperty("FlexFactor", m_FlexFactor);
+		}
+
 		float GetFlexFactor() const { return m_FlexFactor; }
 
 	private:
@@ -160,7 +166,6 @@ namespace UI {
 
 	private:
 		std::string		m_Text;
-		TextStyle*		m_Style;
 	};
 
 
@@ -171,7 +176,7 @@ namespace UI {
 	};
 
 	enum class ButtonState {
-		Default,
+		Normal,
 		Hovered,
 		Pressed,
 	};
@@ -200,11 +205,11 @@ namespace UI {
 		void SetCallback(OnPressedFunc inCallback) { m_Callback = inCallback; }
 
 	private:
-		ButtonState	m_State = ButtonState::Default;
+		ButtonState	m_State = ButtonState::Normal;
 		OnPressedFunc	m_Callback;
 	};
 
-	DEFINE_ENUM_TOSTRING_3(ButtonState, Default, Hovered, Pressed)
+	DEFINE_ENUM_TOSTRING_3(ButtonState, Normal, Hovered, Pressed)
 
 
 
@@ -225,6 +230,14 @@ namespace UI {
 		void SetCallback(OnDraggedFunc inCallback) { m_Callback = inCallback; }
 
 		bool OnEvent(IEvent* inEvent) override;
+
+	public:
+
+		void DebugSerialize(Debug::PropertyArchive& inArchive) override {
+			Super::DebugSerialize(inArchive);
+			inArchive.PushProperty("MainAxis", !m_MainAxis ? "X" : "Y");
+			inArchive.PushProperty("State", m_State);
+		}
 
 	private:
 		AxisIndex		m_MainAxis;

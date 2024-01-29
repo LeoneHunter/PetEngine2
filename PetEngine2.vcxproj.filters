@@ -114,6 +114,9 @@
     <ClInclude Include="Source\Runtime\Core\SerializeMacros.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Editor\UI\Drawing.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="source\Runtime\Platform\WindowsPlatform.cpp">

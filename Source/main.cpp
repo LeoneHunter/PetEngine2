@@ -54,7 +54,7 @@ void JobSystemTest(JobSystem::JobContext&) {
 			}
 			//std::cout << "Sum is" << accumulator << std::endl;
 			return Status::Ok;
-			};
+		};
 
 		const auto job2 = [sharedData](JobSystem::JobContext&) {
 			OPTICK_EVENT("Second Job");
@@ -238,15 +238,11 @@ void CreateTheme() {
 	theme->Layout("Button").Margins(5, 5).Paddings(10, 10);
 	
 	// Style parameters for class:state:shape
-	theme->Box("Button:Normal:MainShape").FillColor("#454545").Borders(1.f).BorderColor("#343434");
-	theme->Box("Button:Normal:SecondShape").FillColor("#454545").Borders(1.f).BorderColor("#343434");
-	
-	theme->Box("Button:Hovered:MainShape", "Button:Normal:MainShape").FillColor("#505050");
-	theme->Box("Button:Hovered:SecondShape", "Button:Normal:SecondShape").FillColor("#505050");
-	
+	theme->Box("Button:Normal").FillColor("#454545").Borders(1.f).BorderColor("#343434");
+	theme->Box("Button:Hovered", "Button:Normal").FillColor("#808080");
+	theme->Box("Button:Pressed", "Button:Hovered").FillColor("#eeeeee");
+
 	theme->Text("Text").Color("#ffffff").Size(20);
-	theme->Text("Text:Inactive", "Text").Color("#dddddd");
-	theme->Box("Text:Selected:SelectionBox").FillColor("#1010dd");
 	
 	g_Application->SetTheme(theme);
 }
@@ -412,8 +408,8 @@ int main(int argc, char* argv[]) {
 	g_Application = Application::Create("App", 1600, 1200);
 
 	CreateTheme();
-	//BuildFlexboxOverflowTestLayout();
-	BuildAverageApp();
+	BuildFlexboxOverflowTestLayout();
+	//BuildAverageApp();
 	
 	while(g_Application->Tick());
 }

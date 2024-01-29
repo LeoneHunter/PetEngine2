@@ -15,6 +15,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\Editor\UI\Drawing.h" />
     <ClInclude Include="Source\Editor\UI\Font.h" />
     <ClInclude Include="Source\Editor\UI\Image.h" />
     <ClInclude Include="Source\Editor\UI\Style.h" />

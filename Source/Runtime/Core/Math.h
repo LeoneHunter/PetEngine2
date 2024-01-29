@@ -220,6 +220,84 @@ enum Side {
 	SideLeft
 };
 
+
+/*
+* Alternative Rect representation
+*/
+template<typename T>
+struct RectSides {
+
+	using value_type = T;
+
+	value_type		Top;
+	value_type		Right;
+	value_type		Bottom;
+	value_type		Left;
+
+	constexpr RectSides(value_type val = 0) {
+		Left = val;
+		Right = val;
+		Top = val;
+		Bottom = val;
+	}
+
+	constexpr RectSides(value_type horizontal, value_type vertical) {
+		Left = horizontal;
+		Right = horizontal;
+		Top = vertical;
+		Bottom = vertical;
+	}
+
+	// TRouBLe
+	constexpr RectSides(value_type top, value_type right, value_type bottom, value_type left) {
+		Left = left;
+		Right = right;
+		Top = top;
+		Bottom = bottom;
+	}
+
+	constexpr value_type Vertical() const {
+		return Top + Bottom;
+	}
+
+	constexpr value_type Horizontal() const {
+		return Left + Right;
+	}
+
+	constexpr Vec2<value_type> TL() const {
+		return {Left, Top};
+	}
+
+	constexpr Vec2<value_type> BR() const {
+		return {Right, Bottom};
+	}
+
+	constexpr value_type& operator[](Side inSide) {
+		switch(inSide) {
+			case SideTop:	return Top;
+			case SideBottom:return Bottom;
+			case SideLeft:	return Left;
+			case SideRight:	return Right;
+		}
+		return Left;
+	}
+
+	constexpr value_type operator[](Side inSide) const {
+		switch(inSide) {
+			case SideTop:	return Top;
+			case SideBottom:return Bottom;
+			case SideLeft:	return Left;
+			case SideRight:	return Right;
+		}
+		return Left;
+	}
+
+};
+
+
+
+
+
 /**
  * Axis aligned rectangle
  * same as AABB
@@ -323,7 +401,7 @@ struct Rect {
 		return *this;
 	}
 
-	constexpr Vec4    ToFloat4() const { return {min.x, min.y, max.x, max.y}; }
+	constexpr Vec4		ToFloat4() const { return {min.x, min.y, max.x, max.y}; }
 
 	constexpr void		Clear() { min = point_type{0.f}; max = point_type{0.f}; }
 
@@ -408,6 +486,15 @@ struct Rect {
 		min.x -= vec.w;
 		return *this;
 	}
+
+	template<typename T>
+	constexpr Rect& Expand(const RectSides<T> sides) {
+		min.y -= sides.Top;
+		max.x += sides.Right;
+		max.y += sides.Bottom;
+		min.x -= sides.Left;
+		return *this;
+	}
 };
 
 // Axis aligned bounding box
@@ -469,6 +556,7 @@ constexpr Rect RectAlignVerticalCenter(const Rect& target, const Rect& object) {
 	temp.max.y = temp.min.y + object.Height();
 	return temp;
 }
+
 
 
 

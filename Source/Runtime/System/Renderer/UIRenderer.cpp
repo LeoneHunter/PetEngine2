@@ -190,12 +190,12 @@ public:
 		m_ImDrawList->PopClipRect();
 	}
 
-	void PushTransform(float2 inVector) {
+	void PushTransform(float2 inVector) override {
 		m_TransformStack.push(inVector);
 		m_CummulativeTransform += inVector;
 	}
 
-	void PopTransform() {
+	void PopTransform() override {
 		assert(!m_TransformStack.empty() && "Cannot pop empty stack");
 
 		const auto lastVector = m_TransformStack.top();
