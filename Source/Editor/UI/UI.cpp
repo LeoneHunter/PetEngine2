@@ -15,6 +15,7 @@
 GAVAUI_BEGIN
 
 using Timer = Util::Timer<std::chrono::milliseconds>;
+using RendererDrawlist = ::DrawList;
 
 /*
 * Helper to draw text vertically in a sinle column
@@ -71,6 +72,7 @@ class ApplicationImpl;
 
 constexpr u32	 g_TooltipDelayMs = 500;
 constexpr u8	 g_DefaultFontSize = 13;
+constexpr bool	 g_DrawCliprects = true;
 
 INativeWindow*	 g_OSWindow = nullptr;
 Renderer*		 g_Renderer = nullptr;
@@ -85,14 +87,16 @@ class RootWindow: public SingleChildContainer {
 	DEFINE_CLASS_META(RootWindow, SingleChildContainer)
 public:
 
-	RootWindow()
-		: Super(std::string(GetClassName()), 
-				Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())))
-	{ 
+	RootWindow(): Super(std::string(GetClassName())) { 
 		Super::SetAxisMode(AxisModeExpand); 
 	}
 
 	bool OnEvent(IEvent* inEvent) override {
+
+		if(auto event = inEvent->As<ParentLayoutEvent>()) {
+			Super::ExpandToParent(event);
+			Super::DispatchToChildren(inEvent);
+		}
 		return Super::OnEvent(inEvent);
 	}
 };
@@ -104,29 +108,31 @@ class DebugOverlayWindow: public SingleChildContainer {
 	DEFINE_CLASS_META(DebugOverlayWindow, SingleChildContainer)
 public:
 
-	DebugOverlayWindow()
-		: Super(std::string(GetClassName()), 
-				Application::Get()->GetTheme()->FindStyle<LayoutStyle>(std::string(GetClassName())))
-	{ 
-		Super::SetAxisMode(AxisModeShrink); 
+	DebugOverlayWindow(): Super(std::string("DebugOverlay")) { 
+		Super::SetAxisMode(AxisModeShrink);
+		m_Style = Application::Get()->GetTheme()->Find("DebugOverlay");
+
 		Text = new UI::Text(this, "");
 	}
 
-	bool OnEvent(IEvent* inEvent) override {	
+	bool OnEvent(IEvent* inEvent) override {
 
 		if(auto* event = inEvent->As<DrawEvent>()) {
-			if(!Super::IsVisible()) return true;
-			event->DrawList->DrawRectFilled(Super::GetRect().Translate(event->ParentOriginGlobal).Expand(20.f), Color("#454545dd"));
-
-			auto eventCopy = *event;
-			eventCopy.ParentOriginGlobal += Super::GetOriginLocal();
-			Super::DispatchToChildren(&eventCopy);
-			return true;
+			event->DrawList->PushBox(Super::GetRect(), m_Style->Find<BoxStyle>());
 		}
 		return Super::OnEvent(inEvent);
 	}
 
-	Text* Text = nullptr;
+	Padding GetPaddings() const override { 
+		return m_Style ? m_Style->Find<LayoutStyle>()->Paddings : Padding(); 
+	}
+
+	Margin  GetMargins() const override { 
+		return m_Style ? m_Style->Find<LayoutStyle>()->Margins : Margin(); 
+	}
+
+	const StyleClass*	m_Style;
+	Text*				Text = nullptr;
 };
 
 enum class MouseState {
@@ -149,6 +155,80 @@ enum Modifiers {
 };
 
 
+
+
+
+class DrawlistImpl: public Drawlist {
+public:
+
+	void PushBox(Rect inRect, const BoxStyle* inStyle) final {
+		Rect backgroundRect;
+		Rect borderRect;
+
+		if(inStyle->BorderAsOutline) {
+			backgroundRect = inRect;
+			borderRect = Rect(backgroundRect).Expand(inStyle->Borders);
+		} else {
+			borderRect = inRect;
+			backgroundRect = Rect(inRect).Expand(-inStyle->Borders.Top, -inStyle->Borders.Right, -inStyle->Borders.Bottom, -inStyle->Borders.Left);
+		}
+
+		auto borderColor = ColorFloat4(inStyle->BorderColor);
+		auto backgroundColor = ColorFloat4(inStyle->BackgroundColor);
+
+		borderColor.a *= inStyle->Opacity;
+		backgroundColor.a *= inStyle->Opacity;
+
+		if(inStyle->Borders.Left || inStyle->Borders.Right || inStyle->Borders.Top || inStyle->Borders.Bottom) {
+
+			if(backgroundColor.a != 1.f) {
+				RendererDrawList->DrawRect(borderRect.Translate(Transform), ColorU32(borderColor), inStyle->Rounding, (DrawList::Corner)inStyle->RoundingMask);
+			} else {
+				RendererDrawList->DrawRectFilled(borderRect.Translate(Transform), ColorU32(borderColor), inStyle->Rounding, (DrawList::Corner)inStyle->RoundingMask);
+			}
+		}
+
+		RendererDrawList->DrawRectFilled(backgroundRect.Translate(Transform), ColorU32(backgroundColor), inStyle->Rounding, (DrawList::Corner)inStyle->RoundingMask);
+	}
+
+	void PushBox(Rect inRect, Color inColor, bool bFilled = true) final {
+
+		if(bFilled) {
+			RendererDrawList->DrawRectFilled(inRect.Translate(Transform), ColorU32(inColor));
+		} else {
+			RendererDrawList->DrawRect(inRect.Translate(Transform), ColorU32(inColor));
+		}
+	}
+
+	void PushText(Point inOrigin, const TextStyle* inStyle, std::string_view inTextView) final {
+		RendererDrawList->DrawText(inOrigin + Transform, inStyle->Color, inTextView, inStyle->FontSize, inStyle->FontWeightBold, inStyle->FontStyleItalic);
+	}
+
+	void PushClipRect(Rect inClipRect) final {
+		RendererDrawList->PushClipRect(inClipRect.Translate(Transform));
+		bHasClipRect = true;
+
+		if(g_DrawCliprects) {
+			RendererDrawList->DrawRect(inClipRect.Translate(Transform).Expand(-1), Colors::Red);
+		}
+	}
+
+	void PopClipRect() {
+		RendererDrawList->PopClipRect();
+	}
+
+	float2				Transform;
+	RendererDrawlist*	RendererDrawList = nullptr;
+	// When a widget pushes clip rect it applies to all children recursively
+	// So we need to pop it on the way back up
+	bool				bHasClipRect = false;
+};
+
+
+
+
+
+
 /*
 * Top object that handles input events and drawing
 */
@@ -160,20 +240,16 @@ public:
 		g_Renderer = CreateRendererDX12();
 		g_Renderer->Init(g_OSWindow);
 
-		m_Theme = std::make_unique<Theme>();
+		m_Theme.reset(Theme::DefaultLight());
 
-		// Layout parameters for all widgets
-		m_Theme->Layout("").Margins(5, 5).Paddings(0);
-		m_Theme->Text("Text").Color("#ffffff").Size(g_DefaultFontSize);
-		m_Theme->Finalize();
+		auto& debugOverlayStyle = m_Theme->Add("DebugOverlay");
+		debugOverlayStyle.Add<LayoutStyle>().SetMargins(5, 5);
+		debugOverlayStyle.Add<BoxStyle>().SetFillColor("#454545dd").SetRounding(4);
 
 		RebuildFonts();
 
 		m_Layers.RootWindow = std::make_unique<RootWindow>();
-		m_Layers.RootWindow->SetSize(g_OSWindow->GetSize());
-
 		m_Layers.DebugOverlayWindow = std::make_unique<DebugOverlayWindow>();
-		m_Layers.DebugOverlayWindow->SetSize(g_OSWindow->GetSize());
 		m_Layers.DebugOverlayWindow->SetVisibility(false);
 
 		g_OSWindow->SetOnCursorMoveCallback([](float x, float y) { g_Application->HandleMouseMoveEvent(x, y); });
@@ -182,6 +258,8 @@ public:
 		g_OSWindow->SetOnWindowResizedCallback([](float2 inWindowSize) { g_Application->HandleNativeWindowResizeEvent(inWindowSize); });
 		g_OSWindow->SetOnKeyboardButtonCallback([](KeyCode inButton, bool bPressed) { g_Application->HandleKeyInputEvent(inButton, bPressed); });
 		g_OSWindow->SetOnCharInputCallback([](wchar_t inCharacter) { g_Application->HandleKeyCharInputEvent(inCharacter); });
+
+		HandleNativeWindowResizeEvent(g_OSWindow->GetSize());
 	}
 
 	void	HandleMouseMoveEvent(float x, float y) {
@@ -341,8 +419,7 @@ public:
 		if(inWindowSize == float2()) return;
 
 		ParentLayoutEvent layoutEvent;
-		layoutEvent.Constraints = inWindowSize;
-		layoutEvent.bAxisChanged = {true, true};
+		layoutEvent.Constraints = Rect(inWindowSize);
 
 		m_Layers.RootWindow->OnEvent(&layoutEvent);
 		m_Layers.DebugOverlayWindow->OnEvent(&layoutEvent);
@@ -370,20 +447,6 @@ public:
 			}
 			inBuffer.PopIndent();
 		}
-	}
-
-	void	DrawDebug(DrawList* inDrawList) {
-		std::string buf;
-		auto sb = Util::StringBuilder(&buf);
-
-		sb.Line("FrameTime: {:5.2f}ms", m_LastFrameTimeMs);
-		sb.Line("MousePosGlobal: {}", m_LastMousePosGlobal);
-		sb.Line("MousePosLocal: {}", GetLocalHoveredPos());
-		sb.Line("HitStack: ");
-		sb.PushIndent();
-		PrintHitStack(sb);
-
-		m_Layers.DebugOverlayWindow->Text->SetText(buf);
 	}
 
 	Point	GetLocalHoveredPos() {
@@ -436,19 +499,17 @@ public:
 				ss << std::format("{}: {}", property.Name, property.Value) << '\n';
 			}
 			return true;
-			};
+		};
 		archive.VisitRecursively(visitor);
 		LOGF("Widget tree: \n{}", ss.str());
 	}
 
 	Widget* GetRootWindow() { return m_Layers.RootWindow.get(); }
 
-	Font*	GetDefaultFont() { return m_Theme->GetDefaultFont(); }
-
 	// Rebuild font of the theme if needed
 	void	RebuildFonts() {
 		std::vector<Font*> fonts;
-		m_Theme->GetFonts(&fonts);
+		m_Theme->RasterizeFonts(&fonts);
 
 		for(auto& font : fonts) {
 
@@ -464,9 +525,96 @@ public:
 		}
 	}
 
+	// We will iterate a subtree manually and handle nesting and visibility
+	// Possibly opens a possibility to cache draw commands
+	// Also we will handle clip rects nesting
+	void	DrawSubtree(Widget* inRoot, RendererDrawlist* inRendererDrawlist) {
+
+		if(!inRoot) return;
+
+		struct NodeData {
+			Widget*		Widget = nullptr;
+			float2		GlobalOrigin = {0.f, 0.f};
+			bool		bHasClipRect = false;
+		};
+		std::vector<NodeData> widgetStack;
+		widgetStack.reserve(20);
+		widgetStack.push_back(NodeData{inRoot, float2(0.f)});
+
+		DrawlistImpl drawList;
+		drawList.RendererDrawList = inRendererDrawlist;
+
+		DrawEvent drawEvent;
+		drawEvent.DrawList = &drawList;
+		drawEvent.ParentOriginGlobal = Point(0.f, 0.f);
+		drawEvent.Theme = m_Theme.get();
+
+		Widget* prevWidget = inRoot;
+
+		if(auto* rootLayout = inRoot->As<LayoutWidget>()) {
+			rootLayout->OnEvent(&drawEvent);
+			widgetStack.push_back(NodeData{rootLayout, rootLayout->GetOrigin(), drawList.bHasClipRect});
+			drawList.Transform = rootLayout->GetOrigin();
+		}		
+
+		// Draws children depth first
+		inRoot->VisitChildren([&](Widget* inWidget)->VisitResult {
+			auto* layoutWidget = inWidget->As<LayoutWidget>();
+
+			if(layoutWidget && !layoutWidget->IsVisible())
+				return VisitResultSkipChildren;
+
+			auto* prevParent = widgetStack.back().Widget;
+			auto parent = inWidget->GetParent();
+
+			// Check if we are going to a child, sibling or parent
+			if(parent == inRoot) {
+				// We are under root
+			} else if(parent == prevWidget) {
+				// We go down
+				// If previous was a layout push it on stack
+				if(auto* prevAsLayout = prevWidget->As<LayoutWidget>()) {
+					const auto prevParentOrigin = widgetStack.back().GlobalOrigin;
+					const auto prevOrigin = prevAsLayout->GetOrigin();
+					const auto newTransform = prevParentOrigin + prevOrigin;
+					widgetStack.push_back(NodeData{prevWidget, newTransform, drawList.bHasClipRect});
+					drawList.Transform = newTransform;
+				}
+
+			} else if(parent == prevParent) {
+				// We're a sibling
+			} else {
+				// We've returned somewhere up the stack
+				// Unwind and pop transforms and clip rects
+				for(auto nodeData = widgetStack.back(); nodeData.Widget != parent; widgetStack.pop_back(), nodeData = widgetStack.back()) {
+
+					if(nodeData.bHasClipRect) {
+						drawList.PopClipRect();
+					}					
+				}
+				drawList.Transform = widgetStack.back().GlobalOrigin;
+			}
+			drawList.bHasClipRect = false;
+
+			if(layoutWidget) {
+				layoutWidget->OnEvent(&drawEvent);
+			}
+			prevWidget = inWidget;
+			return VisitResultContinue;
+
+		}, true);
+
+		for(auto it = widgetStack.rbegin(); it != widgetStack.rend(); ++it) {
+
+			if(it->bHasClipRect) {
+				drawList.PopClipRect();
+			}
+		}
+	}
+
 public:
 
-	bool	Tick() override {
+	bool	Tick() final {
 		OPTICK_FRAME("UI_Tick");
 		const auto frameStartTimePoint = std::chrono::high_resolution_clock::now();
 
@@ -490,82 +638,100 @@ public:
 		// Process tooltip
 		if(m_MouseState == MouseState::Default && m_Layers.Tooltip.Timer.IsReady()) {
 
-			m_LastHitStack.Top().Widget->VisitParent([&](Widget* inWidget) {
+			m_LastHitStack.Top().Widget->VisitParent([&](Widget* inWidget)->VisitResult {
 
 				if(auto* tooltipSpawner = inWidget->As<TooltipSpawner>()) {
 					m_Layers.Tooltip.Widget.reset(tooltipSpawner->Spawn());
-					m_Layers.Tooltip.Widget->SetPos(m_LastMousePosGlobal);
+					m_Layers.Tooltip.Widget->SetOrigin(m_LastMousePosGlobal);
 					m_MouseState = MouseState::Tooltip;
-					return false;
+					return VisitResultExit;
 				}
-				return true;
+				return VisitResultContinue;
 			});
 			m_Layers.Tooltip.Timer.Clear();
 		}
 
 		// Draw views
 		g_Renderer->ResetDrawLists();
-		auto& frameDrawList = *g_Renderer->GetFrameDrawList();
-		frameDrawList.PushFont(m_Theme->GetDefaultFont(), g_DefaultFontSize);
-
-		DrawEvent drawEvent;
-		drawEvent.DrawList = &frameDrawList;
-		drawEvent.ParentOriginGlobal = Point(0.f, 0.f);
-		drawEvent.Theme = m_Theme.get();
+		auto* frameDrawList = g_Renderer->GetFrameDrawList();
+		frameDrawList->PushFont(m_Theme->GetDefaultFont(), g_DefaultFontSize);
 
 		{
 			OPTICK_EVENT("Drawing UI");
 
-			m_Layers.RootWindow->OnEvent(&drawEvent);
+			DrawSubtree(m_Layers.RootWindow.get(), frameDrawList);
+			DrawSubtree(m_Layers.Popup.get(), frameDrawList);
+			DrawSubtree(m_Layers.DragDrop.get(), frameDrawList);
+			DrawSubtree(m_Layers.Tooltip.Widget.get(), frameDrawList);
 
-			if(m_Layers.Popup) {
-				m_Layers.Popup->OnEvent(&drawEvent);
-			}
+			if(m_bDrawDebugInfo && m_Layers.DebugOverlayWindow->IsVisible()) {
+				std::string str;
+				auto sb = Util::StringBuilder(&str);
 
-			if(m_Layers.DragDrop) {
-				m_Layers.DragDrop->OnEvent(&drawEvent);
-			}
+				sb.Line("FrameTime: {:5.2f}ms", m_LastFrameTimeMs);
+				sb.Line("MousePosGlobal: {}", m_LastMousePosGlobal);
+				sb.Line("MousePosLocal: {}", GetLocalHoveredPos());
+				sb.Line("HitStack: ");
+				sb.PushIndent();
+				PrintHitStack(sb);
 
-			if(m_Layers.DebugOverlayWindow->IsVisible()) {
-				m_Layers.DebugOverlayWindow->OnEvent(&drawEvent);
-			}
-
-			if(m_Layers.Tooltip.Widget) {
-				m_Layers.Tooltip.Widget->OnEvent(&drawEvent);
-			}
-
-			if(m_bDrawDebugInfo) {
-				DrawDebug(&frameDrawList);
+				m_Layers.DebugOverlayWindow->Text->SetText(str);
+				DrawSubtree(m_Layers.DebugOverlayWindow.get(), frameDrawList);
 			}
 		}
 		const auto frameEndTimePoint = std::chrono::high_resolution_clock::now();
 
 		++m_FrameNum;
 		m_LastFrameTimeMs = std::chrono::duration_cast<std::chrono::microseconds>(frameEndTimePoint - frameStartTimePoint).count() / 1000.f;
+		
+		g_Renderer->RenderFrame(true);
+		// Render UI async
+		/*{
+			if(m_RenderingJobEventRef && !m_RenderingJobEventRef.IsSignalled()) {
+				JobSystem::ThisFiber::WaitForEvent(m_RenderingJobEventRef);
+				m_RenderingJobEventRef.Reset();
+			}
+			JobSystem::Builder jb;
 
-		{
-			OPTICK_EVENT("Rendering UI vsync");
-			g_Renderer->RenderFrame(true);
-		}
+			auto renderingJob = [](JobSystem::JobContext&) {
+				OPTICK_EVENT("Rendering UI vsync");
+				g_Renderer->RenderFrame(true);
+			};
+			jb.PushBack(renderingJob);
+			m_RenderingJobEventRef = jb.PushFence();
+			jb.Kick();
+		}*/
+		
 		return true;
 	}
 
 	// Returns top level root widget containter
-	Widget* GetRoot() override { return m_Layers.RootWindow.get(); }
+	Widget* GetRoot() final { return m_Layers.RootWindow.get(); }
 
-	void	Shutdown() override {}
+	void	Shutdown() final {}
 
-	Theme*	GetTheme() override { return m_Theme.get(); }
+	Theme*	GetTheme() final {
+		Assertm(m_Theme, "A theme should be set before creating widgets");
+		return m_Theme.get(); 
+	}
 
-	void	SetTheme(Theme* inTheme) override { 
-		m_Theme->Merge(inTheme);
-		m_Theme->Finalize();
+	void	SetTheme(Theme* inTheme) final {
+		// If already has a theme, merge two themes overriding existing
+		if(m_Theme) {
+			//m_Theme->Merge(inTheme)
+		} else {
+			m_Theme.reset(inTheme);
+		}
 		// Add our default font size
 		m_Theme->GetDefaultFont()->RasterizeFace(g_DefaultFontSize);
 		RebuildFonts();
 	}
 
 private:
+
+	// Handle to the rendering job completion event
+	// We will wait for it before kicking new rendering job
+	JobSystem::EventRef		m_RenderingJobEventRef;
 
 	u64						m_FrameNum = 0;
 	float					m_LastFrameTimeMs = 0;

@@ -122,6 +122,8 @@ template<Number T> constexpr Vec2<T>& operator+= (Vec2<T>& left, T right) { left
 template<Number T> constexpr Vec2<T> operator-(const Vec2<T>& right) { return Vec2<T>(-right.x, -right.y); }
 template<Number T> constexpr bool operator== (const Vec2<T>& left, const Vec2<T>& right) { return left.x == right.x && left.y == right.y; }
 
+template<Number T1, Number T2> constexpr Vec2<T1> operator- (const Vec2<T1>& left, const Vec2<T2>& right) { return Vec2<T1>(left.x - right.x, left.y - right.y); }
+template<Number T1, Number T2> constexpr Vec2<T1> operator+ (const Vec2<T1>& left, const Vec2<T2>& right) { return Vec2<T1>(left.x + right.x, left.y + right.y); }
 
 
 
@@ -272,6 +274,15 @@ struct RectSides {
 		return {Right, Bottom};
 	}
 
+	// Combined size of margins Left + Right Top + Bottom
+	constexpr Vec2<value_type> Size() const {
+		return {Left + Right, Top + Bottom};
+	}
+
+	constexpr bool Empty() const {
+		return !Left && !Right && !Top && !Bottom;
+	}
+
 	constexpr value_type& operator[](Side inSide) {
 		switch(inSide) {
 			case SideTop:	return Top;
@@ -311,8 +322,8 @@ struct Rect {
 	point_type max;    // Lower-right
 
 	constexpr				Rect(): min(0.0f, 0.0f), max(0.0f, 0.0f) {}
-	constexpr				Rect(float2 size) : min(0.f), max(size) {}
-	constexpr				Rect(point_type min, point_type max) : min(min), max(max) {}
+	constexpr explicit		Rect(point_type size) : min(0.f), max(size) {}
+	constexpr				Rect(point_type min, point_type size) : min(min), max(min + size) {}
 	constexpr				Rect(point_type center, value_type width) : min(center - width), max(center + width) {}
 	constexpr				Rect(value_type x1, value_type y1, value_type x2, value_type y2) : min(x1, y1), max(x2, y2) {}
 
@@ -353,8 +364,10 @@ struct Rect {
 	constexpr	   value_type	Left() const { return min.x; }
 	constexpr	   value_type	Right() const { return max.x; }
 
-	constexpr	   point_type	Tr() const { return min + point_type{Width(), 0.f}; }
-	constexpr	   point_type	Bl() const { return max - point_type{Width(), 0.f}; }
+	constexpr	   point_type	TL() const { return min; }
+	constexpr	   point_type	BR() const { return max; }
+	constexpr	   point_type	TR() const { return min + point_type{Width(), 0.f}; }
+	constexpr	   point_type	BL() const { return max - point_type{Width(), 0.f}; }
 
 	// Build rect from two arbitrarily positioned points
 	constexpr void		BuildFromPoints(point_type inP0, point_type inP1);
@@ -660,8 +673,8 @@ namespace Math {
 		return
 			Intersects(inRectLeft, inRectRight.min) ||
 			Intersects(inRectLeft, inRectRight.max) ||
-			Intersects(inRectLeft, inRectRight.Bl()) ||
-			Intersects(inRectLeft, inRectRight.Tr());
+			Intersects(inRectLeft, inRectRight.BL()) ||
+			Intersects(inRectLeft, inRectRight.TR());
 	}
 
 	template<typename T>

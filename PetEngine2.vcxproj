@@ -22,6 +22,7 @@
     <ClInclude Include="Source\Editor\UI\UI.h" />
     <ClInclude Include="Source\Editor\UI\Widget.h" />
     <ClInclude Include="Source\Editor\UI\Widgets.h" />
+    <ClInclude Include="Source\Runtime\Base\StringID.h" />
     <ClInclude Include="source\Runtime\Core\BaseTypes.h" />
     <ClInclude Include="Source\Runtime\Core\ClassMeta.h" />
     <ClInclude Include="source\Runtime\Core\Concurrency.h" />
@@ -55,6 +56,7 @@
     <ClCompile Include="Source\Editor\UI\UI.cpp" />
     <ClCompile Include="Source\Editor\UI\Widgets.cpp" />
     <ClCompile Include="source\main.cpp" />
+    <ClCompile Include="Source\Runtime\Base\StringID.cpp" />
     <ClCompile Include="Source\Runtime\Platform\Window.cpp" />
     <ClCompile Include="source\Runtime\Platform\WindowsPlatform.cpp" />
     <ClCompile Include="source\Runtime\System\IODispatcher.cpp" />
@@ -135,7 +137,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)Source;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -151,7 +153,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)Source;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -170,7 +172,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)Source;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <Optimization>Disabled</Optimization>
     </ClCompile>

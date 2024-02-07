@@ -117,6 +117,9 @@
     <ClInclude Include="Source\Editor\UI\Drawing.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Runtime\Base\StringID.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="source\Runtime\Platform\WindowsPlatform.cpp">
@@ -159,6 +162,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\Editor\UI\Font.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Runtime\Base\StringID.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

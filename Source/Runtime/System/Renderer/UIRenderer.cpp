@@ -31,6 +31,10 @@
 #include "thirdparty/imgui/imgui.h"
 #include "thirdparty/imgui/imgui_internal.h"
 
+
+
+
+
 using uint8 = u8;
 using uint32 = u32;
 using uint64 = u64;
@@ -100,7 +104,7 @@ public:
 		Reset();
 	}
 
-	void DrawLine(const float2& inStart, const float2& inEnd, ColorU32 inColor, float inThickness) override {
+	void DrawLine(const float2& inStart, const float2& inEnd, ColorU32 inColor, float inThickness) final {
 		const auto p1 = Math::Round(inStart + m_CummulativeTransform);
 		const auto p2 = Math::Round(inEnd + m_CummulativeTransform);
 		//const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w * m_Alpha);
@@ -108,7 +112,33 @@ public:
 		m_ImDrawList->AddLine(p1, p2, inColor.MultiplyAlpha(m_Alpha), inThickness);
 	}
 
-	void DrawRect(const Rect& inRect, ColorU32 inColor, u8 inRounding, Corner inCornerMask, float inThickness) override {
+	// Draws error indication when size is 0
+	void DrawErrorRect(float2 inMin, float2 inMax) {
+
+		constexpr auto ErrorColor1 = ColorU32("#FF36B4");
+		constexpr auto ErrorColor2 = ColorU32("#FFF61F");
+		constexpr auto ErrorSize = 4;
+		constexpr auto ErrorOffset = float2(4);
+
+		// If the caller tries to draw a box with 0 size, draw a purple rect as an indication
+		for(auto axis = 0; axis < 2; axis++) {
+
+			if(inMax[axis] - inMin[axis] <= 0) {
+				inMax[axis] = inMin[axis] + ErrorSize;
+			}
+		}
+		m_ImDrawList->AddRectFilled(inMin, inMax, ErrorColor2);
+		m_ImDrawList->AddRectFilled(inMin += ErrorOffset, inMax += ErrorOffset, ErrorColor1);
+		m_ImDrawList->AddRectFilled(inMin += ErrorOffset, inMax += ErrorOffset, ErrorColor2);
+		m_ImDrawList->AddRectFilled(inMin += ErrorOffset, inMax += ErrorOffset, ErrorColor1);
+	}
+
+	void DrawRect(const Rect& inRect, ColorU32 inColor, u8 inRounding, Corner inCornerMask, float inThickness) final {
+
+		if(inRect.Size().x <= 0 || inRect.Size().y <= 0) {
+			return DrawErrorRect(inRect.min, inRect.max);
+		}
+
 		const auto min = Math::Round(inRect.min + m_CummulativeTransform);
 		const auto max = Math::Round(inRect.max + m_CummulativeTransform);
 		//const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w * m_Alpha);
@@ -131,11 +161,17 @@ public:
 		m_ImDrawList->AddRect(min, max, inColor.MultiplyAlpha(m_Alpha), (float)inRounding, cornerMask, inThickness);
 	}
 	
-	void DrawRectFilled(const Rect& inRect, ColorU32 inColor, u8 inRounding, Corner inCornerMask) override {
+	void DrawRectFilled(const Rect& inRect, ColorU32 inColor, u8 inRounding, Corner inCornerMask) final {
 		DrawRectFilled(inRect.min, inRect.max, inColor, inRounding, inCornerMask);
 	}
 
-	void DrawRectFilled(float2 inMin, float2 inMax, ColorU32 inColor, u8 inRounding, Corner inCornerMask) override {
+	void DrawRectFilled(float2 inMin, float2 inMax, ColorU32 inColor, u8 inRounding, Corner inCornerMask) final {
+		const float2 size = inMax - inMin;
+
+		if(size.x <= 0 || size.y <= 0) {
+			return DrawErrorRect(inMin, inMax);
+		}
+
 		const auto min = Math::Round(inMin + m_CummulativeTransform);
 		const auto max = Math::Round(inMax + m_CummulativeTransform);
 		//const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w * m_Alpha);
@@ -158,17 +194,17 @@ public:
 		m_ImDrawList->AddRectFilled(min, max, inColor.MultiplyAlpha(m_Alpha), (float)inRounding, cornerMask);
 	}
 
-	void DrawText(const float2& inPos, ColorU32 inColor, const std::string& inText, u8 inFontSize, bool bBold, bool bItalic)  override {
+	void DrawText(const float2& inPos, ColorU32 inColor, const std::string_view& inText, u8 inFontSize, bool bBold, bool bItalic)  final {
 		DrawTextExt<char>(inPos, inColor, inText, inFontSize, bBold, bItalic);
 	}
 
-	void DrawText(const float2& inMin, ColorU32 inColor, const std::wstring& inText, u8 inFontSize, bool bBold, bool bItalic) override {
+	void DrawText(const float2& inMin, ColorU32 inColor, const std::wstring_view& inText, u8 inFontSize, bool bBold, bool bItalic) final {
 		DrawTextExt<wchar_t>(inMin, inColor, inText, inFontSize, bBold, bItalic);
 	}
 
-	void DrawBezier(float2 p1, float2 p2, float2 p3, float2 p4, ColorU32 col, float thickness, unsigned segmentNum) override {}
+	void DrawBezier(float2 p1, float2 p2, float2 p3, float2 p4, ColorU32 col, float thickness, unsigned segmentNum) final {}
 
-	void DrawTexture(const Rect& inRect, TextureHandle inTextureHandle, ColorU32 inTintColor, float2 inUVMin, float2 inUVMax) override {
+	void DrawTexture(const Rect& inRect, TextureHandle inTextureHandle, ColorU32 inTintColor, float2 inUVMin, float2 inUVMax) final {
 		if (!inTextureHandle) {
 			return;
 		}
@@ -179,23 +215,23 @@ public:
 		m_ImDrawList->AddImage(inTextureHandle, min, max, inUVMin, inUVMax, ImColor(inTintColor));
 	}
 
-	void PushClipRect(const Rect& inRect) override { 
+	void PushClipRect(const Rect& inRect) final {
 		const auto min = Math::Round(inRect.min + m_CummulativeTransform);
 		const auto max = Math::Round(inRect.max + m_CummulativeTransform);
 		//DrawRect(inRect.min, inRect.max, Color("#f2277c"), 0.f, 1.f);
 		m_ImDrawList->PushClipRect(min, max, true);
 	}
 
-	void PopClipRect() override { 
+	void PopClipRect() final {
 		m_ImDrawList->PopClipRect();
 	}
 
-	void PushTransform(float2 inVector) override {
+	void PushTransform(float2 inVector) final {
 		m_TransformStack.push(inVector);
 		m_CummulativeTransform += inVector;
 	}
 
-	void PopTransform() override {
+	void PopTransform() final {
 		assert(!m_TransformStack.empty() && "Cannot pop empty stack");
 
 		const auto lastVector = m_TransformStack.top();
@@ -204,7 +240,7 @@ public:
 		m_TransformStack.pop();
 	}
 
-	void PushFont(const UI::Font* inFont, u8 inDefaultSize, bool bBold = false, bool bItalic = false) override {
+	void PushFont(const UI::Font* inFont, u8 inDefaultSize, bool bBold = false, bool bItalic = false) final {
 		const auto* face = inFont->GetFace(inDefaultSize, bBold, bItalic);
 		assert(face && "Pushing a font which is not rasterized");
 
@@ -218,7 +254,7 @@ public:
 		m_FontFaceStack.push(face);
 	}
 
-	void PopFont() override {
+	void PopFont() final {
 		assert(!m_FontFaceStack.empty() && "Font stack is empty!");
 		m_FontFaceStack.pop();
 		assert(!m_FontFaceStack.empty() && "Font stack is empty!");
@@ -237,7 +273,7 @@ public:
 		m_FontFaceStack.push(slice);
 	}
 
-	void SetAlpha(float inAlpha) override { m_Alpha = Math::Clamp(inAlpha, 0.f, 1.f); }
+	void SetAlpha(float inAlpha) final { m_Alpha = Math::Clamp(inAlpha, 0.f, 1.f); }
 
 	ImDrawData* GetDrawData() const { return m_ImDrawData.get(); }
 
@@ -251,7 +287,9 @@ public:
 		}
 	}
 
-	void Reset() override {
+	void Reset() final {
+		m_ImDrawData->TotalVtxCount = 0;
+		m_ImDrawData->TotalIdxCount = 0;
 		m_ImDrawList->_ResetForNewFrame();
 		m_ImDrawList->PushClipRectFullScreen();
 		m_FontFaceStack = std::stack<const UI::Font::Face*>();
@@ -260,7 +298,7 @@ public:
 private:
 
 	template<typename CHAR_T>
-	void DrawTextExt(const float2& inPos, ColorU32 inColor, const std::basic_string<CHAR_T>&inText, uint8 inFontSize, bool bBold, bool bItalic) {
+	void DrawTextExt(const float2& inPos, ColorU32 inColor, const std::basic_string_view<CHAR_T>&inText, uint8 inFontSize, bool bBold, bool bItalic) {
 		const auto pos = Math::Round(inPos + m_CummulativeTransform);
 		//const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w * m_Alpha);
 
@@ -1397,6 +1435,13 @@ private:
 		// If not, we can't just re-allocate the IB or VB, we'll have to do a proper allocator.
 		g_frameIndex = g_frameIndex + 1;
 		ImGui_ImplDX12_RenderBuffers* fr = &m_pFrameResources[g_frameIndex % NUM_FRAMES_IN_FLIGHT];
+
+		for(int n = 0; n < draw_data->CmdListsCount; n++) {
+			ImDrawList* draw_list = draw_data->CmdLists[n];
+			draw_list->_PopUnusedDrawCmd();
+			draw_data->TotalVtxCount += draw_list->VtxBuffer.Size;
+			draw_data->TotalIdxCount += draw_list->IdxBuffer.Size;
+		}
 
 		// Create and grow vertex/index buffers if needed
 		if(fr->VertexBuffer == NULL || fr->VertexBufferSize < draw_data->TotalVtxCount) {

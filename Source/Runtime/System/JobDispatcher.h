@@ -35,7 +35,14 @@ namespace JobSystem {
 	class Builder;
 	void Submit(const Builder& inJobBuilder);
 
-	// Returned to users
+	/*
+	* RAII object that points to a JobSystem event object
+	* An event object is created by the JobSystem and an EventRef is 
+	* returned to caller. After event is signalled the JobSystem destroys it's EventRef instance
+	* And the caller can quiery the state of the event and safely destroy the EventRef object
+	* 
+	* TODO could be replaced with std::shared_ptr
+	*/
 	struct EventRef {
 
 		EventRef() = default;
@@ -49,6 +56,10 @@ namespace JobSystem {
 		void Signal() const;
 		bool IsSignalled() const;
 		u32  GetRefCount() const;
+
+		// Destroys the event object if it has no other references
+		// and sets this to nullptr
+		void Reset();
 
 		operator bool() const { return m_Event != nullptr; }
 
@@ -69,7 +80,7 @@ namespace JobSystem {
 		/*
 		* Add a job consequent to previously added
 		*/
-		void PushBack(std::string_view inJobName, const CallableType& inJobCallable) {
+		void PushBack(const CallableType& inJobCallable, std::string_view inJobName = "") {
 			Assert(inJobCallable);
 			Emplace(inJobName, inJobCallable, ++m_GroupCounter);
 		}
@@ -77,7 +88,7 @@ namespace JobSystem {
 		/*
 		* Add a job parallel to previously added
 		*/
-		void PushAsync(std::string_view inJobName, const CallableType& inJobCallable) {
+		void PushAsync(const CallableType& inJobCallable, std::string_view inJobName = "") {
 			Assert(inJobCallable);			
 			Emplace(inJobName, inJobCallable, m_GroupCounter);
 		}

@@ -3,8 +3,8 @@
 #include "Runtime/Core/BaseTypes.h"
 
 /**
- * Stores image data in the RAM
- * could be deleted after being loaded into the VRAM
+ * Simple image class
+ * Stores raw uncompressed image data
  */
 class Image {
 public:

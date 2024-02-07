@@ -46,8 +46,8 @@ public:
 	virtual void DrawRectFilled(const Rect& inRect, ColorU32 inColor, u8 inRounding = 0, Corner inCornerMask = Corner::None) = 0;
 	virtual void DrawRectFilled(float2 inMin, float2 inMax, ColorU32 inColor, u8 inRounding = 0, Corner inCornerMask = Corner::None) = 0;
 
-	virtual void DrawText(const float2& inMin, ColorU32 inColor, const std::string& inText, u8 inFontSize = 0, bool bBold = false, bool bItalic = false) = 0;
-	virtual void DrawText(const float2& inMin, ColorU32 inColor, const std::wstring& inText, u8 inFontSize = 0, bool bBold = false, bool bItalic = false) = 0;
+	virtual void DrawText(const float2& inMin, ColorU32 inColor, const std::string_view& inText, u8 inFontSize = 0, bool bBold = false, bool bItalic = false) = 0;
+	virtual void DrawText(const float2& inMin, ColorU32 inColor, const std::wstring_view& inText, u8 inFontSize = 0, bool bBold = false, bool bItalic = false) = 0;
 	virtual void DrawBezier(float2 p1, float2 p2, float2 p3, float2 p4, ColorU32 col, float thickness, unsigned segmentNum = 30) = 0;
 	virtual void DrawTexture(const Rect& inRect, TextureHandle inTextureHandle, ColorU32 inTintColor, float2 inUVMin = {0.f, 0.f}, float2 inUVMax = {1.f, 1.f}) = 0;
 

@@ -809,6 +809,7 @@ EventRef::EventRef(const EventRef& other)
 
 EventRef& EventRef::operator= (const EventRef& right) {
 	if(!right.m_Event) return *this;
+	if(m_Event) m_Event->Decref();
 	m_Event = right.m_Event;
 	m_Event->Incref();
 	return *this;
@@ -822,6 +823,11 @@ bool EventRef::IsSignalled() const {
 u32 EventRef::GetRefCount() const {
 	Assert(m_Event && "Reference is null");
 	return m_Event->GetRefCount();
+}
+
+void EventRef::Reset() {
+	if(m_Event) m_Event->Decref();
+	m_Event = nullptr;
 }
 
 JOBSYSTEM_NAMESPACE_END

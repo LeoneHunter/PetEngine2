@@ -102,6 +102,13 @@ public:
 		A = 24
 	};
 
+	constexpr ColorU32(float R, float G, float B, float A): rgb() {
+		rgb = ((u32)F32toInt8(R)) << BitOffsets::R;
+		rgb |= ((u32)F32toInt8(G)) << BitOffsets::G;
+		rgb |= ((u32)F32toInt8(B)) << BitOffsets::B;
+		rgb |= ((u32)F32toInt8(A)) << BitOffsets::A;
+	}
+
 	constexpr ColorU32(): rgb(0xff) {}
 
 	constexpr ColorU32(std::string_view inHexColor)
@@ -137,10 +144,6 @@ public:
 		return GetComponentAsFloat(A) == 0.f;
 	}
 
-	constexpr operator u32() const { return rgb; }
-
-private:
-
 	constexpr float GetComponentAsFloat(BitOffsets inComponent) const {
 		return (float)((rgb >> inComponent) & (u8)0xff) / 255.f;
 	}
@@ -149,6 +152,8 @@ private:
 		rgb &= ~((u8)0xff << inComponent);
 		rgb |= ((u32)F32toInt8(inValue)) << inComponent;
 	}
+
+	constexpr operator u32() const { return rgb; }
 
 private:
 	u32 rgb;
@@ -161,6 +166,12 @@ struct ColorFloat4 {
 
 	constexpr ColorFloat4()
 		: r(0.0f), g(0.0f), b(0.0f), a(1.0f) {}
+
+	constexpr ColorFloat4(ColorU32 inColor)
+		: r(inColor.GetComponentAsFloat(ColorU32::R))
+		, g(inColor.GetComponentAsFloat(ColorU32::G))
+		, b(inColor.GetComponentAsFloat(ColorU32::B))
+		, a(inColor.GetComponentAsFloat(ColorU32::A)) {}
 
 	constexpr ColorFloat4(float inVal)
 		: r(Math::Clamp(inVal, 0.f, 1.f)), g(Math::Clamp(inVal, 0.f, 1.f)), b(Math::Clamp(inVal, 0.f, 1.f)), a(1.0f) {}
@@ -180,7 +191,7 @@ struct ColorFloat4 {
 		a = result.w;
 	}
 
-	constexpr operator Vec4() const { return Vec4(r, g, b, a); }
+	constexpr explicit operator ColorU32() const { return {r, g, b, a}; }
 
 	float r;
 	float g;
@@ -291,5 +302,18 @@ namespace Util {
 		size_t convertedChars = 0;
 		mbstowcs_s(&convertedChars, out.data(), out.size(), inStr.c_str(), _TRUNCATE);
 		return out;
+	}
+
+	inline std::string ToLower(const std::string& inString) {
+		std::string str(inString);
+		std::transform(
+			std::begin(str),
+			std::end(str),
+			std::begin(str),
+			[](unsigned char c) {
+				return std::tolower(c);
+			}
+		);
+		return str;
 	}
 }

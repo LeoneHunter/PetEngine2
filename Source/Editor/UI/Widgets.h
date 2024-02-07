@@ -8,6 +8,11 @@ namespace UI {
 	class BoxStyle;
 	class LayoutStyle;
 
+	class Flexbox;	
+
+/*-------------------------------------------------------------------------------------------------*/
+//										CENTERED
+/*-------------------------------------------------------------------------------------------------*/
 	/*
 	* Takes all allocated space from the parent
 	* and places the child inside in the center
@@ -21,25 +26,15 @@ namespace UI {
 	};
 
 
-
-	class Expanded: public SingleChildContainer {
-		DEFINE_CLASS_META(Expanded, SingleChildContainer)
-	public:
-		Expanded(Widget* inParent, const std::string& inID = {});
-		void OnParented(Widget* inParent) override;
-		bool OnEvent(IEvent* inEvent) override;
-
-	private:
-		AxisIndex GetMainAxis() const;
-	};
-
-
+/*-------------------------------------------------------------------------------------------------*/
+//										FLEXIBLE
+/*-------------------------------------------------------------------------------------------------*/
 
 	/*
 	* TODO
 	*	Handle size update
 	*/
-	class Flexible: public SingleChildContainer {
+	/*class Flexible: public SingleChildContainer {
 		DEFINE_CLASS_META(Flexible, SingleChildContainer)
 	public:
 
@@ -54,9 +49,13 @@ namespace UI {
 
 	private:
 		float m_FlexFactor;
-	};
+	};*/
 
 
+
+/*-------------------------------------------------------------------------------------------------*/
+//										FLEXBOX
+/*-------------------------------------------------------------------------------------------------*/
 
 	enum class ContentDirection {
 		Column,
@@ -79,59 +78,70 @@ namespace UI {
 	
 	enum class OverflowPolicy {
 		Clip,		// Just clip without scrolling
-		Scroll,		// Enable scrolling
 		Wrap,		// Wrap children on another line
 		ShrinkWrap, // Do not decrease containter size below content size
 	};
 
-	struct FlexboxDesc {
-		std::string			ID;
-		// Direction of the main axis
-		ContentDirection	Direction = ContentDirection::Row;
-		// Distribution of children on the main axis
-		JustifyContent		JustifyContent = JustifyContent::Start;
-		// Alignment on the cross axis
-		AlignContent		Alignment = AlignContent::Start;
-		// What to do when children don't fit into container
-		OverflowPolicy		OverflowPolicy = OverflowPolicy::Clip;
-		bool				bExpandCrossAxis = false;
-		bool				bExpandMainAxis = true;
+	struct FlexboxBuilder: public WidgetBuilder<FlexboxBuilder> {
+		// Direction of the main axis		
+		FlexboxBuilder& Direction(ContentDirection inDirection) { m_Direction = inDirection; return *this; }
+		FlexboxBuilder& DirectionRow() { m_Direction = ContentDirection::Row; return *this; }
+		FlexboxBuilder& DirectionColumn() { m_Direction = ContentDirection::Column; return *this; }
+		// Distribution of children on the main axis		
+		FlexboxBuilder& JustifyContent(UI::JustifyContent inJustify) { m_JustifyContent = inJustify; return *this; }
+		// Alignment on the cross axis		
+		FlexboxBuilder& Alignment(AlignContent inAlignment) { m_Alignment = inAlignment; return *this; }
+		// What to do when children don't fit into container		
+		FlexboxBuilder& OverflowPolicy(OverflowPolicy inPolicy) { m_OverflowPolicy = inPolicy; return *this; }		
+		FlexboxBuilder& ExpandMainAxis(bool bExpand) { m_ExpandMainAxis = bExpand; return *this; }
+		FlexboxBuilder& ExpandCrossAxis(bool bExpand) { m_ExpandCrossAxis = bExpand; return *this; }
+
+		// Finalizes creation
+		Flexbox*		Parent(Widget* inParent);
+
+	public:
+		
+		FlexboxBuilder()
+			: m_Direction(ContentDirection::Row)
+			, m_JustifyContent(JustifyContent::Start)
+			, m_Alignment(AlignContent::Start)
+			, m_OverflowPolicy(OverflowPolicy::Clip)
+			, m_ExpandMainAxis(true)
+			, m_ExpandCrossAxis(false)
+		{
+			StyleClass("Container");
+		}
+
+		friend class Flexbox;
+
+	private:
+		UI::ContentDirection	m_Direction;
+		UI::JustifyContent		m_JustifyContent;
+		UI::AlignContent		m_Alignment;
+		UI::OverflowPolicy		m_OverflowPolicy;
+		bool					m_ExpandMainAxis;
+		bool					m_ExpandCrossAxis;
 	};
 
 	/*
 	* Vertical or horizontal flex container
 	* Similar to Flutter and CSS
-	* Default size behavior is shrink to fit children
-	* 
-	* TODO
-	*	Batch updates when many children are added
-	*	Add scrolling when overflown
+	* Default size behavior is shrink to fit children but can be set 
 	*/
 	class Flexbox: public MultiChildContainer {
 		DEFINE_CLASS_META(Flexbox, MultiChildContainer)
 	public:
 
-		static Flexbox* Column(Widget* inParent, const std::string& inID = {}, bool bExpandCrossAxis = false, bool bExpandMainAxis = true) {
-			auto* out = new Flexbox(inParent, FlexboxDesc{.ID = inID, .Direction = ContentDirection::Column, .bExpandCrossAxis = bExpandCrossAxis, .bExpandMainAxis = bExpandMainAxis});
-			return out;
-		}
+		static FlexboxBuilder Column() { FlexboxBuilder out; out.Direction(ContentDirection::Column); return out; }
+		static FlexboxBuilder Row() { FlexboxBuilder out; out.Direction(ContentDirection::Row); return out; }
+		static FlexboxBuilder Build() { return {}; }
 
-		static Flexbox* Row(Widget* inParent, const std::string& inID = {}, bool bExpandCrossAxis = false, bool bExpandMainAxis = true) {
-			auto* out = new Flexbox(inParent, FlexboxDesc{.ID = inID, .Direction = ContentDirection::Row, .bExpandCrossAxis = bExpandCrossAxis, .bExpandMainAxis = bExpandMainAxis});
-			return out;
-		}
+		Flexbox(const FlexboxBuilder& inDesc);
 
-		Flexbox(Widget* inParent, const FlexboxDesc& inDesc);
 		bool OnEvent(IEvent* inEvent) override;
 		void Parent(Widget* inChild) override;
 
-		void DebugSerialize(Debug::PropertyArchive& inArchive) override {
-			Super::DebugSerialize(inArchive);
-			inArchive.PushProperty("Direction", m_Direction);
-			inArchive.PushProperty("JustifyContent", m_JustifyContent);
-			inArchive.PushProperty("Alignment", m_Alignment);
-			inArchive.PushProperty("OverflowPolicy", m_OverflowPolicy);
-		}
+		void DebugSerialize(Debug::PropertyArchive& inArchive) override;
 
 		ContentDirection GetDirection() const { return m_Direction; }
 
@@ -149,11 +159,13 @@ namespace UI {
 	DEFINE_ENUM_TOSTRING_2(ContentDirection, Column, Row)
 	DEFINE_ENUM_TOSTRING_5(JustifyContent, Start, End, Center, SpaceBetween, SpaceAround)
 	DEFINE_ENUM_TOSTRING_3(AlignContent, Start, End, Center)
-	DEFINE_ENUM_TOSTRING_3(OverflowPolicy, Clip, Scroll, Wrap)
+	DEFINE_ENUM_TOSTRING_2(OverflowPolicy, Clip, Wrap)
 
 
 
-
+/*-------------------------------------------------------------------------------------------------*/
+//										TEXT
+/*-------------------------------------------------------------------------------------------------*/
 
 	class Text: public LayoutWidget {
 		DEFINE_CLASS_META(Text, LayoutWidget)
@@ -165,53 +177,86 @@ namespace UI {
 		bool OnEvent(IEvent* inEvent) override;
 
 	private:
-		std::string		m_Text;
+		const StyleClass*	m_Style;
+		std::string			m_Text;
 	};
 
 
 
+/*-------------------------------------------------------------------------------------------------*/
+//										BUTTON
+/*-------------------------------------------------------------------------------------------------*/
+	class Button;
+
+	using OnPressedFunc = VoidFunction<bool>;
 
 	struct ButtonDesc {
 		Widget* Child = nullptr;
 	};
 
-	enum class ButtonState {
-		Normal,
-		Hovered,
-		Pressed,
+	struct ButtonState {
+		static inline StringID Normal{"Normal"};
+		static inline StringID Hovered{"Hovered"};
+		static inline StringID Pressed{"Pressed"};
+	};
+
+	struct ButtonBuilder: public WidgetBuilder<ButtonBuilder> {
+
+		ButtonBuilder&	Callback(const OnPressedFunc& inCallback) { m_Callback = inCallback; return *this; }
+		ButtonBuilder&	Child(Widget* inChild) { m_Child = inChild; return *this; }
+		// Finalizes creation
+		Button*			Parent(Widget* inParent);
+
+	public:
+
+		ButtonBuilder()
+			: m_Child(nullptr)
+		{
+			StyleClass("Button");
+		}
+
+		friend class Button;
+
+	private:
+		OnPressedFunc	m_Callback;
+		Widget*			m_Child;
 	};
 
 	class Button: public SingleChildContainer {
 		DEFINE_CLASS_META(Button, SingleChildContainer)
 	public:
 
-		using OnPressedFunc = VoidFunction<bool>;
+		static ButtonBuilder Build() { return {}; }
 
 		// Helper named constructor to create a simple button with the text
 		static Button* TextButton(Widget* inParent, const std::string& inText, OnPressedFunc inCallback = {}) {
-			auto* btn = new Button(inParent, inCallback);
+			auto* btn = new Button(inParent, inCallback, inText);
 			auto* txt = new Text(btn, inText);
 			return btn;
 		}
 
 		Button(Widget* inParent, OnPressedFunc inCallback = {}, const std::string& inID = {});
+		Button(const ButtonBuilder& inBuilder);
+
 		bool OnEvent(IEvent* inEvent) override;
 
 		void DebugSerialize(Debug::PropertyArchive& inArchive) override {
 			Super::DebugSerialize(inArchive);
-			inArchive.PushProperty("ButtonState", m_State);
+			inArchive.PushProperty("ButtonState", *m_State);
 		}
 
 		void SetCallback(OnPressedFunc inCallback) { m_Callback = inCallback; }
 
+	public:
+
+		Padding GetPaddings() const override;
+		Padding GetMargins() const override;
+
 	private:
-		ButtonState	m_State = ButtonState::Normal;
-		OnPressedFunc	m_Callback;
+		const StyleClass*	m_Style;
+		StringID			m_State;
+		OnPressedFunc		m_Callback;
 	};
-
-	DEFINE_ENUM_TOSTRING_3(ButtonState, Normal, Hovered, Pressed)
-
-
 
 
 	/*
@@ -236,12 +281,12 @@ namespace UI {
 		void DebugSerialize(Debug::PropertyArchive& inArchive) override {
 			Super::DebugSerialize(inArchive);
 			inArchive.PushProperty("MainAxis", !m_MainAxis ? "X" : "Y");
-			inArchive.PushProperty("State", m_State);
+			inArchive.PushProperty("State", m_State.String());
 		}
 
 	private:
 		AxisIndex		m_MainAxis;
-		ButtonState		m_State;
+		StringID		m_State;
 		OnDraggedFunc	m_Callback;
 	};
 
@@ -265,8 +310,9 @@ namespace UI {
 		bool OnEvent(IEvent* inEvent) override;
 		bool DispatchToChildren(IEvent* inEvent) override;
 		void DebugSerialize(Debug::PropertyArchive& inArchive) override;
-		void OnSeparatorDragged(MouseDragEvent* inDragEvent);
+		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive) override;
 
+		void OnSeparatorDragged(MouseDragEvent* inDragEvent);
 		void SetSplitRatio(float inRatio);
 
 	private:
