@@ -7,6 +7,12 @@
 
 namespace UI {
 
+	/*
+	* Creates new OS window and a custor renderer for widgets
+	* Handles OS input events and dispatches them to widgets
+	* Then draw widgets via custom renderer
+	* Uses ImGui drawlist and renderer as a backend
+	*/
 	class Application {
 	public:
 
@@ -21,6 +27,6 @@ namespace UI {
 		virtual Widget* GetRoot() = 0;
 		virtual void	Shutdown() = 0;
 		virtual Theme*	GetTheme() = 0;
-		virtual void	SetTheme(Theme*) = 0;
+		virtual void	SetTheme(Theme* inTheme) = 0;
 	};
 }

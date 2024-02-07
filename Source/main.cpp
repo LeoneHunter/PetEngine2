@@ -7,38 +7,27 @@
 UI::Application* g_Application = nullptr;
 
 void CreateTheme() {
-	//using namespace UI;
+	using namespace UI;
+	auto* theme = new UI::Theme();
 
-	//auto theme = new UI::Theme();
+	// Button
+	{
+		auto& buttonStyle = theme->Add("Button"); {
+			buttonStyle.Add<LayoutStyle>("Normal").SetMargins(10, 5).SetPaddings(10, 5);
+			buttonStyle.Add<LayoutStyle>("Hovered", "Normal");
+			buttonStyle.Add<LayoutStyle>("Pressed", "Normal");
 
-	//// Create prototype
-	//auto containerStyle = UI::StyleClass();
-	//containerStyle.AddStyle("", LayoutStyle().SetMargins(0).SetPaddings(0));
-	//containerStyle.AddStyle("", BoxStyle().SetFillColor("#454545").SetBorders(0).SetRounding(0));
+			buttonStyle.Add<BoxStyle>("Normal").SetFillColor("#454545").SetRounding(6);
+			buttonStyle.Add<BoxStyle>("Hovered", "Normal").SetFillColor("#808080");
+			buttonStyle.Add<BoxStyle>("Pressed", "Normal").SetFillColor("#eeeeee");
+		}
 
-	//// Set prototype style for multiple widgets
-	//theme->AddStyleClass("Flexbox", containerStyle);
-	//theme->AddStyleClass("Splitbox", containerStyle);
-
-	//// Prototype for primitive types like button or tooltip
-	//auto primitiveWidgetLayoutStyle = UI::LayoutStyle();
-	//primitiveWidgetLayoutStyle.SetMargins(5, 5).SetPaddings(5, 7);
-
-	//// Use prototype
-	//auto textTooltipStyle = theme->AddStyleClass("TextTooltip");
-	//textTooltipStyle.AddStyle("", primitiveWidgetLayoutStyle);
-	//textTooltipStyle.AddStyle("", UI::TextStyle().SetColor("#454554"));
-
-
-	//auto buttonStyle = theme->AddStyleClass("Button"); {
-	//	buttonStyle.AddLayoutStyle("Normal").SetMargins(10).SetPaddings(5);
-	//	buttonStyle.AddBoxStyle("Normal").SetFillColor("#454545").SetBorders(1.f).SetBorderColor("#343434");
-	//	buttonStyle.AddBoxStyle("Hovered", "Normal").SetFillColor("#808080");
-	//	buttonStyle.AddBoxStyle("Pressed", "Normal").SetFillColor("#eeeeee");
-	//}
-	//theme->AddStyleClass("Text").AddTextStyle("Normal").SetColor("#ffffff").SetSize(20);
-	//
-	//g_Application->SetTheme(theme);
+		auto& Tooltip = theme->Add("Tooltip"); {
+			Tooltip.Add<LayoutStyle>().SetMargins(5).SetPaddings(5);
+			Tooltip.Add<BoxStyle>().SetFillColor("#dd5050").SetRounding(6);
+		}
+	}
+	Application::Get()->SetTheme(theme);
 }
 
 void BuildSimple() {
@@ -85,9 +74,8 @@ void BuildAppScaffold() {
 				.JustifyContent(JustifyContent::Center)
 				.ExpandMainAxis(true)
 				.ExpandCrossAxis(true)
-				.Parent(centered); 
+				.Parent(centered);
 			{
-
 				auto menuBar = Flexbox::Row().ID("Menu Bar").Parent(column); {
 
 					auto leftGroup = Flexbox::Row().ID("Left_Group").Parent(menuBar); {

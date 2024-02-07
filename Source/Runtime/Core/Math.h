@@ -391,19 +391,6 @@ struct Rect {
 		}
 	}
 
-	// Helpers
-	constexpr Rect&		Translate(point_type inTranslation) {
-		min += inTranslation;
-		max += inTranslation;
-		return *this;
-	}
-
-	constexpr Rect&		Translate(value_type inTranslationX, value_type inTranslationY) {
-		min += point_type(inTranslationX, inTranslationY);
-		max += point_type(inTranslationX, inTranslationY);
-		return *this;
-	}
-
 	constexpr Rect&		SetOrigin(point_type inNewOrigin) {
 		*this = Rect(inNewOrigin, inNewOrigin + Size());
 		return *this;
@@ -417,6 +404,19 @@ struct Rect {
 	constexpr Vec4		ToFloat4() const { return {min.x, min.y, max.x, max.y}; }
 
 	constexpr void		Clear() { min = point_type{0.f}; max = point_type{0.f}; }
+
+	// Helpers
+	constexpr Rect&		Translate(point_type inTranslation) {
+		min += inTranslation;
+		max += inTranslation;
+		return *this;
+	}
+
+	constexpr Rect&		Translate(value_type inTranslationX, value_type inTranslationY) {
+		min += point_type(inTranslationX, inTranslationY);
+		max += point_type(inTranslationX, inTranslationY);
+		return *this;
+	}
 
 	// Left to left
 	constexpr Rect&		AlignLeft(const Rect& target, value_type margin = 0.f) {

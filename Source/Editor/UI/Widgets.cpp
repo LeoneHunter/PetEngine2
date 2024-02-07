@@ -731,6 +731,7 @@ void UI::SplitBox::UpdateLayout() {
 /*-------------------------------------------------------------------------------------------------*/
 UI::Tooltip::Tooltip(float2 inSize /*= {}*/)
 	: Super(std::string(GetClassName()))
+	, m_Style(Application::Get()->GetTheme()->Find(GetClassName()))
 {}
 
 bool UI::Tooltip::OnEvent(IEvent* inEvent) {
@@ -741,10 +742,37 @@ bool UI::Tooltip::OnEvent(IEvent* inEvent) {
 		return true;
 
 	} else if(auto* event = inEvent->As<DrawEvent>()) {
-		event->DrawList->PushBox(Super::GetRect(), Colors::Red);
+		event->DrawList->PushBox(Super::GetRect(), m_Style->Find<BoxStyle>());
 	}
 	return Super::OnEvent(inEvent);
 }
+
+UI::Padding UI::Tooltip::GetPaddings() const {
+
+	if(m_Style) {
+		const auto* layoutStyle = m_Style->Find<LayoutStyle>();
+
+		if(layoutStyle) {
+			return layoutStyle->Paddings;
+		}
+	}
+	return {5};
+}
+
+UI::Padding UI::Tooltip::GetMargins() const {
+
+	if(m_Style) {
+		const auto* layoutStyle = m_Style->Find<LayoutStyle>();
+
+		if(layoutStyle) {
+			return layoutStyle->Margins;
+		}
+	}
+	return {5};
+}
+
+
+
 
 UI::TooltipSpawner::TooltipSpawner(Widget* inParent, const SpawnerFunction& inSpawner) 
 	: Super()

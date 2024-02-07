@@ -488,7 +488,7 @@ namespace UI {
 	* For example a PopupSpawner can wrap any layout widget and can provide a popup for it when hovered
 	* Or a Centered widget which centers it's child inside parent's constraints
 	*
-	* There'are two big classes of widgets: Controllers and LayoutWidgets
+	* There are two big classes of widgets: Controllers and LayoutWidgets
 	*	  Controllers has only logic and can control and manage other widgets in the tree
 	*	      Some controllers can take events from the user, like a popup controller which spawns a popup on left click
 	*     LayoutWidgets has a visual representation and can be interacted by the user directly

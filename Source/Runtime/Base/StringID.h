@@ -8,6 +8,11 @@
 
 inline constexpr u64 g_string_pool_size = 8192;
 
+template<typename T>
+concept StringData = requires(T a) {
+	{ a.data() } -> std::convertible_to<const char*>;
+};
+
 /**
  * Interned string in a string pool
  * Stores indices into that pool
@@ -21,7 +26,10 @@ public:
 
 	constexpr StringID();
 	StringID(const char* inNewName);
-	StringID(const std::string& inNewName)	: StringID(inNewName.c_str()) {}
+	//StringID(const std::string& inNewName): StringID(inNewName.c_str()) {}
+
+	template<StringData T>
+	StringID(const T& inStringData): StringID(inStringData.data()) {}
 
 	std::string				String() const;
 

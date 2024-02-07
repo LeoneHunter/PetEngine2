@@ -60,6 +60,7 @@ namespace UI {
 		DEFINE_ROOT_CLASS_META(Style)
 	public:
 		virtual ~Style() {}
+		virtual Style* Copy() const = 0;
 		StringID Name;
 	};
 
@@ -82,6 +83,10 @@ namespace UI {
 			, BorderAsOutline(false)
 		{
 			if(inParent) *this = *inParent;
+		}
+
+		Style* Copy() const final {
+			return new BoxStyle(*this);
 		}
 
 		BoxStyle& SetFillColor(std::string_view inColorHash) {
@@ -157,6 +162,10 @@ namespace UI {
 			, FontStyleItalic(false)
 		{
 			if(inParent) *this = *inParent;
+		}
+
+		Style* Copy() const final {
+			return new TextStyle(*this);
 		}
 
 		float2 CalculateTextSize(const std::string& inText) const {
@@ -238,6 +247,10 @@ namespace UI {
 			if(inParent) *this = *inParent;
 		}
 
+		Style* Copy() const final {
+			return new LayoutStyle(*this);
+		}
+		
 		LayoutStyle& SetPaddings(u8 inCommon) {
 			Paddings = inCommon;
 			return *this;
@@ -291,12 +304,16 @@ namespace UI {
 			, m_Parent(inParent)
 		{}
 
-		// We own our styles so delete copy
-		StyleClass(const StyleClass&) = delete;
-		StyleClass& operator=(const StyleClass&) = delete;
+		StyleClass(const StyleClass& inStyle)
+			: m_Name(inStyle.m_Name)
+			, m_Parent(inStyle.m_Parent)
+		{
+			m_Styles.reserve(inStyle.m_Styles.size());
 
-		StyleClass(StyleClass&&) = default;
-		StyleClass& operator=(StyleClass&&) = default;
+			for(const auto& styleToCopy : inStyle.m_Styles) {
+				m_Styles.emplace_back(styleToCopy->Copy());
+			}
+		}
 
 		template<class StyleType>
 		StyleType& Add(std::string_view inName = "", std::string_view inStyleCopy = "") {
@@ -356,6 +373,22 @@ namespace UI {
 				return inDefault;
 			}
 			return out;
+		}
+
+		// Add styles from other style class overriding existent
+		void Merge(const StyleClass& inStyle) {
+
+			std::ranges::for_each(inStyle.m_Styles, [this](const std::unique_ptr<Style>& inStyle) {
+
+				for(auto& style : m_Styles) {
+
+					if(style->GetClass() == inStyle->GetClass() && (style->Name == inStyle->Name)) {
+						style.reset(inStyle->Copy());
+						return;
+					}
+				}
+				m_Styles.emplace_back(inStyle->Copy());
+			});
 		}
 
 	public:
@@ -429,6 +462,21 @@ namespace UI {
 			Assertf(bEmplaced, "Style with the name {} already exist", inStyleName);
 
 			return it->second;
+		}
+
+		// Merges two themes together
+		void				Merge(const Theme* inTheme, bool bOverride = true) {
+
+			for(const auto& [id, style] : inTheme->m_Styles) {
+				auto thisStyleEntry = m_Styles.find(id);
+
+				if(thisStyleEntry == m_Styles.end()) {
+					m_Styles.emplace(id, style);
+
+				} else if(bOverride) {
+					thisStyleEntry->second.Merge(style);
+				}
+			}
 		}
 
 		// Gathers all fonts from styles and try to load them

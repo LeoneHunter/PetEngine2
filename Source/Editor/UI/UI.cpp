@@ -209,7 +209,7 @@ public:
 		bHasClipRect = true;
 
 		if(g_DrawCliprects) {
-			RendererDrawList->DrawRect(inClipRect.Translate(Transform).Expand(-1), Colors::Red);
+			RendererDrawList->DrawRect(inClipRect.Expand(-1), Colors::Red);
 		}
 	}
 
@@ -718,7 +718,7 @@ public:
 	void	SetTheme(Theme* inTheme) final {
 		// If already has a theme, merge two themes overriding existing
 		if(m_Theme) {
-			//m_Theme->Merge(inTheme)
+			m_Theme->Merge(inTheme);
 		} else {
 			m_Theme.reset(inTheme);
 		}

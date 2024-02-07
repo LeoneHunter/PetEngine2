@@ -344,6 +344,12 @@ namespace UI {
 
 		Tooltip(float2 inSize = {});
 		bool OnEvent(IEvent* inEvent) override;
+
+		Padding GetPaddings() const override;
+		Padding GetMargins() const override;
+
+	private:
+		const StyleClass* m_Style;
 	};
 
 
