@@ -20,7 +20,7 @@ namespace UI {
 	class Centered: public SingleChildContainer {
 		DEFINE_CLASS_META(Centered, SingleChildContainer)
 	public:
-		Centered(Widget* inParent, const std::string& inID = {});
+		Centered(WidgetAttachSlot& inSlot, const std::string& inID = {});
 		void OnParented(Widget* inParent) override;
 		bool OnEvent(IEvent* inEvent) override;
 	};
@@ -80,6 +80,7 @@ namespace UI {
 		Clip,		// Just clip without scrolling
 		Wrap,		// Wrap children on another line
 		ShrinkWrap, // Do not decrease containter size below content size
+					// Could be used with Scrolled widget to scroll content on overflow
 	};
 
 	struct FlexboxBuilder: public WidgetBuilder<FlexboxBuilder> {
@@ -97,7 +98,7 @@ namespace UI {
 		FlexboxBuilder& ExpandCrossAxis(bool bExpand) { m_ExpandCrossAxis = bExpand; return *this; }
 
 		// Finalizes creation
-		Flexbox*		Parent(Widget* inParent);
+		Flexbox*		Attach(WidgetAttachSlot& inSlot);
 
 	public:
 		
@@ -139,8 +140,6 @@ namespace UI {
 		Flexbox(const FlexboxBuilder& inDesc);
 
 		bool OnEvent(IEvent* inEvent) override;
-		void Parent(Widget* inChild) override;
-
 		void DebugSerialize(Debug::PropertyArchive& inArchive) override;
 
 		ContentDirection GetDirection() const { return m_Direction; }
@@ -162,16 +161,19 @@ namespace UI {
 	DEFINE_ENUM_TOSTRING_2(OverflowPolicy, Clip, Wrap)
 
 
-
 /*-------------------------------------------------------------------------------------------------*/
 //										TEXT
 /*-------------------------------------------------------------------------------------------------*/
-
+	
+	/*
+	* Displays not editable text
+	*/
 	class Text: public LayoutWidget {
 		DEFINE_CLASS_META(Text, LayoutWidget)
 	public:
 
-		Text(Widget* inParent, const std::string& inText, const std::string& inID = {});
+		Text(WidgetAttachSlot& inSlot, const std::string& inText, const std::string& inID = {});
+		Text(const std::string& inText, const std::string& inID = {});
 
 		void SetText(const std::string& inText);
 		bool OnEvent(IEvent* inEvent) override;
@@ -180,7 +182,6 @@ namespace UI {
 		const StyleClass*	m_Style;
 		std::string			m_Text;
 	};
-
 
 
 /*-------------------------------------------------------------------------------------------------*/
@@ -203,9 +204,11 @@ namespace UI {
 	struct ButtonBuilder: public WidgetBuilder<ButtonBuilder> {
 
 		ButtonBuilder&	Callback(const OnPressedFunc& inCallback) { m_Callback = inCallback; return *this; }
-		ButtonBuilder&	Child(Widget* inChild) { m_Child = inChild; return *this; }
+		ButtonBuilder&	Child(Widget* inChild) { Assertm(!m_Child, "Child already set"); m_Child = inChild; return *this; }
+		ButtonBuilder&	Text(const std::string& inText) { Assertm(!m_Child, "Child already set"); m_Child = new UI::Text(inText); return *this; }
+
 		// Finalizes creation
-		Button*			Parent(Widget* inParent);
+		Button*			Attach(WidgetAttachSlot& inSlot);
 
 	public:
 
@@ -229,13 +232,13 @@ namespace UI {
 		static ButtonBuilder Build() { return {}; }
 
 		// Helper named constructor to create a simple button with the text
-		static Button* TextButton(Widget* inParent, const std::string& inText, OnPressedFunc inCallback = {}) {
-			auto* btn = new Button(inParent, inCallback, inText);
-			auto* txt = new Text(btn, inText);
+		static Button* TextButton(WidgetAttachSlot& inSlot, const std::string& inText, OnPressedFunc inCallback = {}) {
+			auto* btn = new Button(inSlot, inCallback, inText);
+			auto* txt = new Text(btn->ChildSlot, inText);
 			return btn;
 		}
 
-		Button(Widget* inParent, OnPressedFunc inCallback = {}, const std::string& inID = {});
+		Button(WidgetAttachSlot& inSlot, OnPressedFunc inCallback = {}, const std::string& inID = {});
 		Button(const ButtonBuilder& inBuilder);
 
 		bool OnEvent(IEvent* inEvent) override;
@@ -259,6 +262,8 @@ namespace UI {
 	};
 
 
+
+
 	/*
 	* A line that can be moved by the user
 	* Calls a callback when dragged
@@ -271,7 +276,7 @@ namespace UI {
 		// @param float Delta - a dragged amount in one axis
 		using OnDraggedFunc = VoidFunction<MouseDragEvent*>;
 
-		Guideline(Widget* inParent, bool bIsVertical = true, OnDraggedFunc inCallback = {}, const std::string& inID = {});
+		Guideline(WidgetAttachSlot& inSlot, bool bIsVertical = true, OnDraggedFunc inCallback = {}, const std::string& inID = {});
 		void SetCallback(OnDraggedFunc inCallback) { m_Callback = inCallback; }
 
 		bool OnEvent(IEvent* inEvent) override;
@@ -303,10 +308,8 @@ namespace UI {
 		DEFINE_CLASS_META(SplitBox, Container)
 	public:
 
-		SplitBox(Widget* inParent, bool bHorizontal = true, const std::string& inID = {});
+		SplitBox(WidgetAttachSlot& inSlot, bool bHorizontal = true, const std::string& inID = {});
 
-		void Parent(Widget* inChild) override;
-		void Unparent(Widget* inChild) override;
 		bool OnEvent(IEvent* inEvent) override;
 		bool DispatchToChildren(IEvent* inEvent) override;
 		void DebugSerialize(Debug::PropertyArchive& inArchive) override;
@@ -319,26 +322,32 @@ namespace UI {
 
 		void UpdateLayout();
 		
+	public:
+
+		SingleWidgetSlot<LayoutWidget>	FirstSlot;
+		SingleWidgetSlot<LayoutWidget>	SecondSlot;
+
 	private:
-		AxisIndex					m_MainAxis;
-		float						m_SplitRatio;
-		std::unique_ptr<Widget>		m_First;
-		std::unique_ptr<Widget>		m_Second;
-		std::unique_ptr<Guideline>	m_Separator;
+		SingleWidgetSlot<Guideline>		m_Separator;
+		AxisIndex						m_MainAxis;
+		float							m_SplitRatio;
 	};
 
 
 
 
 
-
+	/*
+	* Simple container for tooltip
+	* Wraps it's content
+	*/
 	class Tooltip: public SingleChildContainer {
 		DEFINE_CLASS_META(Tooltip, SingleChildContainer)
 	public:
 
 		static Tooltip* Text(const std::string& inText) {
 			auto tooltip = new Tooltip();
-			auto text = new UI::Text(tooltip, inText);
+			auto text = new UI::Text(tooltip->ChildSlot, inText);
 			return tooltip;
 		}
 
@@ -360,14 +369,17 @@ namespace UI {
 		DEFINE_CLASS_META(TooltipSpawner, Controller)
 	public:
 
-		TooltipSpawner(Widget* inParent, const SpawnerFunction& inSpawner);
+		static TooltipSpawner* Text(const std::string& inText) {
+			return new TooltipSpawner([=]() { return Tooltip::Text(inText); });
+		}
+
+		TooltipSpawner(WidgetAttachSlot& inSlot, const SpawnerFunction& inSpawner);
+		TooltipSpawner(const SpawnerFunction& inSpawner);
 		LayoutWidget* Spawn();
 
 	private:
 		SpawnerFunction m_Spawner;
 	};
-
-
 
 
 

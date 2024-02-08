@@ -112,7 +112,7 @@ public:
 		Super::SetAxisMode(AxisModeShrink);
 		m_Style = Application::Get()->GetTheme()->Find("DebugOverlay");
 
-		Text = new UI::Text(this, "");
+		Text = new UI::Text(ChildSlot, "");
 	}
 
 	bool OnEvent(IEvent* inEvent) override {
@@ -706,7 +706,7 @@ public:
 	}
 
 	// Returns top level root widget containter
-	Widget* GetRoot() final { return m_Layers.RootWindow.get(); }
+	WidgetAttachSlot& GetRoot() final { return m_Layers.RootWindow->ChildSlot; }
 
 	void	Shutdown() final {}
 

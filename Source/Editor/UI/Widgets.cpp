@@ -5,13 +5,11 @@
 /*-------------------------------------------------------------------------------------------------*/
 //										CENTERED
 /*-------------------------------------------------------------------------------------------------*/
-UI::Centered::Centered(Widget* inParent, const std::string& inID) 
+UI::Centered::Centered(WidgetAttachSlot& inSlot, const std::string& inID)
 	: Super(inID)
 {
 	Super::SetAxisMode(AxisModeExpand);
-	if(inParent) {
-		inParent->Parent(this);
-	}
+	inSlot.Attach(this);
 }
 
 void UI::Centered::OnParented(Widget* inParent) {
@@ -44,7 +42,11 @@ bool UI::Centered::OnEvent(IEvent* inEvent) {
 /*-------------------------------------------------------------------------------------------------*/
 //										FLEXBOX
 /*-------------------------------------------------------------------------------------------------*/
-UI::Flexbox* UI::FlexboxBuilder::Parent(Widget* inParent) { m_Parent = inParent; return new Flexbox(*this); }
+UI::Flexbox* UI::FlexboxBuilder::Attach(WidgetAttachSlot& inSlot) { 
+	auto out = new Flexbox(*this); 
+	inSlot.Attach(out); 
+	return out; 
+}
 
 UI::Flexbox::Flexbox(const FlexboxBuilder& inBuilder)
 	: Super(inBuilder.m_ID)
@@ -53,13 +55,11 @@ UI::Flexbox::Flexbox(const FlexboxBuilder& inBuilder)
 	, m_Alignment(inBuilder.m_Alignment)
 	, m_OverflowPolicy(inBuilder.m_OverflowPolicy)
 {
-	//Assertm(inDesc.bExpandMainAxis || !inDesc.bExpandMainAxis && inDesc.JustifyContent == JustifyContent::Start, "If main axis is shrinked, justification has no effect");
-
 	const auto mainAxis = m_Direction == ContentDirection::Row ? 0 : 1;
 	Super::SetAxisMode(mainAxis, inBuilder.m_ExpandMainAxis ? AxisMode::Expand : AxisMode::Shrink);
 	Super::SetAxisMode(!mainAxis, inBuilder.m_ExpandCrossAxis ? AxisMode::Expand : AxisMode::Shrink);
 
-	if(inBuilder.m_Parent) inBuilder.m_Parent->Parent(this);
+	if(inBuilder.m_Slot) inBuilder.m_Slot->Attach(this);
 }
 
 bool UI::Flexbox::OnEvent(IEvent* inEvent) {
@@ -87,10 +87,6 @@ bool UI::Flexbox::OnEvent(IEvent* inEvent) {
 		event->DrawList->PushClipRect(Super::GetRect());
 	}
 	return Super::OnEvent(inEvent);
-}
-
-void UI::Flexbox::Parent(Widget* inChild) {
-	Super::Parent(inChild);
 }
 
 void UI::Flexbox::DebugSerialize(Debug::PropertyArchive& inArchive) {
@@ -312,20 +308,23 @@ void UI::Flexbox::UpdateLayout() {
 /*-------------------------------------------------------------------------------------------------*/
 //										BUTTON
 /*-------------------------------------------------------------------------------------------------*/
-UI::Button* UI::ButtonBuilder::Parent(Widget* inParent) {
-	m_Parent = inParent;
+UI::Button* UI::ButtonBuilder::Attach(WidgetAttachSlot& inSlot) {
+	WidgetAttachSlot* slot = &inSlot;
+
+	if(m_Tooltip) {
+		inSlot.Attach(m_Tooltip);
+		m_Slot = &m_Tooltip->ChildSlot;
+	}
 	return new UI::Button(*this);
 }
 
-UI::Button::Button(Widget* inParent, OnPressedFunc inCallback, const std::string& inID)
+UI::Button::Button(WidgetAttachSlot& inSlot, OnPressedFunc inCallback, const std::string& inID)
 	: Super(inID)
 	, m_Style(Application::Get()->GetTheme()->Find(GetClassName().data()))
 	, m_State(ButtonState::Normal)
 	, m_Callback(inCallback)
 {
-	if(inParent) {
-		inParent->Parent(this);
-	}
+	inSlot.Attach(this);
 }
 
 UI::Button::Button(const ButtonBuilder& inBuilder)
@@ -333,10 +332,9 @@ UI::Button::Button(const ButtonBuilder& inBuilder)
 	, m_Style(Application::Get()->GetTheme()->Find(GetClassName().data()))
 	, m_State(ButtonState::Normal)
 	, m_Callback(inBuilder.m_Callback) 
-{
-	if(inBuilder.m_Parent) {
-		inBuilder.m_Parent->Parent(this);
-	}
+{	
+	ChildSlot.Attach(inBuilder.m_Child);
+	inBuilder.m_Slot->Attach(this);
 }
 
 bool UI::Button::OnEvent(IEvent* inEvent) {
@@ -412,17 +410,18 @@ UI::Padding UI::Button::GetMargins() const {
 /*-------------------------------------------------------------------------------------------------*/
 //										TEXT
 /*-------------------------------------------------------------------------------------------------*/
-UI::Text::Text(Widget* inParent, const std::string& inText, const std::string& inID)
+UI::Text::Text(const std::string& inText, const std::string& inID /*= {}*/)
 	: Super(inID)
-	, m_Style(Application::Get()->GetTheme()->Find(GetClassName().data())) 
-	, m_Text(inText)
+	, m_Style(Application::Get()->GetTheme()->Find(GetClassName().data()))
+	, m_Text(inText) 
 {
 	const auto size = m_Style->Find<TextStyle>()->CalculateTextSize(m_Text);
 	Super::SetSize(size);
+}
 
-	if(inParent) {
-		inParent->Parent(this);
-	}
+UI::Text::Text(WidgetAttachSlot& inSlot, const std::string& inText, const std::string& inID)
+	: Text(inText, inID) {
+	inSlot.Attach(this);
 }
 
 void UI::Text::SetText(const std::string& inText) {
@@ -463,13 +462,13 @@ bool UI::Text::OnEvent(IEvent* inEvent) {
 /*-------------------------------------------------------------------------------------------------*/
 //										GUIDELINE
 /*-------------------------------------------------------------------------------------------------*/
-UI::Guideline::Guideline(Widget* inParent, bool bIsVertical /*= true*/, OnDraggedFunc inCallback /*= {}*/, const std::string& inID /*= {}*/) 
+UI::Guideline::Guideline(WidgetAttachSlot& inSlot, bool bIsVertical /*= true*/, OnDraggedFunc inCallback /*= {}*/, const std::string& inID /*= {}*/) 
 	: Super(std::string(inID))
 	, m_MainAxis(bIsVertical ? AxisY : AxisX)
 	, m_State(ButtonState::Normal)
 	, m_Callback(inCallback)
 {
-	if(inParent) inParent->Parent(this);
+	inSlot.Attach(this);
 }
 
 bool UI::Guideline::OnEvent(IEvent* inEvent) {
@@ -527,49 +526,22 @@ bool UI::Guideline::OnEvent(IEvent* inEvent) {
 /*-------------------------------------------------------------------------------------------------*/
 //										SPLITBOX
 /*-------------------------------------------------------------------------------------------------*/
-UI::SplitBox::SplitBox(Widget* inParent, bool bHorizontal /*= true*/, const std::string& inID /*= {}*/) 
+UI::SplitBox::SplitBox(WidgetAttachSlot& inSlot, bool bHorizontal /*= true*/, const std::string& inID /*= {}*/) 
 	: Super(inID)
 	, m_MainAxis(bHorizontal ? AxisX : AxisY)
 	, m_SplitRatio(0.5f)
+	, FirstSlot(this)
+	, SecondSlot(this)
+	, m_Separator(this)
 {
 	new Guideline(
-		this,
+		m_Separator,
 		bHorizontal,
 		[this](MouseDragEvent* inDragEvent) { OnSeparatorDragged(inDragEvent); },
 		std::string(Super::GetID()).append("::Separator"));
 
 	Super::SetAxisMode(AxisModeExpand);
-	if(inParent) inParent->Parent(this);
-}
-
-void UI::SplitBox::Parent(Widget* inChild) {
-	Assert(inChild && !m_First || !m_Second);
-
-	if(!m_Separator) {
-		m_Separator.reset(inChild->As<Guideline>());
-		m_Separator->OnParented(this);
-
-	} else  if(!m_First) {
-		m_First.reset(inChild);
-		m_First->OnParented(this);
-
-	} else if(!m_Second) {
-		m_Second.reset(inChild);
-		m_Second->OnParented(this);
-
-	} else {
-		Assertm(false, "A Splitbox can contain only two children");
-	}
-}
-
-void UI::SplitBox::Unparent(Widget* inChild) {
-	Assert(inChild && inChild == m_First.get() || inChild == m_Second.get());
-
-	if(inChild == m_First.get()) {
-		m_First.release();
-	} else {
-		m_Second.release();
-	}
+	inSlot.Attach(this);
 }
 
 bool UI::SplitBox::OnEvent(IEvent* inEvent) {
@@ -594,14 +566,14 @@ bool UI::SplitBox::DispatchToChildren(IEvent* inEvent) {
 	bool bHandled = false;
 	bool bBroadcast = inEvent->IsBroadcast();
 
-	if(m_First) {
-		bHandled = m_First->OnEvent(inEvent);
+	if(FirstSlot) {
+		bHandled = FirstSlot->OnEvent(inEvent);
 	}
 
 	if(bHandled && !bBroadcast) return true;
 		
-	if(m_Second) {
-		bHandled = m_Second->OnEvent(inEvent);
+	if(SecondSlot) {
+		bHandled = SecondSlot->OnEvent(inEvent);
 	}
 
 	if(bHandled && !bBroadcast) return true;
@@ -622,7 +594,7 @@ void UI::SplitBox::DebugSerialize(Debug::PropertyArchive& inArchive) {
 
 UI::VisitResult UI::SplitBox::VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive) {
 	for(auto i = 0; i < 3; ++i) {
-		auto* child = i == 0 ? m_First.get() : i == 1 ? m_Separator.get() : m_Second.get();
+		auto* child = i == 0 ? FirstSlot.Get() : i == 1 ? m_Separator.Get() : SecondSlot.Get();
 
 		const auto result = inVisitor(child);
 		if(!result.bContinue) return VisitResultExit;
@@ -653,21 +625,21 @@ void UI::SplitBox::UpdateLayout() {
 
 	LayoutWidget* firstLayoutWidget = nullptr;
 
-	if(m_First) {
-		firstLayoutWidget = m_First->As<LayoutWidget>();
+	if(FirstSlot) {
+		firstLayoutWidget = FirstSlot->As<LayoutWidget>();
 
 		if(!firstLayoutWidget) {
-			firstLayoutWidget = m_First->GetChild<LayoutWidget>();
+			firstLayoutWidget = FirstSlot->GetChild<LayoutWidget>();
 		}
 	}
 
 	LayoutWidget* secondLayoutWidget = nullptr;
 
-	if(m_Second) {
-		secondLayoutWidget = m_Second->As<LayoutWidget>();
+	if(SecondSlot) {
+		secondLayoutWidget = SecondSlot->As<LayoutWidget>();
 
 		if(!secondLayoutWidget) {
-			secondLayoutWidget = m_Second->GetChild<LayoutWidget>();
+			secondLayoutWidget = SecondSlot->GetChild<LayoutWidget>();
 		}
 	}
 
@@ -774,11 +746,14 @@ UI::Padding UI::Tooltip::GetMargins() const {
 
 
 
-UI::TooltipSpawner::TooltipSpawner(Widget* inParent, const SpawnerFunction& inSpawner) 
+UI::TooltipSpawner::TooltipSpawner(const SpawnerFunction& inSpawner)
 	: Super()
-	, m_Spawner(inSpawner)
+	, m_Spawner(inSpawner) {}
+
+UI::TooltipSpawner::TooltipSpawner(WidgetAttachSlot& inSlot, const SpawnerFunction& inSpawner) 
+	: TooltipSpawner(inSpawner)
 {
-	if(inParent) inParent->Parent(this);
+	inSlot.Attach(this);
 }
 
 UI::LayoutWidget* UI::TooltipSpawner::Spawn() {

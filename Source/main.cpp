@@ -13,7 +13,7 @@ void CreateTheme() {
 	// Button
 	{
 		auto& buttonStyle = theme->Add("Button"); {
-			buttonStyle.Add<LayoutStyle>("Normal").SetMargins(10, 5).SetPaddings(10, 5);
+			buttonStyle.Add<LayoutStyle>("Normal").SetMargins(5, 5).SetPaddings(5, 5);
 			buttonStyle.Add<LayoutStyle>("Hovered", "Normal");
 			buttonStyle.Add<LayoutStyle>("Pressed", "Normal");
 
@@ -30,67 +30,47 @@ void CreateTheme() {
 	Application::Get()->SetTheme(theme);
 }
 
-void BuildSimple() {
-	using namespace UI;
-
-	auto* root = g_Application->GetRoot();
-
-	auto centered = new Centered(root); {
-		Button::TextButton(new TooltipSpawner(centered, []() { return Tooltip::Text("Tooltip"); }), "Button 1");
-	}	
-}
-
-void BuildFlexboxOverflowTestLayout() {
-	using namespace UI;
-
-	auto* root = g_Application->GetRoot();
-
-	/// Test expand and align on cross axis
-	auto centered = new Centered(root); {
-
-		auto splitBox = new SplitBox(centered, true, "Splitbox"); {
-
-			auto row = Flexbox::Row().ID("Main Row").Parent(splitBox); {
-				Button::TextButton(new TooltipSpawner(row, []() { return Tooltip::Text("Tooltip"); }), "Button 1");
-				Button::TextButton(new TooltipSpawner(row, []() { return Tooltip::Text("Tooltip"); }), "Button 2");
-			}
-
-			auto placeholder = Button::TextButton(new TooltipSpawner(splitBox, []() { return Tooltip::Text("Tooltip"); }), "Button 1");
-		}
-	}	
-}
-
 void BuildAppScaffold() {
 	using namespace UI;
 
-	auto* root = g_Application->GetRoot(); {
+	auto& root = g_Application->GetRoot(); {
 
 		auto* centered = new Centered(root, "Root_Centered"); {
 
-			auto* column = Flexbox::Build()
+			auto* column = FlexboxBuilder()
 				.ID("Main_Column")
 				.Direction(ContentDirection::Column)
 				.OverflowPolicy(OverflowPolicy::Clip)
 				.JustifyContent(JustifyContent::Center)
 				.ExpandMainAxis(true)
 				.ExpandCrossAxis(true)
-				.Parent(centered);
+				.Attach(centered->ChildSlot);
 			{
-				auto menuBar = Flexbox::Row().ID("Menu Bar").Parent(column); {
+				auto* menuBar = Flexbox::Row().ID("Menu Bar").Attach(column->ChildrenSlot); {
 
-					auto leftGroup = Flexbox::Row().ID("Left_Group").Parent(menuBar); {
-						Button::TextButton(leftGroup, "Menu Item 1");
-						Button::TextButton(leftGroup, "Menu Item 2");
+					auto* leftGroup = Flexbox::Row()
+						.ID("Left_Group")
+						.Attach(menuBar->ChildrenSlot);
+					{
+						Button::TextButton(leftGroup->ChildrenSlot, "Menu Item 1");
+						Button::TextButton(leftGroup->ChildrenSlot, "Menu Item 2");
 					}
 
-					auto rightGroup = Flexbox::Row().ID("Right_Group").JustifyContent(UI::JustifyContent::End).Parent(menuBar); {
-						Button::TextButton(rightGroup, "Menu Item 3");
-						Button::TextButton(rightGroup, "Menu Item 4");
+					auto* rightGroup = Flexbox::Row()
+						.ID("Right_Group")
+						.JustifyContent(UI::JustifyContent::End)
+						.Attach(menuBar->ChildrenSlot); 
+					{
+						Button::TextButton(rightGroup->ChildrenSlot, "Menu Item 3");
+						Button::TextButton(rightGroup->ChildrenSlot, "Menu Item 4");
 					}
 				}
 
-				auto middleRow = Flexbox::Row().ID("Main_Middle_Row").ExpandCrossAxis(true).Parent(column); {
-
+				auto* middleRow = Flexbox::Row()
+					.ID("Main_Middle_Row")
+					.ExpandCrossAxis(true)
+					.Attach(column->ChildrenSlot); 
+				{
 					struct ToolbarController {
 
 						void SetToolbarWindow(LayoutWidget* inWindow) {
@@ -110,22 +90,28 @@ void BuildAppScaffold() {
 					private:
 						LayoutWidget* m_Toolbar = nullptr;
 					};
-					auto toolbarController = new ToolbarController();
+					auto* toolbarController = new ToolbarController();
 
+					auto* leftSplitColumn = Flexbox::Column().ID("leftSplitColumn").Attach(middleRow->ChildrenSlot); {
 
-					auto leftSplitColumn = Flexbox::Column().ID("leftSplitColumn").Parent(middleRow); {
-						auto* toolbarBtn1 = Button::TextButton(new TooltipSpawner(leftSplitColumn, []() { return Tooltip::Text("Press me to toggle toolbar"); }), "Tool 1\nOpen sidebar");
+						//auto* tooltip = new TooltipSpawner(leftSplitColumn->ChildrenSlot, []() { return Tooltip::Text("Press me to toggle toolbar"); });
+						//auto* toolbarBtn1 = Button::TextButton(tooltip->ChildSlot, "Tool 1\nOpen sidebar");
 
-						toolbarBtn1->SetCallback([=](bool bPressed) {
-							if(!bPressed) return;
-							static auto bVisible = true;
-							bVisible = !bVisible;
+						auto* toolbarBtn11 = ButtonBuilder()
+							.ID("Btn 1")
+							.Text("Tool 1\nOpen sidebar")
+							.Tooltip(TooltipSpawner::Text("Opens a toolbar"))
+							.Callback([=](bool bPressed) {
+								if(!bPressed) return;
+								static auto bVisible = true;
+								bVisible = !bVisible;
 
-							if(bVisible) toolbarController->OpenToolbar();
-							else toolbarController->CloseToolbar();
-						});
-
-						auto* toolbarBtn2 = Button::TextButton(leftSplitColumn, "Tool 2\nIncrease size");
+								if(bVisible) toolbarController->OpenToolbar();
+								else toolbarController->CloseToolbar();
+							})							
+							.Attach(leftSplitColumn->ChildrenSlot);													
+							
+						auto* toolbarBtn2 = Button::TextButton(leftSplitColumn->ChildrenSlot, "Tool 2\nIncrease size");
 
 						toolbarBtn2->SetCallback([btn = toolbarBtn2](bool bPressed) {
 							if(!bPressed) return;
@@ -137,26 +123,120 @@ void BuildAppScaffold() {
 						});
 					}
 
-					auto leftToolboxSplitBox = new SplitBox(middleRow, true, "Left_Tool_Main_Area_Split"); {
+					auto* leftToolboxSplitBox = new SplitBox(middleRow->ChildrenSlot, true, "Left_Tool_Main_Area_Split"); {
 
-						auto leftToolboxColumn = Flexbox::Column().ID("Left_Toolbar_Column").ExpandCrossAxis(true).Parent(leftToolboxSplitBox); {
-							Button::TextButton(leftToolboxColumn, "Tool Content");
+						auto* leftToolboxColumn = Flexbox::Column().ID("Left_Toolbar_Column").ExpandCrossAxis(true).Attach(leftToolboxSplitBox->FirstSlot); {
+							Button::TextButton(leftToolboxColumn->ChildrenSlot, "Tool Content");
 						}
 						toolbarController->SetToolbarWindow(leftToolboxColumn);
 
-						auto rightMainAreaColumn = Flexbox::Column().ID("Right_Main_Area_Column").ExpandCrossAxis(true).Parent(leftToolboxSplitBox); {
-							Button::TextButton(rightMainAreaColumn, "Main Area Content");
+						auto* rightMainAreaColumn = Flexbox::Column().ID("Right_Main_Area_Column").ExpandCrossAxis(true).Attach(leftToolboxSplitBox->SecondSlot); {
+							Button::TextButton(rightMainAreaColumn->ChildrenSlot, "Main Area Content");
 						}
 					}
 				}
 
-				auto bottomRow = Flexbox::Row().ID("Status_Bar_Row").Parent(column); {
-					auto* b = Button::TextButton(bottomRow, "Status bar");
+				auto* bottomRow = Flexbox::Row().ID("Status_Bar_Row").Attach(column->ChildrenSlot); {
+					auto* b = Button::TextButton(bottomRow->ChildrenSlot, "Status bar");
 				}
 			}
 		}
 	}
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//class BreadCrumbsList: public UI::Controller {
+//public:
+//
+//	BreadCrumbsList(FilesystemRootController* inRootController) {
+//
+//
+//	}
+//
+//
+//};
+//
+//class FileTiles: public UI::Controller {
+//public:
+//
+//	FileTiles(FilesystemRootController* inRootController) {
+//
+//
+//	}
+//
+//	void AddItem(FileInfo inFIle) {
+//		auto itemView = new ItemView(inFIle);
+//		Container->ChildrenSlot.Attach(itemView);
+//	}
+//
+//	void OnItemSelected(ItemView* inItem) {
+//
+//	}
+//
+//	void OnItemClicked(ItemVIew* inItem) {
+//		filelist = Filesystem::GetFilesInDirectory(inFile.IsDirectory());
+//		fileTiles.Clear();
+//
+//		auto chidlrenList;
+//		Build();		
+//
+//		RootController->OnItemOpened(Path);
+//	}
+//
+//	void Build(childrenlist) {
+//		{
+//			for(auto file : filelist) {
+//				fileTiles.AddItem(file);
+//			}
+//		}
+//	}
+//
+//	FilesystemRootController* RootController;
+//	Flexbox* Container;
+//};
+//
+//class FilesystemRootController: public UI::Controller {
+//public:
+//
+//	FilesystemRootController(const Path& inRootPath) {
+//
+//	}
+//
+//	Widget* Build() {
+//		auto fileTiles = new FileTiles(this);
+//		auto breadCrumbs = new BreadCrumbsList(this);
+//		auto forwardBtn = new Button(setCallback());
+//		auto backBtn = new Button(setCallback());
+//		auto upBtn = new Button();
+//
+//
+//		auto flexbox = new Flexbox();
+//		flexbox->ChildrenSlot.Attach({fileTiles, breadCrumbs});
+//	}
+//
+//	void OnFileClicked(Path inFile) {
+//		breadCrumbs.SetPath(inFile);
+//		fileTiles.OpenDirectory(inFile);
+//	}
+//
+//	Path m_Rootpath;
+//};
+
+
+
+
 
 int main(int argc, char* argv[]) {
 
@@ -167,7 +247,6 @@ int main(int argc, char* argv[]) {
 	g_Application = Application::Create("App", 1800, 900);
 
 	CreateTheme();
-	//BuildFlexboxOverflowTestLayout();
 	BuildAppScaffold();
 
 	while(g_Application->Tick());

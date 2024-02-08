@@ -144,6 +144,8 @@ namespace UI {
 	class Style;
 	class LayoutWidget;
 	class Theme;
+	class Tooltip;
+	class TooltipSpawner;
 
 	template<typename T>
 	concept WidgetSubclass = std::derived_from<T, Widget>;
@@ -154,6 +156,7 @@ namespace UI {
 
 	using Margin = RectSides<u32>;
 	using Padding = RectSides<u32>;
+	using ChildSlotIndex = size_t;
 
 	enum class Axis { X, Y, Both };
 	constexpr AxisIndex ToAxisIndex(Axis inAxis) { assert(inAxis != Axis::Both); return inAxis == Axis::X ? AxisX : AxisY; }
@@ -442,13 +445,36 @@ namespace UI {
 	DEFINE_ENUM_FLAGS_OPERATORS(WidgetFlags)	
 	DEFINE_ENUMFLAGS_TOSTRING_4(WidgetFlags, None, Hidden, AxisXExpand, AxisYExpand)
 
+
+
+	/*
+	* A slot in which a widget is added
+	* A widget can have multiple slots
+	*/
+	class WidgetAttachSlot {
+	public:
+		virtual ~WidgetAttachSlot() = default;
+
+		virtual void Attach(Widget* inChild) = 0;
+		virtual void Detach(Widget* inChild) = 0;
+
+		WidgetAttachSlot(Widget* inOwner)
+			: m_Owner(inOwner) {}
+
+	protected:
+		Widget* m_Owner;
+	};
+
+
+
 	/*
 	* Configuration data for a widget base class
 	*/
 	struct WidgetConfig {
-		std::string	m_ID;
-		std::string	m_StyleClass;
-		Widget*		m_Parent = nullptr;
+		std::string			m_ID;
+		std::string			m_StyleClass;
+		TooltipSpawner*		m_Tooltip = nullptr;
+		WidgetAttachSlot*	m_Slot = nullptr;
 	};
 
 	/*
@@ -460,6 +486,7 @@ namespace UI {
 
 		T& ID(const std::string& inID) { m_ID = inID; return static_cast<T&>(*this); }
 		T& StyleClass(const std::string& inStyleClass) { m_StyleClass = inStyleClass; return static_cast<T&>(*this); }
+		T& Tooltip(TooltipSpawner* inTooltip) { m_Tooltip = inTooltip; return static_cast<T&>(*this); }
 
 		constexpr operator WidgetConfig() const { return static_cast<WidgetConfig>(*this); }
 	};
@@ -506,9 +533,6 @@ namespace UI {
 		virtual				~Widget() = default;
 
 		void				Destroy() {
-			if(m_Parent) {
-				m_Parent->Unparent(this);
-			}
 			/// TODO notify the system that we are deleted
 		}
 		
@@ -522,34 +546,30 @@ namespace UI {
 				if(!result.bContinue || !bRecursive) return;
 			}
 		}
+
+		// Attaches this widget to a parent slot
+		void				Attach(WidgetAttachSlot& inSlot) { inSlot.Attach(this); }
 		
 		/*
 		* Called by a parent when widget is being parented
 		* Here a widget can execute subclass specific parenting functionality
 		* For example a LayoutWidget which has position and size can notify the parent that it needs to update it's layout
 		* We cannot do it directly in the Parent() function because a LayoutWidget child can be parented later down the tree
-		* and it can be wrapped in a few widgets which are not LayoutWidget subclasses
+		* and it can be wrapped in a few controller widgets
 		*/
-		virtual void		OnParented(Widget* inParent) { 
-			Assert(inParent);
-			
-			if(m_Parent && m_Parent != inParent) {
-				m_Parent->Unparent(this);
-			}
-			m_Parent = inParent;
-		};
+		virtual void		OnParented(Widget* inParent) { m_Parent = inParent; };
 
 		/*
-		* Called by a parent when widget is being parented
-		* Here a widget can execute subclass specific unparenting functionality. 
+		* Called by a parent when widget has been orphaned from parent
+		* Here a widget can execute subclass specific functionality.
+		* Generally a widget is not deleted on this step
 		*/
-		virtual void		OnUnparented() { m_Parent = nullptr; }
+		virtual void		OnOrphaned() { m_Parent = nullptr; }
 
-		// Could be called by a widget when it wants to be a child
-		// Or could be called by a subclass to add a child
-		virtual void		Parent(Widget* inChild) { assert(false && "Calling 'Parent()' on a widget which cannot have children"); };
-		virtual void		Unparent(Widget* inChild) { assert(false && "Calling 'Unparent()' on a widget which cannot have children"); }
+		virtual void		ParentChild(Widget* inChild, WidgetAttachSlot*) {}
 
+		virtual void		OrphanChild(Widget* inChild) {}
+			 
 		virtual bool		OnEvent(IEvent* inEvent) {	
 			if(auto* event = inEvent->As<DebugLogEvent>()) {
 				event->Archive->PushObject(GetClassName(), this, GetParent());
@@ -619,6 +639,75 @@ namespace UI {
 	};
 
 
+	
+	/*
+	* Slot for a single child
+	*/
+	template<typename T = Widget>
+	class SingleWidgetSlot: public WidgetAttachSlot {
+	public:
+
+		SingleWidgetSlot(Widget* inOwner)
+			: WidgetAttachSlot(inOwner) {}
+
+		void Attach(Widget* inChild) override {
+			if(!inChild || inChild == m_Child.get()) return;
+			m_Child.reset(inChild->As<T>());
+			m_Child->OnParented(m_Owner);
+		}
+
+		void Detach(Widget* inChild) override {
+			m_Child.release();
+			inChild->OnOrphaned();
+		}
+
+		operator bool() const { return m_Child != nullptr; }
+
+		SingleWidgetSlot& operator=(Widget* inWidget) {
+			Attach(inWidget);
+			return *this;
+		}
+
+		T* operator->() { return m_Child.get(); }
+
+		T* Get() { return m_Child.get(); }
+
+	public:
+		std::unique_ptr<T> m_Child;
+	};
+
+	template<typename T>
+	bool operator==(const SingleWidgetSlot<T>& inSlot, const Widget* inWidget) {
+		return inSlot.Get() == inWidget;
+	}
+
+
+
+	class MultiChildSlot: public WidgetAttachSlot {
+	public:
+
+		MultiChildSlot(Widget* inOwner)
+			: WidgetAttachSlot(inOwner) {}
+
+		void Attach(Widget* inChild) override {
+			Assert(inChild && this);
+			m_Children.emplace_back(inChild);
+			inChild->OnParented(m_Owner);
+		}
+
+		void Detach(Widget* inChild) override {
+			m_Children.erase(std::ranges::find_if(m_Children, 
+				[&](const auto& inPtr) { return inPtr.get() == inChild; }));
+			inChild->OnOrphaned();
+		}
+
+		auto& Get() { return m_Children; }
+
+		size_t Size() const { return m_Children.size(); }
+
+	public:
+		std::vector<std::unique_ptr<Widget>> m_Children;
+	};
 
 
 
@@ -633,24 +722,8 @@ namespace UI {
 
 		Controller(const std::string& inID = {})
 			: Widget(inID)
-			, m_Child(nullptr) 
+			, ChildSlot(this) 
 		{}
-
-		void Parent(Widget* inChild) override {
-			Assert(inChild);
-			if(m_Child.get() == inChild) return;
-			m_Child.reset(inChild);
-			m_Child->OnParented(this);
-		}
-
-		void Unparent(Widget* inChild) override {
-			Assert(inChild);
-
-			if(m_Child.get() == inChild) {
-				m_Child.release();
-				m_Child->OnUnparented();
-			}
-		}
 
 		bool OnEvent(IEvent* inEvent) override {
 			// ChildLayoutEvent goes up
@@ -662,24 +735,24 @@ namespace UI {
 			} else if(inEvent->GetCategory() == EventCategory::Debug) {
 				Super::OnEvent(inEvent);
 			}
-			return m_Child ? m_Child->OnEvent(inEvent) : false;
+			return ChildSlot ? ChildSlot->OnEvent(inEvent) : false;
 		};
 
 		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = true) final {
-			if(!m_Child) return VisitResultContinue;
+			if(!ChildSlot) return VisitResultContinue;
 
-			const auto result = inVisitor(m_Child.get());
+			const auto result = inVisitor(ChildSlot.Get());
 			if(!result.bContinue) return VisitResultExit;
 
 			if(bRecursive && !result.bSkipChildren) {
-				const auto result = m_Child->VisitChildren(inVisitor, bRecursive);
+				const auto result = ChildSlot->VisitChildren(inVisitor, bRecursive);
 				if(!result.bContinue) return {false};
 			}
 			return VisitResultContinue;
 		}
 
-	private:
-		std::unique_ptr<Widget> m_Child;
+	public:
+		SingleWidgetSlot<> ChildSlot;
 	};
 
 
@@ -709,7 +782,7 @@ namespace UI {
 			}
 		}
 
-		void			OnUnparented() override {
+		void			OnOrphaned() override {
 			auto parent = GetNearestLayoutParent();
 
 			if(parent) {
@@ -719,7 +792,7 @@ namespace UI {
 				onChild.Subtype = ChildLayoutEvent::OnRemoved;
 				parent->OnEvent(&onChild);
 			}
-			Super::OnUnparented();
+			Super::OnOrphaned();
 		}
 
 		bool			OnEvent(IEvent* inEvent) override {
@@ -921,16 +994,11 @@ namespace UI {
 
 		SingleChildContainer(const std::string& inID = {})
 			: Container(inID)
-			, m_Child(nullptr)
+			, ChildSlot(this)
 		{}
 
 		// Called by a subclass or a widget which wants to be a child
-		void Parent(Widget* inChild) override {
-			Assert(inChild);
-			if(m_Child.get() == inChild) return;
-			m_Child.reset(inChild);
-			m_Child->OnParented(this);
-
+		void ParentChild(Widget* inChild, WidgetAttachSlot*) override {
 			const auto axisMode = Super::GetAxisMode();
 
 			for(auto axis = 0; axis != 2; ++axis) {
@@ -943,30 +1011,21 @@ namespace UI {
 			}
 		}
 
-		void Unparent(Widget* inChild) override {
-			Assert(inChild);
-
-			if(m_Child.get() == inChild) {
-				m_Child.release();
-				m_Child->OnUnparented();
-			}
-		}
-
 		bool DispatchToChildren(IEvent* inEvent) override {
-			if(m_Child) {
-				return m_Child->OnEvent(inEvent);
+			if(ChildSlot) {
+				return ChildSlot->OnEvent(inEvent);
 			}
 			return false;
 		}
 
 		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = true) final {
-			if(!m_Child) return VisitResultContinue;
+			if(!ChildSlot) return VisitResultContinue;
 
-			const auto result = inVisitor(m_Child.get());
+			const auto result = inVisitor(ChildSlot.Get());
 			if(!result.bContinue) return VisitResultExit;
 
 			if(bRecursive && !result.bSkipChildren) {
-				const auto result = m_Child->VisitChildren(inVisitor, bRecursive);
+				const auto result = ChildSlot->VisitChildren(inVisitor, bRecursive);
 				if(!result.bContinue) return VisitResultExit;
 			}
 			return VisitResultContinue;
@@ -989,13 +1048,13 @@ namespace UI {
 
 		// Update child's size if its expanded
 		void NotifyChildOnSizeChanged() {
-			if(!m_Child) return;
+			if(!ChildSlot) return;
 			const auto paddings = GetPaddings();
 
 			ParentLayoutEvent layoutEvent;
 			layoutEvent.Parent = this;
 			layoutEvent.Constraints = Rect(paddings.TL(), GetSize() - paddings.Size());
-			m_Child->OnEvent(&layoutEvent);
+			ChildSlot->OnEvent(&layoutEvent);
 		}
 
 		// Centers our child when child size changes
@@ -1077,9 +1136,9 @@ namespace UI {
 			}
 			return bSizeChanged;
 		}
-
-	private:
-		std::unique_ptr<Widget> m_Child;
+	
+	public:
+		SingleWidgetSlot<> ChildSlot;
 	};
 
 
@@ -1093,26 +1152,11 @@ namespace UI {
 
 		MultiChildContainer(const std::string& inID = {})
 			: Container(inID) 
+			, ChildrenSlot(this)
 		{}
 
-		void Parent(Widget* inChild) override {
-			Assert(inChild);
-			auto& newChild = m_Children.emplace_back(inChild);
-			newChild->OnParented(this);
-		}
-
-		void Unparent(Widget* inChild) override {
-			Assert(inChild);
-
-			auto it = std::ranges::find_if(m_Children, [&](const auto& Child) { return Child.get() == inChild; });
-			Assert(it != m_Children.end());
-			it->release();
-			m_Children.erase(it);
-			inChild->OnUnparented();
-		}
-
 		bool DispatchToChildren(IEvent* inEvent) override {
-			for(auto& child : m_Children) {
+			for(auto& child : ChildrenSlot.Get()) {
 				auto result = child->OnEvent(inEvent);
 
 				if(result && !inEvent->IsBroadcast()) {
@@ -1123,9 +1167,9 @@ namespace UI {
 		}
 
 		void GetVisibleChildren(std::vector<LayoutWidget*>* outVisibleChildren) {
-			outVisibleChildren->reserve(m_Children.size());
+			outVisibleChildren->reserve(ChildrenSlot.Size());
 
-			for(auto& child : m_Children) {
+			for(auto& child : ChildrenSlot.Get()) {
 				auto layoutChild = child->As<LayoutWidget>();
 
 				if(!layoutChild) {
@@ -1140,7 +1184,7 @@ namespace UI {
 
 		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = true) final {
 
-			for(auto& child : m_Children) {
+			for(auto& child : ChildrenSlot.Get()) {
 				const auto result = inVisitor(child.get());
 				if(!result.bContinue) return VisitResultExit;
 
@@ -1157,8 +1201,8 @@ namespace UI {
 			return Super::OnEvent(inEvent);
 		}
 
-	private:
-		std::vector<std::unique_ptr<Widget>> m_Children;
+	public:
+		MultiChildSlot ChildrenSlot;
 	};
 
 }
