@@ -33,11 +33,10 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
-# Binary directory
-[Bb]inary/
-
-# Build directory
-[Bb]uild/
+# Directories
+Build/
+Binary/
+Design/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/
