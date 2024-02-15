@@ -1,5 +1,79 @@
 #include "Widgets.h"
 #include "UI.h"
+#include "Runtime/System/Renderer/UIRenderer.h"
+
+
+/*-------------------------------------------------------------------------------------------------*/
+//										WINDOW
+/*-------------------------------------------------------------------------------------------------*/
+UI::Window* UI::WindowBuilder::Parent(Application* inApp) {
+	m_App = inApp;
+	return new Window(*this);
+}
+
+std::unique_ptr<UI::Window> UI::WindowBuilder::Create() {
+	return std::make_unique<UI::Window>(*this);
+}
+
+UI::Window::Window(Application* inApp, const std::string& inID, WindowFlags inFlags)
+	: Super(inID) 
+	, m_Flags(inFlags)
+	, m_Style(nullptr)
+{
+	Super::SetAxisMode(AxisModeExpand);
+	
+	if(m_Flags & WindowFlags::ShrinkToFit) {
+		Super::SetAxisMode(AxisModeShrink);
+	}
+
+	if(inApp)
+		inApp->ParentWindow(this);
+}
+
+UI::Window::Window(const WindowBuilder& inBuilder) 
+	: Super(inBuilder.m_ID)
+	, m_Flags(inBuilder.m_Flags)
+	, m_Style(UI::Application::Get()->GetTheme()->Find(inBuilder.m_StyleClass))
+{
+	Super::SetAxisMode(AxisModeExpand);
+	
+	if(m_Flags & WindowFlags::ShrinkToFit) {
+		Super::SetAxisMode(AxisModeShrink);
+	}
+	Super::SetOrigin(inBuilder.m_Pos);
+	Super::SetSize(inBuilder.m_Size);
+
+	if(inBuilder.m_App)
+		inBuilder.m_App->ParentWindow(this);
+}
+
+bool UI::Window::OnEvent(IEvent* inEvent) {
+
+	if(auto* event = inEvent->Cast<HoverEvent>(); event && !HasAnyWindowFlags(WindowFlags::Overlay | WindowFlags::Background)) {
+		return true;
+
+	} else if(auto* event = inEvent->Cast<MouseDragEvent>()) {
+		Super::SetOrigin(Super::GetOrigin() + event->MouseDelta);		
+		return true;
+
+	} else if(auto* event = inEvent->Cast<MouseButtonEvent>()) {
+
+		if(event->Button == MouseButton::ButtonLeft) {
+			return true;
+		}
+		return false;
+
+	} else if(auto * event = inEvent->Cast<ParentLayoutEvent>()) {
+		if(m_Flags & WindowFlags::Background)
+			Super::ExpandToParent(event);		
+		return Super::DispatchToChildren(inEvent);
+
+	} else if(auto* event = inEvent->Cast<DrawEvent>(); event && m_Style) {
+		event->DrawList->PushBox(Super::GetRect(), m_Style->Find<BoxStyle>());
+	}
+	return Super::OnEvent(inEvent);
+}
+
 
 
 /*-------------------------------------------------------------------------------------------------*/
@@ -9,7 +83,7 @@ UI::Centered::Centered(WidgetAttachSlot& inSlot, const std::string& inID)
 	: Super(inID)
 {
 	Super::SetAxisMode(AxisModeExpand);
-	inSlot.Attach(this);
+	inSlot.Parent(this);
 }
 
 void UI::Centered::OnParented(Widget* inParent) {
@@ -20,7 +94,7 @@ void UI::Centered::OnParented(Widget* inParent) {
 
 bool UI::Centered::OnEvent(IEvent* inEvent) {
 
-	if(auto* event = inEvent->As<ParentLayoutEvent>()) {
+	if(auto* event = inEvent->Cast<ParentLayoutEvent>()) {
 		const auto bSizeChanged = Super::ExpandToParent(event);
 
 		if(bSizeChanged) {
@@ -29,7 +103,7 @@ bool UI::Centered::OnEvent(IEvent* inEvent) {
 		}		
 		return true;
 
-	} else if(auto* event = inEvent->As<ChildLayoutEvent>()) {
+	} else if(auto* event = inEvent->Cast<ChildLayoutEvent>()) {
 		Super::HandleChildEvent(event);
 		Super::CenterChild(event);
 		return true;
@@ -42,9 +116,9 @@ bool UI::Centered::OnEvent(IEvent* inEvent) {
 /*-------------------------------------------------------------------------------------------------*/
 //										FLEXBOX
 /*-------------------------------------------------------------------------------------------------*/
-UI::Flexbox* UI::FlexboxBuilder::Attach(WidgetAttachSlot& inSlot) { 
+UI::Flexbox* UI::FlexboxBuilder::Parent(WidgetAttachSlot& inSlot) { 
 	auto out = new Flexbox(*this); 
-	inSlot.Attach(out); 
+	inSlot.Parent(out); 
 	return out; 
 }
 
@@ -59,18 +133,18 @@ UI::Flexbox::Flexbox(const FlexboxBuilder& inBuilder)
 	Super::SetAxisMode(mainAxis, inBuilder.m_ExpandMainAxis ? AxisMode::Expand : AxisMode::Shrink);
 	Super::SetAxisMode(!mainAxis, inBuilder.m_ExpandCrossAxis ? AxisMode::Expand : AxisMode::Shrink);
 
-	if(inBuilder.m_Slot) inBuilder.m_Slot->Attach(this);
+	if(inBuilder.m_Slot) inBuilder.m_Slot->Parent(this);
 }
 
 bool UI::Flexbox::OnEvent(IEvent* inEvent) {
 
-	if(auto* event = inEvent->As<ParentLayoutEvent>()) {
+	if(auto* event = inEvent->Cast<ParentLayoutEvent>()) {
 		// Update our size if expanded
 		Super::ExpandToParent(event);
 		UpdateLayout();
 		return true;
 
-	} else if(auto* event = inEvent->As<ChildLayoutEvent>()) {
+	} else if(auto* event = inEvent->Cast<ChildLayoutEvent>()) {
 
 		if(event->Subtype == ChildLayoutEvent::OnAdded) {
 			const auto crossAxis = m_Direction == ContentDirection::Row ? AxisY : AxisX;
@@ -82,7 +156,7 @@ bool UI::Flexbox::OnEvent(IEvent* inEvent) {
 		Super::NotifyParentOnSizeChanged();
 		return true;
 
-	} else if(auto* event = inEvent->As<DrawEvent>()) {
+	} else if(auto* event = inEvent->Cast<DrawEvent>()) {
 		event->DrawList->PushBox(Super::GetRect(), Colors::Blue, false);
 		event->DrawList->PushClipRect(Super::GetRect());
 	}
@@ -253,7 +327,7 @@ void UI::Flexbox::UpdateLayout() {
 	}
 
 	// Lay out children
-	float mainAxisCursor = paddings.TL()[mainAxisIndex];
+	auto mainAxisCursor = (float)paddings.TL()[mainAxisIndex];
 
 	if(m_JustifyContent == JustifyContent::Center ||
 		m_JustifyContent == JustifyContent::End || m_JustifyContent == JustifyContent::SpaceAround) {
@@ -308,11 +382,11 @@ void UI::Flexbox::UpdateLayout() {
 /*-------------------------------------------------------------------------------------------------*/
 //										BUTTON
 /*-------------------------------------------------------------------------------------------------*/
-UI::Button* UI::ButtonBuilder::Attach(WidgetAttachSlot& inSlot) {
+UI::Button* UI::ButtonBuilder::Parent(WidgetAttachSlot& inSlot) {
 	WidgetAttachSlot* slot = &inSlot;
 
 	if(m_Tooltip) {
-		inSlot.Attach(m_Tooltip);
+		inSlot.Parent(m_Tooltip);
 		m_Slot = &m_Tooltip->ChildSlot;
 	}
 	return new UI::Button(*this);
@@ -324,7 +398,7 @@ UI::Button::Button(WidgetAttachSlot& inSlot, OnPressedFunc inCallback, const std
 	, m_State(ButtonState::Normal)
 	, m_Callback(inCallback)
 {
-	inSlot.Attach(this);
+	inSlot.Parent(this);
 }
 
 UI::Button::Button(const ButtonBuilder& inBuilder)
@@ -333,8 +407,8 @@ UI::Button::Button(const ButtonBuilder& inBuilder)
 	, m_State(ButtonState::Normal)
 	, m_Callback(inBuilder.m_Callback) 
 {	
-	ChildSlot.Attach(inBuilder.m_Child);
-	inBuilder.m_Slot->Attach(this);
+	ChildSlot.Parent(inBuilder.m_Child);
+	inBuilder.m_Slot->Parent(this);
 }
 
 bool UI::Button::OnEvent(IEvent* inEvent) {
@@ -342,7 +416,7 @@ bool UI::Button::OnEvent(IEvent* inEvent) {
 	// Our size and position is handled there
 	// Our children usually is Icon or Text so no need to update children
 
-	if(auto* event = inEvent->As<HoverEvent>()) {
+	if(auto* event = inEvent->Cast<HoverEvent>()) {
 		
 		// Change state and style
 		if(event->bHovered) {
@@ -352,9 +426,9 @@ bool UI::Button::OnEvent(IEvent* inEvent) {
 		}
 		return true;
 
-	} if(auto* event = inEvent->As<MouseButtonEvent>()) {
+	} else if(auto* event = inEvent->Cast<MouseButtonEvent>()) {
 
-		if(event->Button == MouseButtonEnum::ButtonLeft) {
+		if(event->Button == MouseButton::ButtonLeft) {
 
 			if(event->bButtonPressed) {
 				m_State = ButtonState::Pressed;
@@ -369,12 +443,12 @@ bool UI::Button::OnEvent(IEvent* inEvent) {
 		}
 		return false;
 
-	} else if(auto* event = inEvent->As<ChildLayoutEvent>()) {
+	} else if(auto* event = inEvent->Cast<ChildLayoutEvent>()) {
 		Super::HandleChildEvent(event);
 		Super::NotifyParentOnSizeChanged();
 		return true;
 
-	} else if(auto* event = inEvent->As<DrawEvent>()) {
+	} else if(auto* event = inEvent->Cast<DrawEvent>()) {
 		event->DrawList->PushBox(Super::GetRect(), m_Style->Find<BoxStyle>(m_State));
 	}
 	return Super::OnEvent(inEvent);
@@ -421,7 +495,7 @@ UI::Text::Text(const std::string& inText, const std::string& inID /*= {}*/)
 
 UI::Text::Text(WidgetAttachSlot& inSlot, const std::string& inText, const std::string& inID)
 	: Text(inText, inID) {
-	inSlot.Attach(this);
+	inSlot.Parent(this);
 }
 
 void UI::Text::SetText(const std::string& inText) {
@@ -442,16 +516,16 @@ void UI::Text::SetText(const std::string& inText) {
 
 bool UI::Text::OnEvent(IEvent* inEvent) {
 
-	if(auto* event = inEvent->As<HoverEvent>()) {
+	if(auto* event = inEvent->Cast<HoverEvent>()) {
 		// Ignore, we cannot be hovered
 		return false;
 
-	} else if(auto* event = inEvent->As<ParentLayoutEvent>()) {
+	} else if(auto* event = inEvent->Cast<ParentLayoutEvent>()) {
 		// Ignore size
 		Super::SetOrigin(event->Constraints.TL());
 		return false;
 
-	} else if(auto* event = inEvent->As<DrawEvent>()) {
+	} else if(auto* event = inEvent->Cast<DrawEvent>()) {
 		event->DrawList->PushText(Super::GetOrigin(), m_Style->Find<TextStyle>(), m_Text);
 	}
 	return Super::OnEvent(inEvent);
@@ -468,12 +542,12 @@ UI::Guideline::Guideline(WidgetAttachSlot& inSlot, bool bIsVertical /*= true*/, 
 	, m_State(ButtonState::Normal)
 	, m_Callback(inCallback)
 {
-	inSlot.Attach(this);
+	inSlot.Parent(this);
 }
 
 bool UI::Guideline::OnEvent(IEvent* inEvent) {
 
-	if(auto* event = inEvent->As<HoverEvent>()) {
+	if(auto* event = inEvent->Cast<HoverEvent>()) {
 
 		// Change state and style
 		if(event->bHovered) {
@@ -483,17 +557,17 @@ bool UI::Guideline::OnEvent(IEvent* inEvent) {
 		}
 		return true;
 
-	} else if(auto* event = inEvent->As<ParentLayoutEvent>()) {
+	} else if(auto* event = inEvent->Cast<ParentLayoutEvent>()) {
 		float2 size;
 		size[m_MainAxis] = event->Constraints.Size()[m_MainAxis];
-		size[!m_MainAxis] = 5.f;
+		size[!m_MainAxis] = 10.f;
 		Super::SetSize(size);
 		Super::SetOrigin(event->Constraints.TL());
 		return true;
 
-	} else if(auto* event = inEvent->As<MouseButtonEvent>()) {
+	} else if(auto* event = inEvent->Cast<MouseButtonEvent>()) {
 
-		if(event->Button == MouseButtonEnum::ButtonLeft) {
+		if(event->Button == MouseButton::ButtonLeft) {
 
 			if(event->bButtonPressed) {
 				m_State = ButtonState::Pressed;
@@ -504,15 +578,15 @@ bool UI::Guideline::OnEvent(IEvent* inEvent) {
 		}
 		return false;
 
-	} else if(auto* event = inEvent->As<MouseDragEvent>()) {
+	} else if(auto* event = inEvent->Cast<MouseDragEvent>()) {
 		
 		if(m_State == ButtonState::Pressed) {
-			const auto delta = event->Delta[!m_MainAxis];
+			const auto delta = event->MouseDelta[!m_MainAxis];
 			if(m_Callback) m_Callback(event);
 		}
 		return true;
 
-	} else if(auto * event = inEvent->As<DrawEvent>()) {
+	} else if(auto * event = inEvent->Cast<DrawEvent>()) {
 		auto color = m_State == ButtonState::Hovered ? Colors::HoveredDark : m_State == ButtonState::Pressed ? Colors::PressedDark : Colors::PrimaryDark;
 		event->DrawList->PushBox(Super::GetRect(), color, true);
 		return true;
@@ -537,25 +611,25 @@ UI::SplitBox::SplitBox(WidgetAttachSlot& inSlot, bool bHorizontal /*= true*/, co
 	new Guideline(
 		m_Separator,
 		bHorizontal,
-		[this](MouseDragEvent* inDragEvent) { OnSeparatorDragged(inDragEvent); },
+		[this](auto* inDragEvent) { OnSeparatorDragged(inDragEvent); },
 		std::string(Super::GetID()).append("::Separator"));
 
 	Super::SetAxisMode(AxisModeExpand);
-	inSlot.Attach(this);
+	inSlot.Parent(this);
 }
 
 bool UI::SplitBox::OnEvent(IEvent* inEvent) {
 
-	if(auto* event = inEvent->As<ParentLayoutEvent>()) {
+	if(auto* event = inEvent->Cast<ParentLayoutEvent>()) {
 		Super::ExpandToParent(event);
 		UpdateLayout();
 		return true;
 
-	} else if(auto* event = inEvent->As<ChildLayoutEvent>()) {
+	} else if(auto* event = inEvent->Cast<ChildLayoutEvent>()) {
 		UpdateLayout();
 		return true;
 
-	} else if(auto* event = inEvent->As<DrawEvent>()) {
+	} else if(auto* event = inEvent->Cast<DrawEvent>()) {
 		event->DrawList->PushBox(Super::GetRect(), Colors::Green, false);
 		return true;
 	}
@@ -609,7 +683,7 @@ UI::VisitResult UI::SplitBox::VisitChildren(const WidgetVisitor& inVisitor, bool
 
 void UI::SplitBox::OnSeparatorDragged(MouseDragEvent* inDragEvent) {
 	const auto mainAxisSize = Super::GetSize(m_MainAxis);
-	const auto clampedPos = Math::Clamp(inDragEvent->PosLocal[m_MainAxis], 10.f, mainAxisSize - 10.f);
+	const auto clampedPos = Math::Clamp(inDragEvent->MousePosLocal[m_MainAxis], 10.f, mainAxisSize - 10.f);
 	const auto posNorm = clampedPos / mainAxisSize;
 	m_SplitRatio = posNorm;
 	UpdateLayout();
@@ -626,7 +700,7 @@ void UI::SplitBox::UpdateLayout() {
 	LayoutWidget* firstLayoutWidget = nullptr;
 
 	if(FirstSlot) {
-		firstLayoutWidget = FirstSlot->As<LayoutWidget>();
+		firstLayoutWidget = FirstSlot->Cast<LayoutWidget>();
 
 		if(!firstLayoutWidget) {
 			firstLayoutWidget = FirstSlot->GetChild<LayoutWidget>();
@@ -636,7 +710,7 @@ void UI::SplitBox::UpdateLayout() {
 	LayoutWidget* secondLayoutWidget = nullptr;
 
 	if(SecondSlot) {
-		secondLayoutWidget = SecondSlot->As<LayoutWidget>();
+		secondLayoutWidget = SecondSlot->Cast<LayoutWidget>();
 
 		if(!secondLayoutWidget) {
 			secondLayoutWidget = SecondSlot->GetChild<LayoutWidget>();
@@ -708,12 +782,12 @@ UI::Tooltip::Tooltip(float2 inSize /*= {}*/)
 
 bool UI::Tooltip::OnEvent(IEvent* inEvent) {
 
-	if(auto* event = inEvent->As<ChildLayoutEvent>()) {
+	if(auto* event = inEvent->Cast<ChildLayoutEvent>()) {
 		Super::HandleChildEvent(event);
 		Super::NotifyParentOnSizeChanged();
 		return true;
 
-	} else if(auto* event = inEvent->As<DrawEvent>()) {
+	} else if(auto* event = inEvent->Cast<DrawEvent>()) {
 		event->DrawList->PushBox(Super::GetRect(), m_Style->Find<BoxStyle>());
 	}
 	return Super::OnEvent(inEvent);
@@ -744,8 +818,6 @@ UI::Padding UI::Tooltip::GetMargins() const {
 }
 
 
-
-
 UI::TooltipSpawner::TooltipSpawner(const SpawnerFunction& inSpawner)
 	: Super()
 	, m_Spawner(inSpawner) {}
@@ -753,10 +825,86 @@ UI::TooltipSpawner::TooltipSpawner(const SpawnerFunction& inSpawner)
 UI::TooltipSpawner::TooltipSpawner(WidgetAttachSlot& inSlot, const SpawnerFunction& inSpawner) 
 	: TooltipSpawner(inSpawner)
 {
-	inSlot.Attach(this);
+	inSlot.Parent(this);
 }
 
-UI::LayoutWidget* UI::TooltipSpawner::Spawn() {
-	if(m_Spawner) return m_Spawner();
-	return nullptr;
+std::unique_ptr<UI::LayoutWidget> UI::TooltipSpawner::Spawn() {
+	return m_Spawner ? std::unique_ptr<UI::LayoutWidget>(m_Spawner()) : nullptr;
+}
+
+
+
+
+/*-------------------------------------------------------------------------------------------------*/
+//										POPUP
+/*-------------------------------------------------------------------------------------------------*/
+UI::PopupMenuItem::PopupMenuItem(WidgetAttachSlot& inSlot, const PopupSpawnFunc& inSpawnerFunc)
+	: Super()
+	, m_Style(Application::Get()->GetTheme()->Find(GetClassName().data()))
+{
+	auto* spawner = new PopupSpawner(inSlot, inSpawnerFunc);
+	spawner->ChildSlot.Parent(this);
+}
+
+bool UI::PopupMenuItem::OnEvent(IEvent* inEvent) {
+
+	if(auto* event = inEvent->Cast<HoverEvent>()) {
+
+		// Change state and style
+		if(event->bHovered) {
+			m_State = ButtonState::Hovered;
+			Super::GetParent<PopupSpawner>()->OpenPopup();
+		} else {
+			m_State = ButtonState::Normal;
+		}
+		return true;
+
+	} else if(auto* event = inEvent->Cast<MouseButtonEvent>()) {
+
+		if(event->Button == MouseButton::ButtonLeft) {
+
+			if(event->bButtonPressed) {
+				m_State = ButtonState::Pressed;
+				Super::GetParent<PopupSpawner>()->OpenPopup();
+
+			} else {
+				m_State = ButtonState::Normal;
+			}
+			return true;
+		}
+		return false;
+
+	} else if(auto* event = inEvent->Cast<ChildLayoutEvent>()) {
+		Super::HandleChildEvent(event);
+		Super::NotifyParentOnSizeChanged();
+		return true;
+
+	} else if(auto* event = inEvent->Cast<DrawEvent>()) {
+		event->DrawList->PushBox(Super::GetRect(), m_Style->Find<BoxStyle>(m_State));
+	}
+	return Super::OnEvent(inEvent);
+}
+
+UI::Padding UI::PopupMenuItem::GetPaddings() const {
+
+	if(m_Style) {
+		const auto* layoutStyle = m_Style->Find<LayoutStyle>();
+
+		if(layoutStyle) {
+			return layoutStyle->Paddings;
+		}
+	}
+	return {};
+}
+
+UI::Padding UI::PopupMenuItem::GetMargins() const {
+
+	if(m_Style) {
+		const auto* layoutStyle = m_Style->Find<LayoutStyle>();
+
+		if(layoutStyle) {
+			return layoutStyle->Margins;
+		}
+	}
+	return {};
 }

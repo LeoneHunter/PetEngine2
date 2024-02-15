@@ -16,17 +16,19 @@ namespace UI {
 	class Application {
 	public:
 
-		static Application* Create(std::string_view inWindowTitle, u32 inWidth, u32 inHeight);
-		static Application* Get();
+		virtual ~Application() = default;
 
-		~Application() = default;
-
+		static Application*			Create(std::string_view inWindowTitle, u32 inWidth, u32 inHeight);
+		static Application*			Get();
+		virtual void				Shutdown() = 0;
 		// For now we do all ui here
 		virtual bool				Tick() = 0;
-		// Returns top level root widget slot
-		virtual WidgetAttachSlot&	GetRoot() = 0;
-		virtual void				Shutdown() = 0;
+		// Registers a newly created window
+		virtual void				ParentWindow(Window* inWindow) = 0;		
+		
 		virtual Theme*				GetTheme() = 0;
+		// Merges inTheme styles with the prevous theme overriding existent styles 
 		virtual void				SetTheme(Theme* inTheme) = 0;
+
 	};
 }

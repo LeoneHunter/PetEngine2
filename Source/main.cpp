@@ -4,6 +4,7 @@
 #include "Runtime/System/JobDispatcher.h"
 #include "Editor/UI/UI.h"
 
+using namespace UI;
 UI::Application* g_Application = nullptr;
 
 void CreateTheme() {
@@ -22,126 +23,217 @@ void CreateTheme() {
 			buttonStyle.Add<BoxStyle>("Pressed", "Normal").SetFillColor("#eeeeee");
 		}
 
-		auto& Tooltip = theme->Add("Tooltip"); {
-			Tooltip.Add<LayoutStyle>().SetMargins(5).SetPaddings(5);
-			Tooltip.Add<BoxStyle>().SetFillColor("#dd5050").SetRounding(6);
+		auto& popupMenuItem = theme->Add("PopupMenuItem", "Button");
+
+		auto& tooltip = theme->Add("Tooltip"); {
+			tooltip.Add<LayoutStyle>().SetMargins(5).SetPaddings(5);
+			tooltip.Add<BoxStyle>().SetFillColor("#dd5050").SetRounding(6);
 		}
 	}
 	Application::Get()->SetTheme(theme);
 }
 
+
+
 void BuildAppScaffold() {
 	using namespace UI;
 
-	auto& root = g_Application->GetRoot(); {
+	auto& windowStyle = g_Application->GetTheme()->Add("Window"); {
+		windowStyle.Add<BoxStyle>().SetFillColor("#101030").SetRounding(6);
+	}
 
-		auto* centered = new Centered(root, "Root_Centered"); {
+	auto& popupStyle = g_Application->GetTheme()->Add("MyPopup"); {
+		popupStyle.Add<BoxStyle>().SetFillColor("#101050").SetRounding(6);
+	}
 
-			auto* column = FlexboxBuilder()
-				.ID("Main_Column")
-				.Direction(ContentDirection::Column)
-				.OverflowPolicy(OverflowPolicy::Clip)
-				.JustifyContent(JustifyContent::Center)
-				.ExpandMainAxis(true)
-				.ExpandCrossAxis(true)
-				.Attach(centered->ChildSlot);
-			{
-				auto* menuBar = Flexbox::Row().ID("Menu Bar").Attach(column->ChildrenSlot); {
+	auto* window1 = WindowBuilder()
+		.ID("Window1")
+		.StyleClass("Window")
+		.Position(200, 200)
+		.Size(600, 400)
+		.Parent(g_Application);
+	{
+		auto* column = FlexboxBuilder()
+			.ID("Main_Column")
+			.DirectionColumn()
+			.Expand()
+			.JustifyContent(JustifyContent::Center)
+			.Parent(window1->ChildSlot);
+		{
+			auto* popup = new PopupSpawner(column->ChildrenSlot, [&](Point inMousePosGlobal) {
 
-					auto* leftGroup = Flexbox::Row()
-						.ID("Left_Group")
-						.Attach(menuBar->ChildrenSlot);
-					{
-						Button::TextButton(leftGroup->ChildrenSlot, "Menu Item 1");
-						Button::TextButton(leftGroup->ChildrenSlot, "Menu Item 2");
-					}
-
-					auto* rightGroup = Flexbox::Row()
-						.ID("Right_Group")
-						.JustifyContent(UI::JustifyContent::End)
-						.Attach(menuBar->ChildrenSlot); 
-					{
-						Button::TextButton(rightGroup->ChildrenSlot, "Menu Item 3");
-						Button::TextButton(rightGroup->ChildrenSlot, "Menu Item 4");
-					}
-				}
-
-				auto* middleRow = Flexbox::Row()
-					.ID("Main_Middle_Row")
-					.ExpandCrossAxis(true)
-					.Attach(column->ChildrenSlot); 
+				auto window1 = WindowBuilder()
+					.ID("MyPopup")
+					.StyleClass("MyPopup")
+					.Position(inMousePosGlobal)
+					.Size(100, 100)
+					.Flags(UI::WindowFlags::Popup)
+					.Create();
 				{
-					struct ToolbarController {
+					auto* column = FlexboxBuilder()
+						.ID("Main_Column")
+						.DirectionColumn()
+						.Expand()
+						.JustifyContent(JustifyContent::Center)
+						.Parent(window1->ChildSlot);
+					{
+						//auto* popup = new MyMenuItem(column->ChildrenSlot);
+						//auto* text = new Text(popup->ChildSlot, "Open a submenu");
 
-						void SetToolbarWindow(LayoutWidget* inWindow) {
-							m_Toolbar = inWindow;
-						}
+						Button::TextButton(column->ChildrenSlot, "Menu Item 1");
+						Button::TextButton(column->ChildrenSlot, "Menu Item 2");
+						Button::TextButton(column->ChildrenSlot, "Menu Item 3");
+					}
+				}
+				return window1;			
+			});
+			Button::TextButton(popup->ChildSlot, "Menu Item 1");
 
-						void OpenToolbar() {
-							m_Toolbar->SetVisibility(true);
-							m_Toolbar->NotifyParentOnVisibilityChanged();
-						}
+			Button::TextButton(column->ChildrenSlot, "Menu Item 2");
+			Button::TextButton(column->ChildrenSlot, "Menu Item 3");
+			Button::TextButton(column->ChildrenSlot, "Menu Item 4");
 
-						void CloseToolbar() {
-							m_Toolbar->SetVisibility(false);
-							m_Toolbar->NotifyParentOnVisibilityChanged();
-						}
+			auto* menuItem = new PopupMenuItem(column->ChildrenSlot, [&](Point inMousePosGlobal) {
 
-					private:
-						LayoutWidget* m_Toolbar = nullptr;
-					};
-					auto* toolbarController = new ToolbarController();
+				auto window1 = WindowBuilder()
+					.ID("MyPopup")
+					.StyleClass("MyPopup")
+					.Position(inMousePosGlobal)
+					.Size(100, 100)
+					.Flags(UI::WindowFlags::Popup)
+					.Create();
+				{
+					auto* column = FlexboxBuilder()
+						.ID("Main_Column")
+						.DirectionColumn()
+						.Expand()
+						.JustifyContent(JustifyContent::Center)
+						.Parent(window1->ChildSlot);
+					{
+						//auto* popup = new MyMenuItem(column->ChildrenSlot);
+						//auto* text = new Text(popup->ChildSlot, "Open a submenu");
 
-					auto* leftSplitColumn = Flexbox::Column().ID("leftSplitColumn").Attach(middleRow->ChildrenSlot); {
+						Button::TextButton(column->ChildrenSlot, "Menu Item 1");
+						Button::TextButton(column->ChildrenSlot, "Menu Item 2");
+						Button::TextButton(column->ChildrenSlot, "Menu Item 3");
+					}
+				}
+				return window1;
+			});
+			auto* menuItemText = new Text(menuItem->ChildSlot, "Submenu");
+		}
+	}
 
-						//auto* tooltip = new TooltipSpawner(leftSplitColumn->ChildrenSlot, []() { return Tooltip::Text("Press me to toggle toolbar"); });
-						//auto* toolbarBtn1 = Button::TextButton(tooltip->ChildSlot, "Tool 1\nOpen sidebar");
 
-						auto* toolbarBtn11 = ButtonBuilder()
-							.ID("Btn 1")
-							.Text("Tool 1\nOpen sidebar")
-							.Tooltip(TooltipSpawner::Text("Opens a toolbar"))
-							.Callback([=](bool bPressed) {
-								if(!bPressed) return;
-								static auto bVisible = true;
-								bVisible = !bVisible;
+	// Background window
+	auto* backgroundWindow = new Window(g_Application, "BackgroundWindow", WindowFlags::Background);
+	auto* centered = new Centered(backgroundWindow->ChildSlot, "Root_Centered"); {
 
-								if(bVisible) toolbarController->OpenToolbar();
-								else toolbarController->CloseToolbar();
-							})							
-							.Attach(leftSplitColumn->ChildrenSlot);													
-							
-						auto* toolbarBtn2 = Button::TextButton(leftSplitColumn->ChildrenSlot, "Tool 2\nIncrease size");
+		auto* column = FlexboxBuilder()
+			.ID("Main_Column")
+			.Direction(ContentDirection::Column)
+			.OverflowPolicy(OverflowPolicy::Clip)
+			.JustifyContent(JustifyContent::Center)
+			.ExpandMainAxis(true)
+			.ExpandCrossAxis(true)
+			.Parent(centered->ChildSlot);
+		{
+			auto* menuBar = Flexbox::Row().ID("Menu Bar").Parent(column->ChildrenSlot); {
 
-						toolbarBtn2->SetCallback([btn = toolbarBtn2](bool bPressed) {
+				auto* leftGroup = Flexbox::Row()
+					.ID("Left_Group")
+					.Parent(menuBar->ChildrenSlot);
+				{
+					Button::TextButton(leftGroup->ChildrenSlot, "Menu Item 1");
+					Button::TextButton(leftGroup->ChildrenSlot, "Menu Item 2");
+				}
+
+				auto* rightGroup = Flexbox::Row()
+					.ID("Right_Group")
+					.JustifyContent(UI::JustifyContent::End)
+					.Parent(menuBar->ChildrenSlot); 
+				{
+					Button::TextButton(rightGroup->ChildrenSlot, "Menu Item 3");
+					Button::TextButton(rightGroup->ChildrenSlot, "Menu Item 4");
+				}
+			}
+
+			auto* middleRow = Flexbox::Row()
+				.ID("Main_Middle_Row")
+				.ExpandCrossAxis(true)
+				.Parent(column->ChildrenSlot); 
+			{
+				struct ToolbarController {
+
+					void SetToolbarWindow(LayoutWidget* inWindow) {
+						m_Toolbar = inWindow;
+					}
+
+					void OpenToolbar() {
+						m_Toolbar->SetVisibility(true);
+						m_Toolbar->NotifyParentOnVisibilityChanged();
+					}
+
+					void CloseToolbar() {
+						m_Toolbar->SetVisibility(false);
+						m_Toolbar->NotifyParentOnVisibilityChanged();
+					}
+
+				private:
+					LayoutWidget* m_Toolbar = nullptr;
+				};
+				auto* toolbarController = new ToolbarController();
+
+				auto* leftSplitColumn = Flexbox::Column().ID("leftSplitColumn").Parent(middleRow->ChildrenSlot); {
+
+					//auto* tooltip = new TooltipSpawner(leftSplitColumn->ChildrenSlot, []() { return Tooltip::Text("Press me to toggle toolbar"); });
+					//auto* toolbarBtn1 = Button::TextButton(tooltip->ChildSlot, "Tool 1\nOpen sidebar");
+
+					auto* toolbarBtn11 = ButtonBuilder()
+						.ID("Btn 1")
+						.Text("Tool 1\nOpen sidebar")
+						.Tooltip(TooltipSpawner::Text("Opens a toolbar"))
+						.Callback([=](bool bPressed) {
 							if(!bPressed) return;
-							static int size = 0;
-							size += 10;
+							static auto bVisible = true;
+							bVisible = !bVisible;
 
-							btn->SetSize(btn->GetChild<LayoutWidget>()->GetSize() + float2(10) * 2.f + float2(size, 0.f));
-							btn->NotifyParentOnSizeChanged(AxisX);
-						});
-					}
+							if(bVisible) toolbarController->OpenToolbar();
+							else toolbarController->CloseToolbar();
+						})							
+						.Parent(leftSplitColumn->ChildrenSlot);													
+							
+					auto* toolbarBtn2 = Button::TextButton(leftSplitColumn->ChildrenSlot, "Tool 2\nIncrease size");
 
-					auto* leftToolboxSplitBox = new SplitBox(middleRow->ChildrenSlot, true, "Left_Tool_Main_Area_Split"); {
+					toolbarBtn2->SetCallback([btn = toolbarBtn2](bool bPressed) {
+						if(!bPressed) return;
+						static int size = 0;
+						size += 10;
 
-						auto* leftToolboxColumn = Flexbox::Column().ID("Left_Toolbar_Column").ExpandCrossAxis(true).Attach(leftToolboxSplitBox->FirstSlot); {
-							Button::TextButton(leftToolboxColumn->ChildrenSlot, "Tool Content");
-						}
-						toolbarController->SetToolbarWindow(leftToolboxColumn);
-
-						auto* rightMainAreaColumn = Flexbox::Column().ID("Right_Main_Area_Column").ExpandCrossAxis(true).Attach(leftToolboxSplitBox->SecondSlot); {
-							Button::TextButton(rightMainAreaColumn->ChildrenSlot, "Main Area Content");
-						}
-					}
+						btn->SetSize(btn->GetChild<LayoutWidget>()->GetSize() + float2(10) * 2.f + float2((float)size, 0.f));
+						btn->NotifyParentOnSizeChanged(AxisX);
+					});
 				}
 
-				auto* bottomRow = Flexbox::Row().ID("Status_Bar_Row").Attach(column->ChildrenSlot); {
-					auto* b = Button::TextButton(bottomRow->ChildrenSlot, "Status bar");
+				auto* leftToolboxSplitBox = new SplitBox(middleRow->ChildrenSlot, true, "Left_Tool_Main_Area_Split"); {
+
+					auto* leftToolboxColumn = Flexbox::Column().ID("Left_Toolbar_Column").ExpandCrossAxis(true).Parent(leftToolboxSplitBox->FirstSlot); {
+						Button::TextButton(leftToolboxColumn->ChildrenSlot, "Tool Content");
+					}
+					toolbarController->SetToolbarWindow(leftToolboxColumn);
+
+					auto* rightMainAreaColumn = Flexbox::Column().ID("Right_Main_Area_Column").ExpandCrossAxis(true).Parent(leftToolboxSplitBox->SecondSlot); {
+						Button::TextButton(rightMainAreaColumn->ChildrenSlot, "Main Area Content");
+					}
 				}
+			}
+
+			auto* bottomRow = Flexbox::Row().ID("Status_Bar_Row").Parent(column->ChildrenSlot); {
+				auto* b = Button::TextButton(bottomRow->ChildrenSlot, "Status bar");
 			}
 		}
 	}
+	
 }
 
 

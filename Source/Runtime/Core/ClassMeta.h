@@ -37,7 +37,7 @@
 	}\
 	\
 	template<class ClassType>\
-	ClassType* As() {\
+	ClassType* Cast() {\
 		if(IsA<ClassType>()) {\
 			return static_cast<ClassType*>(this);\
 		}\
@@ -45,7 +45,7 @@
 	}\
 	\
 	template<class ClassType>\
-	const ClassType* As() const {\
+	const ClassType* Cast() const {\
 		if(IsA<ClassType>()) {\
 			return static_cast<const ClassType*>(this);\
 		}\

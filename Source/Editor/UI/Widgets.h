@@ -7,8 +7,73 @@ namespace UI {
 	class TextStyle;
 	class BoxStyle;
 	class LayoutStyle;
-
 	class Flexbox;	
+	class Window;
+	class PopupSpawner;
+	class Application;
+
+
+/*-------------------------------------------------------------------------------------------------*/
+//										WINDOW
+/*-------------------------------------------------------------------------------------------------*/
+
+	enum class WindowFlags {
+		None		= 0,
+		AlwaysOnTop = 0x1,
+		Overlay		= 0x2,
+		Background	= 0x4,
+		ShrinkToFit = 0x8,
+		Popup		= 0x10,
+	};
+	DEFINE_ENUM_FLAGS_OPERATORS(WindowFlags)
+
+
+	struct WindowBuilder: public WidgetBuilder<WindowBuilder> {
+
+		WindowBuilder&	Flags(WindowFlags inFlags) { m_Flags = inFlags; return *this; }
+		WindowBuilder&	Position(Point inPos) { m_Pos = inPos; return *this; }
+		WindowBuilder&	Position(float inX, float inY) { m_Pos = {inX, inY}; return *this; }
+		WindowBuilder&	Size(float2 inSize) { m_Size = inSize; return *this; }
+		WindowBuilder&	Size(float inX, float inY) { m_Size = {inX, inY}; return *this; }
+		// Finalizes creation
+		Window*					Parent(Application* inApp);
+		std::unique_ptr<Window> Create();
+
+	public:
+
+		WindowBuilder(): m_Flags(WindowFlags::None) {
+			StyleClass("Window");
+		}
+
+		friend class Window;
+
+	private:
+		WindowFlags  m_Flags;
+		Point		 m_Pos;
+		float2		 m_Size;
+		Application* m_App = nullptr;
+	};
+	
+	/*
+	* Root parent container for widgets
+	* An Application always have a background window with the size of the OS window
+	*/
+	class Window: public SingleChildContainer {
+		DEFINE_CLASS_META(Window, SingleChildContainer)
+	public:
+
+		Window(Application* inApp, const std::string& inID, WindowFlags inFlags);
+		Window(const WindowBuilder& inBuilder);
+		bool OnEvent(IEvent* inEvent) override;
+
+		bool HasAnyWindowFlags(WindowFlags inFlags) const { return m_Flags & inFlags; }
+
+	private:
+		const StyleClass*	m_Style;
+		WindowFlags			m_Flags;		
+	};
+
+
 
 /*-------------------------------------------------------------------------------------------------*/
 //										CENTERED
@@ -96,9 +161,10 @@ namespace UI {
 		FlexboxBuilder& OverflowPolicy(OverflowPolicy inPolicy) { m_OverflowPolicy = inPolicy; return *this; }		
 		FlexboxBuilder& ExpandMainAxis(bool bExpand) { m_ExpandMainAxis = bExpand; return *this; }
 		FlexboxBuilder& ExpandCrossAxis(bool bExpand) { m_ExpandCrossAxis = bExpand; return *this; }
+		FlexboxBuilder& Expand() { m_ExpandCrossAxis = true; m_ExpandMainAxis = true; return *this; }
 
 		// Finalizes creation
-		Flexbox*		Attach(WidgetAttachSlot& inSlot);
+		Flexbox*		Parent(WidgetAttachSlot& inSlot);
 
 	public:
 		
@@ -208,7 +274,7 @@ namespace UI {
 		ButtonBuilder&	Text(const std::string& inText) { Assertm(!m_Child, "Child already set"); m_Child = new UI::Text(inText); return *this; }
 
 		// Finalizes creation
-		Button*			Attach(WidgetAttachSlot& inSlot);
+		Button*			Parent(WidgetAttachSlot& inSlot);
 
 	public:
 
@@ -263,6 +329,9 @@ namespace UI {
 
 
 
+/*-------------------------------------------------------------------------------------------------*/
+//										GUIDELINE
+/*-------------------------------------------------------------------------------------------------*/
 
 	/*
 	* A line that can be moved by the user
@@ -296,7 +365,9 @@ namespace UI {
 	};
 
 
-
+/*-------------------------------------------------------------------------------------------------*/
+//										SPLITBOX
+/*-------------------------------------------------------------------------------------------------*/
 
 	/*
 	* A container that has 3 children: First, Second and Separator
@@ -336,7 +407,9 @@ namespace UI {
 
 
 
-
+/*-------------------------------------------------------------------------------------------------*/
+//										TOOLTIP
+/*-------------------------------------------------------------------------------------------------*/
 	/*
 	* Simple container for tooltip
 	* Wraps it's content
@@ -375,161 +448,104 @@ namespace UI {
 
 		TooltipSpawner(WidgetAttachSlot& inSlot, const SpawnerFunction& inSpawner);
 		TooltipSpawner(const SpawnerFunction& inSpawner);
-		LayoutWidget* Spawn();
+		std::unique_ptr<LayoutWidget> Spawn();
 
 	private:
 		SpawnerFunction m_Spawner;
+
+	};
+
+
+		
+/*-------------------------------------------------------------------------------------------------*/
+//										POPUP
+/*-------------------------------------------------------------------------------------------------*/
+	using PopupSpawnFunc = std::function<std::unique_ptr<Window>(Point inMousePosGlobal)>;
+	using PopupDestroyFunc = std::function<void(Window* inPopup)>;
+
+	class SpawnPopupIntent final: public IEvent {
+		DEFINE_CLASS_META(SpawnPopupIntent, Controller)
+	public:
+		EventCategory GetCategory() const override { return EventCategory::Intent; }
+
+		SpawnPopupIntent(PopupSpawner* inSpawner)
+			: Spawner(inSpawner)
+		{}
+
+		PopupSpawner* Spawner = nullptr;
+	};	
+
+	/*
+	* Creates a user defined popup
+	*/
+	class PopupSpawner: public Controller {
+		DEFINE_CLASS_META(PopupSpawner, Controller)
+	public:
+
+		PopupSpawner(WidgetAttachSlot& inSlot, const PopupSpawnFunc& inSpawner)
+			: m_Spawner(inSpawner)
+		{ 
+			inSlot.Parent(this); 
+		}
+
+		bool OnEvent(IEvent* inEvent) override {
+
+			if(auto* event = inEvent->Cast<MouseButtonEvent>()) {
+
+				if(event->Button == MouseButton::ButtonRight) {
+
+					if(!event->bButtonPressed) {
+						SpawnPopupIntent event{this};
+						Super::DispatchToParent(&event);
+					}
+					return true;
+				}				
+			}
+			return Super::OnEvent(inEvent);
+		}
+
+		// Can be called by user to create a popup
+		void OpenPopup() {
+			SpawnPopupIntent event{this};
+			Super::DispatchToParent(&event);
+		}
+
+		// Called by Application to create a popup
+		std::unique_ptr<Window> OnSpawn(Point inMousePosGlobal) {
+			auto out = m_Spawner(inMousePosGlobal);
+			m_Popup = out.get();
+			return out;
+		}
+
+		void	OnDestroy() { m_Popup = nullptr; }
+
+		Window* GetPopup() { return m_Popup; }
+
+	private:
+		PopupSpawnFunc	m_Spawner;
+		Window*			m_Popup = nullptr;
 	};
 
 
 
-
-
-
-
-
-
-
-	///*
-	//* Maps button events into controlled widget visibility change
-	//* Each button aka tab controls one widget
-	//* 
-	//*/
-	//class TabController: public Controller {
-	//	DEFINE_CLASS_META(TabController, Controller)
-	//public:
-
-	//	TabController(Widget* inParent, u32 inDefaultTabIndex = 0, const std::string& inID = {});
-	//	bool OnEvent(IEvent* inEvent) override;
-
-	//	void BindButton(Button* inWidget, u32 inControlIndex);
-	//	void BindWindow(Widget* inControlled, u32 inControlIndex);
-
-	//private:
-
-	//	struct Binding {
-	//		Button* Button = nullptr;
-	//		Widget* Controlled = nullptr;
-	//	};
-
-	//	std::vector<Binding> m_Controls;
-	//};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-	/*struct ListDesc {
-		ContentDirection	Direction;
-		std::list<Widget*>	Children;
-	};*/
-
 	/*
-	* Vertical or horizontal scrollable container
-	* Children should have fixed size on the main axis
+	* When hovered opens a popup
 	*/
-	/*class List: public Container {
+	class PopupMenuItem: public SingleChildContainer {
+		DEFINE_CLASS_META(PopupMenuItem, SingleChildContainer)
 	public:
 
-		List(const ListDesc& inDesc);
-	};*/
+		PopupMenuItem(WidgetAttachSlot& inSlot, const PopupSpawnFunc& inSpawnerFunc);
+		bool OnEvent(IEvent* inEvent) override;
 
-
-
-
-
-	/*
-	* In order to create a tooltip for some widget
-	* just wrap that widget in this class
-	*/
-	//class Tooltip: public SingleChildContainer {
-	//	DEFINE_CLASS_META(Tooltip, SingleChildContainer)
-	//public:
-
-	//	Tooltip(SpawnerFunction inTooltipSpawnerFunction);
-	//	// Called by framework after the child has
-	//	//	been hovered for some time
-	//	// Returns a tooltip widget with the actual data. 
-	//	//	e.g. text inside a box
-	//	// Lifetime of that object is managed by framework
-	//	Widget* Spawn() const;
-	//};
-
-
-
-
-
-
-	//class ContextMenu: public MultiChildContainer {
-	//	DEFINE_CLASS_META(ContextMenu, MultiChildContainer)
-	//public:
-
-	//	ContextMenu();
-
-	//	//void OnOpen(const PopupContext& inContext);
-	//};
-
-
-	/*
-	* In order to create a popup for some widget
-	* just wrap that widget in this class
-	*/
-	/*class PopupSpawner: public SingleChildContainer {
-		DEFINE_CLASS_META(Popup, SingleChildContainer)
 	public:
 
-		PopupSpawner(SpawnerFunction inPopupSpawnerFunction);
+		Padding GetPaddings() const override;
+		Padding GetMargins() const override;
 
-		Widget* Spawn() const;
-	};*/
+	private:
+		const StyleClass*	m_Style;
+		StringID			m_State;
+	};
 
-
-
-
-
-	/*
-	* The user is supposed to override this class
-	* In order to create a drag & drop for some widget
-	* just wrap that widget in this class
-	*/
-	//class DragDropSource: public SingleChildContainer {
-	//	DEFINE_CLASS_META(DragDrop, SingleChildContainer)
-	//public:
-
-	//	using SpawnerFunction = std::function<Widget* ()>;
-
-	//	DragDropSource(const std::string& inType, const std::string& inPayload, SpawnerFunction inPreviewSpawner);
-
-	//	bool OnEvent(IEvent* inEvent) override {
-
-	//		if(auto* event = inEvent->CastTo<MouseMoveEvent>()) {
-	//			// App.StartDragDrop(this, SpawnPreview());
-	//			return true;
-	//		}
-	//		return Super::OnEvent(inEvent);
-	//	}
-	//};
-
-	/*class DragDropTarget: public SingleChildContainer {
-		DEFINE_CLASS_META(DragDrop, SingleChildContainer)
-	public:
-
-		DragDropTarget(const std::string& inType, VoidFunction<std::string> inOnAcceptFunction);
-
-		bool OnHover(const std::string& inType);
-		void OnAccept(const std::string& inPayload);
-	};*/
 }

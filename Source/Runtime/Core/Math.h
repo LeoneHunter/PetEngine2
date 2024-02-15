@@ -36,7 +36,7 @@ constexpr bool operator== (const Span<T>& left, const Span<T>& right) {
 /*
 * Used to index axes in containters
 */
-enum AxisIndex {
+enum AxisIndex: u8 {
 	AxisX,
 	AxisY
 };
@@ -59,20 +59,22 @@ public:
 	template<typename OtherT>
 	constexpr Vec2<T>& operator=(const Vec2<OtherT>& in) { x = static_cast<T>(in.x); y = static_cast<T>(in.y); return *this; }
 
-	constexpr T& operator[](int inAxisIndex) noexcept {
+	constexpr T& operator[](u8 inAxisIndex) noexcept {
 		switch(inAxisIndex) {
 			case AxisX: return x;
 			case AxisY: return y;
 		}
 		assert(false && "Index out of bounds");
+		return x;
 	}
 
-	constexpr T const& operator[](int inAxisIndex) const {
+	constexpr T const& operator[](u8 inAxisIndex) const {
 		switch(inAxisIndex) {
 			case AxisX: return x;
 			case AxisY: return y;
 		}
 		assert(false && "Index out of bounds");
+		return x;
 	}
 
 public:

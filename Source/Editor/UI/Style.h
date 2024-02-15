@@ -340,7 +340,7 @@ namespace UI {
 			for(auto& style : m_Styles) {
 
 				if(style->IsA<StyleType>() && (inName == style->Name || inName.Empty())) {
-					out = style->As<StyleType>();
+					out = style->Cast<StyleType>();
 					break;
 				}
 			}
@@ -360,7 +360,7 @@ namespace UI {
 			for(auto& style : m_Styles) {
 
 				if(style->IsA<StyleType>() && (inName == style->Name || inName.Empty())) {
-					out = style->As<StyleType>();
+					out = style->Cast<StyleType>();
 					break;
 				}
 			}
@@ -448,6 +448,7 @@ namespace UI {
 			m_Fonts.back()->RasterizeFace(inDefaultFontSize);
 		}
 
+		// Adds a new style or returns existing
 		StyleClass&			Add(std::string_view inStyleName, std::string_view inParentStyle = "") {
 			auto name = StringID(inStyleName.data());
 			auto parentName = StringID(inParentStyle.data());
@@ -458,9 +459,7 @@ namespace UI {
 				parent = Find(parentName);
 				Assertf(parent, "Cannot find parent style with the name {}", inParentStyle);
 			}
-			auto [it, bEmplaced] = m_Styles.emplace(name, StyleClass(name, parent));
-			Assertf(bEmplaced, "Style with the name {} already exist", inStyleName);
-
+			auto [it, bExists] = m_Styles.emplace(name, StyleClass(name, parent));
 			return it->second;
 		}
 
@@ -488,7 +487,7 @@ namespace UI {
 
 				for(auto& style : styleClass.m_Styles) {
 
-					if(auto* textStyle = style->As<TextStyle>()) {
+					if(auto* textStyle = style->Cast<TextStyle>()) {
 
 						if(textStyle->Font) {
 
