@@ -31,7 +31,7 @@ public:
 	template<StringData T>
 	StringID(const T& inStringData): StringID(inStringData.data()) {}
 
-	std::string				String() const;
+	const std::string&		String() const;
 
 	bool					Empty() const { return m_CompareIndex == 0; }
 	explicit				operator bool() const { return m_CompareIndex != 0; }
@@ -154,6 +154,21 @@ private:
 };
 
 
+template<>
+struct std::formatter<StringID, char> {
+
+	template<class ParseContext>
+	constexpr ParseContext::iterator parse(ParseContext& ctx) {
+		return ctx.begin();
+	}
+
+	template<class FmtContext>
+	FmtContext::iterator format(const StringID& t, FmtContext& ctx) const {
+		return std::ranges::copy(std::move(t.String()), ctx.out()).out;
+	}
+};
+
+
 
 /*====================================================================================*/
 constexpr inline StringID::StringID()
@@ -166,11 +181,12 @@ inline StringID::StringID(const char* inNewName)
 	: m_CompareIndex(0)
 	, m_DisplayIndex(0)
 #ifdef NAME_ID_DEBUG
-	, m_DebugString(inNewName)
+	, m_DebugString()
 #endif
 {
 	std::string_view s(inNewName);
 	if (!s.empty()) { _intern(s); }
+	m_DebugString = String().c_str();
 }
 
 constexpr inline bool StringID::FastLess(const StringID& right) const {

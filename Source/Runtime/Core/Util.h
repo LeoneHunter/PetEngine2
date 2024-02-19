@@ -262,6 +262,11 @@ namespace Util {
 			return *this;
 		}
 
+		StringBuilder& Line() {
+			EndLine();
+			return *this;
+		}
+
 		StringBuilder& SetIndent(u32 inIndent = 1) {
 			m_Indent = inIndent;
 			return *this;
@@ -315,5 +320,144 @@ namespace Util {
 			}
 		);
 		return str;
+	}
+
+
+
+	class RefCounter {
+	public:
+
+		constexpr RefCounter() = default;
+
+		RefCounter(const RefCounter&) = delete;
+		RefCounter& operator=(const RefCounter&) = delete;
+
+		void IncWref() {
+			++Weaks;
+		}
+
+		void DecWref() {
+			--Weaks;
+
+			if(Weaks == 0 && bDestructed) {
+				delete this;
+			}
+		}
+
+		void OnDestructed() {
+			bDestructed = true;
+
+			if(Weaks == 0) {
+				delete this;
+			}
+		}
+
+		bool IsAlive() const {
+			return !bDestructed;
+		}
+
+		u64  Weaks = 0;
+		bool bDestructed = false;
+	};
+
+	
+	/*
+	* A RAII object that has a shared RefCounter to a controlled object
+	* When object is deleted a RefCounter is notified
+	* Doesn't own the controlled object
+	*/
+	template<typename T>
+	class WeakPtr {
+	public:
+
+		constexpr WeakPtr() {}
+
+		constexpr WeakPtr(nullptr_t) {}
+
+		WeakPtr(T* inPtr, RefCounter* inRC) {
+			Ptr = inPtr;
+			RC = inRC;
+			RC->IncWref();
+		}
+
+		WeakPtr(const WeakPtr& inOther) {
+			if(inOther.RC) {
+				Ptr = inOther.Ptr;
+				RC = inOther.RC;
+				RC->IncWref();
+			}
+		}
+
+		WeakPtr(WeakPtr&& inRight) {
+			Ptr = inRight.Ptr;
+			RC = inRight.RC;
+			inRight.Ptr = nullptr;
+			inRight.RC = nullptr;
+		}
+
+		~WeakPtr() {
+			if(RC) {
+				RC->DecWref();
+			}
+		}
+
+		WeakPtr& operator=(const WeakPtr& inRight) {
+			if(inRight.RC) {
+				Reset();
+				Ptr = inRight.Ptr;
+				RC = inRight.RC;
+				RC->IncWref();
+			}
+			return *this;
+		}
+
+		WeakPtr& operator=(WeakPtr&& inRight) noexcept {
+			Reset();
+			Ptr = inRight.Ptr;
+			RC = inRight.RC;
+			inRight.Ptr = nullptr;
+			inRight.RC = nullptr;
+			return *this;
+		}
+
+		WeakPtr& operator=(nullptr_t) noexcept {
+			Reset();
+			return *this;
+		}
+
+		void Reset() {
+			if(RC) {
+				RC->DecWref();
+			}
+			RC = nullptr;
+			Ptr = nullptr;
+		}
+
+		explicit operator bool() const {
+			return RC && RC->IsAlive();
+		}
+
+		T* operator->() { return Ptr; }
+		const T* operator->() const { return Ptr; }
+
+		T* operator*() { return Ptr; }
+		const T* operator*() const { return Ptr; }
+
+		T* Get() { return Ptr; }
+		const T* Get() const { return Ptr; }
+
+	private:
+		RefCounter* RC  = nullptr;
+		T*			Ptr = nullptr;
+	};
+
+	template<class T1, class T2>
+	constexpr bool operator==(const WeakPtr<T1>& lhs, const WeakPtr<T2>& rhs) {
+		return (uintptr_t)lhs.Get() == (uintptr_t)rhs.Get();
+	}
+
+	template<class T>
+	constexpr bool operator==(const WeakPtr<T>& lhs, const T* inPtr) {
+		return lhs.Get() == inPtr;
 	}
 }

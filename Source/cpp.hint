@@ -7,3 +7,4 @@
 #define DEFINE_GAVAGUI_CLASS(class)
 #define DEFINE_CLASS_META(className, superClassName)
 #define DEFINE_ROOT_CLASS_META(className)
+#define WIDGET_CLASS(className, superClassName);

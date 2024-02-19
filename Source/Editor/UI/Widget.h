@@ -2,6 +2,7 @@
 #include <functional>
 
 #include "Runtime/Core/Core.h"
+#include "Runtime/Core/Util.h"
 #include "Style.h"
 
 using Point = Vec2<float>;
@@ -34,8 +35,8 @@ namespace Debug {
 
 		struct Object {
 
-			Object(std::string_view inClassName, ObjectID inObjectID, Object* inParent)
-				: m_ClassName(inClassName)
+			Object(const std::string& inClassName, ObjectID inObjectID, Object* inParent)
+				: m_DebugName(inClassName)
 				, m_ObjectID(inObjectID) 
 				, m_Parent(inParent)
 			{}
@@ -44,7 +45,7 @@ namespace Debug {
 				m_Properties.emplace_back(inName, inValue);
 			}
 
-			Object* EmplaceChild(std::string_view inClassName, ObjectID inObjectID) {
+			Object* EmplaceChild(const std::string& inClassName, ObjectID inObjectID) {
 				return  &*m_Children.emplace_back(new Object(inClassName, inObjectID, this));
 			}
 
@@ -60,7 +61,7 @@ namespace Debug {
 			}
 
 			ObjectID			m_ObjectID = 0;
-			std::string_view	m_ClassName;
+			std::string			m_DebugName;
 			std::list<Property> m_Properties;
 			Object*				m_Parent = nullptr;
 			std::list<std::unique_ptr<Object>>	m_Children;
@@ -79,10 +80,10 @@ namespace Debug {
 			}
 		}
 
-		void PushObject(std::string_view inClassName, UI::Widget* inWidget, UI::Widget* inParent) {
+		void PushObject(const std::string& inDebugName, UI::Widget* inWidget, UI::Widget* inParent) {
 
 			if(!inParent || !m_CursorObject) {
-				m_CursorObject = &*m_RootObjects.emplace_back(new Object(inClassName, (ObjectID)inWidget, nullptr));
+				m_CursorObject = &*m_RootObjects.emplace_back(new Object(inDebugName, (ObjectID)inWidget, nullptr));
 				return;
 			}
 				
@@ -96,7 +97,7 @@ namespace Debug {
 				}
 			}
 			assert(m_CursorObject);
-			m_CursorObject = m_CursorObject->EmplaceChild(inClassName, (ObjectID)inWidget);
+			m_CursorObject = m_CursorObject->EmplaceChild(inDebugName, (ObjectID)inWidget);
 		}
 
 		// Push formatter property string
@@ -138,6 +139,17 @@ namespace Debug {
 
 }
 
+
+// Custom dynamic cast and weak pointer functions
+#define WIDGET_CLASS(className, superClassName)\
+	DEFINE_CLASS_META(className, superClassName)\
+	WeakPtr<className>			GetWeak() {\
+		return superClassName::GetWeakAs<className>();\
+	}
+
+
+
+
 namespace UI {
 
 	class Widget;
@@ -150,6 +162,10 @@ namespace UI {
 	template<typename T>
 	concept WidgetSubclass = std::derived_from<T, Widget>;
 
+	template<typename T>
+	using WeakPtr = Util::WeakPtr<T>;
+	using WidgetWeakPtr = Util::WeakPtr<Widget>;
+
 	// User provided function used to spawn other widgets
 	// Used in a tooltip and dragdrop 
 	using SpawnerFunction = std::function<LayoutWidget*()>;
@@ -157,6 +173,11 @@ namespace UI {
 	using Margin = RectSides<u32>;
 	using Padding = RectSides<u32>;
 	using ChildSlotIndex = size_t;
+
+	struct LayoutInfo {
+		Margin  Margins;
+		Padding Paddings;
+	};
 
 	enum class Axis { X, Y, Both };
 	constexpr AxisIndex ToAxisIndex(Axis inAxis) { assert(inAxis != Axis::Both); return inAxis == Axis::X ? AxisX : AxisY; }
@@ -192,6 +213,27 @@ namespace UI {
 		Button5,
 	};
 
+	enum class MouseState {
+		Default,	// When hovering an empty space or widget without a tooltip
+		Tooltip,	// After some time hovering
+		Held,		// When pressed and holding
+		Dragged,	// When dragged threshold crossed
+		DragDrop,	// When DragDrop active
+	};
+
+	enum KeyModifiers {
+		LeftShift,
+		RightShift,
+		LeftControl,
+		RightControl,
+		LeftAlt,
+		RightAlt,
+		CapsLock,
+		Count,
+	};
+
+	using KeyModifiersArray = std::array<bool, (int)KeyModifiers::Count>;
+
 	/*
 	* Interface to widget tree events
 	* Events are executed immediatly
@@ -209,11 +251,14 @@ namespace UI {
 		virtual EventCategory GetCategory() const = 0;
 	};
 
+	// Custom dynamic cast
+	#define EVENT_CLASS(className, superClassName) DEFINE_CLASS_META(className, superClassName)
+
 	/*
 	* Request to draw a widget debug data
 	*/
 	class DebugLogEvent final: public IEvent {
-		DEFINE_CLASS_META(DebugLogEvent, IEvent)
+		EVENT_CLASS(DebugLogEvent, IEvent)
 	public:
 		bool IsBroadcast() const override { return true; };
 		EventCategory GetCategory() const override { return EventCategory::Debug; }
@@ -225,7 +270,7 @@ namespace UI {
 	* Children widget receive HoverEvent and MouseDragEvent
 	*/
 	class MouseDragEvent final: public IEvent {
-		DEFINE_CLASS_META(MouseDragEvent, IEvent)
+		EVENT_CLASS(MouseDragEvent, IEvent)
 	public:
 		EventCategory GetCategory() const override { return EventCategory::System; }
 
@@ -246,7 +291,7 @@ namespace UI {
 	* Constraints define the area in which a child can position itself and change size
 	*/
 	class ParentLayoutEvent final: public IEvent {
-		DEFINE_CLASS_META(ParentLayoutEvent, IEvent)
+		EVENT_CLASS(ParentLayoutEvent, IEvent)
 	public:
 
 		ParentLayoutEvent()
@@ -270,7 +315,7 @@ namespace UI {
 	* Widgets that are not subclasses of LayoutWidget do not care about these events
 	*/
 	class ChildLayoutEvent final: public IEvent {
-		DEFINE_CLASS_META(ChildLayoutEvent, IEvent)
+		EVENT_CLASS(ChildLayoutEvent, IEvent)
 	public:
 
 		// What child change spawned the event
@@ -319,15 +364,13 @@ namespace UI {
 	public:
 
 		struct HitData {
-			LayoutWidget*	Widget = nullptr;
-			Point			HitPosLocal;
+			WeakPtr<LayoutWidget>	Widget;
+			Point					HitPosLocal;
 		};
 
 	public:
 
-		constexpr void Push(LayoutWidget* inWidget, Point inPosLocal) {
-			Stack.push_back(HitData{inWidget, inPosLocal});
-		}
+		constexpr void Push(LayoutWidget* inWidget, Point inPosLocal);
 
 		constexpr bool Empty() const { return Stack.empty(); }
 
@@ -353,7 +396,7 @@ namespace UI {
 	* Called by the framework when mouse cursor is moving
 	*/
 	class HitTestEvent final: public IEvent {
-		DEFINE_CLASS_META(HitTestEvent, IEvent)
+		EVENT_CLASS(HitTestEvent, IEvent)
 	public:
 
 		// inInternalPos is a position inside the widget rect relative to origin
@@ -381,7 +424,7 @@ namespace UI {
 	* The dispatched also responsible for handling hover out events
 	*/
 	class HoverEvent final: public IEvent {
-		DEFINE_CLASS_META(HoverEvent, IEvent)
+		EVENT_CLASS(HoverEvent, IEvent)
 	public:
 		HoverEvent(bool bHovered): bHovered(bHovered) {}
 		EventCategory GetCategory() const override { return EventCategory::Layout; }
@@ -393,7 +436,7 @@ namespace UI {
 	
 
 	class MouseButtonEvent final: public IEvent {
-		DEFINE_CLASS_META(MouseButtonEvent, IEvent)
+		EVENT_CLASS(MouseButtonEvent, IEvent)
 	public:
 
 		EventCategory GetCategory() const override { return EventCategory::System; }
@@ -416,21 +459,37 @@ namespace UI {
 
 		virtual void PushText(Point inOrigin, const TextStyle* inStyle, std::string_view inTextView) = 0;
 		virtual void PushClipRect(Rect inClipRect) = 0;
+		virtual void PopClipRect() = 0;
+
+		virtual void PushTransform(float2 inTransform) = 0;
+		virtual void PopTransform() = 0;
 	};
 
 	class DrawEvent final: public IEvent {
-		DEFINE_CLASS_META(DrawEvent, IEvent)
+		EVENT_CLASS(DrawEvent, IEvent)
 	public:
 
 		bool IsBroadcast() const override { return true; };
 		EventCategory GetCategory() const override { return EventCategory::System; }
 
-		// Global coords of the parent origin
-		// Each widget should update this before passing down
-		Point		ParentOriginGlobal;
 		Drawlist*	DrawList = nullptr;
 		Theme*		Theme = nullptr;
 	};
+
+
+	/*
+	* Dispatched up the tree when Widget::Destroy() called
+	*/
+	class DestroyEvent final: public IEvent {
+		EVENT_CLASS(DestroyEvent, IEvent)
+	public:
+
+		EventCategory GetCategory() const override { return EventCategory::Intent; }
+
+		DestroyEvent(Widget* inWidget): Widget(inWidget) {}
+		Widget* Widget = nullptr;
+	};
+
 
 
 
@@ -489,10 +548,11 @@ namespace UI {
 	* Configuration data for a widget base class
 	*/
 	struct WidgetConfig {
-		std::string			m_ID;
-		std::string			m_StyleClass;
-		TooltipSpawner*		m_Tooltip = nullptr;
-		WidgetAttachSlot*	m_Slot = nullptr;
+		std::string				m_ID;
+		std::string				m_StyleClass;
+		WidgetAttachSlot*		m_Slot = nullptr;
+		// Stack of wrapper widget
+		std::unique_ptr<Widget>	m_WrapperTop;
 	};
 
 	/*
@@ -504,9 +564,29 @@ namespace UI {
 
 		T& ID(const std::string& inID) { m_ID = inID; return static_cast<T&>(*this); }
 		T& StyleClass(const std::string& inStyleClass) { m_StyleClass = inStyleClass; return static_cast<T&>(*this); }
-		T& Tooltip(TooltipSpawner* inTooltip) { m_Tooltip = inTooltip; return static_cast<T&>(*this); }
+		
+		template<class WrapperType, class ...ArgTypes>
+		T& Wrap(ArgTypes&&... inArgs) {
+			auto* wrapper = new WrapperType(std::forward<ArgTypes>(inArgs)...);
+
+			if(!m_Slot) {
+				m_WrapperTop.reset(wrapper);
+
+			} else {
+				m_Slot->Parent(wrapper);
+			}
+			m_Slot = &wrapper->ChildSlot;
+			return static_cast<T&>(*this);
+		}
 
 		constexpr operator WidgetConfig() const { return static_cast<WidgetConfig>(*this); }
+
+	protected:
+
+		void SetParentSlot(WidgetAttachSlot& inSlot) {
+			if(!m_Slot) m_Slot = &inSlot;
+			if(m_WrapperTop) inSlot.Parent(m_WrapperTop.release());
+		}
 	};
 
 
@@ -545,13 +625,30 @@ namespace UI {
 		Widget(const std::string& inID = {})
 			: m_ID(inID)
 			, m_Parent(nullptr)
-			, m_Flags(WidgetFlags::None)
+			, m_RefCounter(nullptr)			
 		{}
 
-		virtual				~Widget() = default;
+		template<class T = Widget>
+		WeakPtr<T>			GetWeakAs() {
+			if(this == nullptr) return {};
+			Assertf(this->Cast<T>(), "Cannot cast {} to the class {}", GetDebugIDString(), T::GetStaticClassName());
 
-		void				Destroy() {
-			/// TODO notify the system that we are deleted
+			if(!m_RefCounter) {
+				m_RefCounter = new Util::RefCounter();
+			}
+			return WeakPtr<T>{this->Cast<T>(), m_RefCounter};
+		}
+
+		virtual				~Widget() {
+			if(m_RefCounter) {
+				m_RefCounter->OnDestructed();
+			}
+		}
+
+		// Notify parents that we are about to be destructed
+		virtual void		Destroy() {
+			DestroyEvent destroyEvent{this};
+			DispatchToParent(&destroyEvent);
 		}
 		
 		// Calls a visitor callback on this object and children if bRecursive == true
@@ -590,22 +687,25 @@ namespace UI {
 			 
 		virtual bool		OnEvent(IEvent* inEvent) {	
 			if(auto* event = inEvent->Cast<DebugLogEvent>()) {
-				event->Archive->PushObject(GetClassName(), this, GetParent());
+				event->Archive->PushObject(GetClassName().data(), this, GetParent());
 				DebugSerialize(*event->Archive);
 			}
 			return true;
 		};
 
-		virtual void		DebugSerialize(Debug::PropertyArchive& inArchive) {
-			inArchive.PushProperty("ID", m_ID);
-			inArchive.PushProperty("WidgetFlags", m_Flags);
+		virtual void		DebugSerialize(Debug::PropertyArchive& inArchive) {}
+
+		// Transforms a point in local space into a point in global space
+		// recursively iterating parents
+		virtual Point		TransformLocalToGlobal(Point inPosition) const { 
+			return m_Parent ? m_Parent->TransformLocalToGlobal(inPosition) : inPosition; 
 		}
 
 		bool				DispatchToParent(IEvent* inEvent) { if(m_Parent) { return m_Parent->OnEvent(inEvent); } return false; }		
 
 	public:
 
-		const std::string&	GetID() const { return m_ID; }
+		StringID			GetID() const { return m_ID; }
 
 		Widget*				GetParent() { return m_Parent; }
 		const Widget*		GetParent() const { return m_Parent; }
@@ -641,29 +741,31 @@ namespace UI {
 			return child;
 		}
 
-		bool				HasAnyFlags(WidgetFlags inFlags) const { return m_Flags & inFlags; }
-		void				SetFlags(WidgetFlags inFlags) { m_Flags |= inFlags; }
-		void				ClearFlags(WidgetFlags inFlags) { m_Flags &= ~inFlags; }
-
 		// Returns a debug identifier of this object
 		// [MyWidgetClassName: <4 bytes of adress> "MyObjectID"]
 		std::string			GetDebugIDString() {
 
-			if(!GetID().empty()) {
+			if(GetID()) {
 				return std::format("[{}: {:x} \"{}\"]", GetClassName(), (uintptr_t)this & 0xffff, GetID());
 			} else {
 				return std::format("[{}: {:x}]", GetClassName(), (uintptr_t)this & 0xffff);
 			}
 		}
 
+	public:
+
+		Widget(const Widget&) = delete;
+		Widget& operator=(const Widget&) = delete;
+
 	private:
 		// Optional user defined ID
 		// Must be unique among siblings
 		// Could be used to identify widgets from user code
-		std::string m_ID;
+		StringID			m_ID;
 		// Our parent widget who manages our lifetime and passes events
-		Widget*		m_Parent;
-		WidgetFlags	m_Flags;
+		Widget*				m_Parent;
+		// Used for custom WeakPtr to this
+		Util::RefCounter*	m_RefCounter;
 	};
 
 
@@ -679,8 +781,14 @@ namespace UI {
 			: WidgetAttachSlot(inOwner) {}
 
 		void Parent(Widget* inChild) override {
-			if(!inChild || inChild == m_Child.get()) return;
+			if(inChild == m_Child.get()) return;
 			m_Child.reset(inChild->Cast<T>());
+			m_Child->OnParented(m_Owner);
+		}
+
+		void Parent(std::unique_ptr<T>&& inChild) {
+			if(inChild == m_Child) return;
+			m_Child.reset(inChild.release()->Cast<T>());
 			m_Child->OnParented(m_Owner);
 		}
 
@@ -691,8 +799,13 @@ namespace UI {
 
 		operator bool() const { return m_Child != nullptr; }
 
-		SingleWidgetSlot& operator=(Widget* inWidget) {
+		SingleWidgetSlot& operator=(T* inWidget) {
 			Parent(inWidget);
+			return *this;
+		}
+
+		SingleWidgetSlot& operator=(std::unique_ptr<T>&& inWidget) {
+			Parent(inWidget.release());		
 			return *this;
 		}
 
@@ -719,9 +832,16 @@ namespace UI {
 			: WidgetAttachSlot(inOwner) {}
 
 		void Parent(Widget* inChild) override {
-			Assert(inChild && this);
+			/// TODO check if already parented
 			m_Children.emplace_back(inChild);
 			inChild->OnParented(m_Owner);
+		}
+
+		template<typename T>
+		void Parent(std::unique_ptr<T>&& inChild) {
+			auto* child = inChild.release();
+			m_Children.emplace_back(child);
+			child->OnParented(m_Owner);
 		}
 
 		void Orphan(Widget* inChild) override {
@@ -743,11 +863,9 @@ namespace UI {
 	/*
 	* A widget that has no size and position and cannot be drawn
 	* but can interact with other widgets and handle some events
-	* Subclasses of this class: TabController, DragDropSource, DragDropTarget, PopupSpawner, TooltipSpawner
-	* When placed in the tree, transparent to most events
 	*/
 	class Controller: public Widget {
-		DEFINE_CLASS_META(Controller, Widget)
+		WIDGET_CLASS(Controller, Widget)
 	public:
 
 		Controller(const std::string& inID = {})
@@ -756,18 +874,70 @@ namespace UI {
 		{}
 
 		bool OnEvent(IEvent* inEvent) override {
-			// ChildLayoutEvent goes up
-			// DebugEvent goes in
-			// Other events go down
+			
 			if(inEvent->GetCategory() == EventCategory::Intent) {
 				return DispatchToParent(inEvent);
-
-			} else if(inEvent->IsA<ChildLayoutEvent>()) {
+			} 
+			
+			if(inEvent->IsA<ChildLayoutEvent>()) {
 				return DispatchToParent(inEvent);
-
-			} else if(inEvent->GetCategory() == EventCategory::Debug) {
+			} 
+			
+			if(inEvent->GetCategory() == EventCategory::Debug) {
 				Super::OnEvent(inEvent);
 			}
+
+			return ChildSlot ? ChildSlot->OnEvent(inEvent) : false;
+		};
+
+		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = true) final {
+			if(!ChildSlot) return VisitResultContinue;
+
+			const auto result = inVisitor(ChildSlot.Get());
+			if(!result.bContinue) return VisitResultExit;
+
+			if(bRecursive && !result.bSkipChildren) {
+				const auto result = ChildSlot->VisitChildren(inVisitor, bRecursive);
+				if(!result.bContinue) return {false};
+			}
+			return VisitResultContinue;
+		}
+
+	public:
+		SingleWidgetSlot<> ChildSlot;
+	};
+
+
+
+	/*
+	* A widget that has no size and position and cannot be drawn
+	* but can interact with other widgets and handle some events
+	* Adds functionality to the widget it wraps
+	* Receives the same events as wrapped widget
+	* Subclasses of this class: DragDropSource, DragDropTarget, PopupSpawner, TooltipSpawner
+	*/
+	class Wrapper: public Widget {
+		WIDGET_CLASS(Wrapper, Widget)
+	public:
+
+		Wrapper(const std::string& inID = {})
+			: Widget(inID)
+			, ChildSlot(this) {}
+
+		bool OnEvent(IEvent* inEvent) override {
+			
+			if(inEvent->GetCategory() == EventCategory::Intent) {
+				return DispatchToParent(inEvent);
+			} 
+			
+			if(inEvent->IsA<ChildLayoutEvent>()) {
+				return DispatchToParent(inEvent);
+			} 
+			
+			if(inEvent->GetCategory() == EventCategory::Debug) {
+				Super::OnEvent(inEvent);
+			}
+
 			return ChildSlot ? ChildSlot->OnEvent(inEvent) : false;
 		};
 
@@ -797,10 +967,13 @@ namespace UI {
 	* And possibly can be drawn
 	*/
 	class LayoutWidget: public Widget {
-		DEFINE_CLASS_META(LayoutWidget, Widget)
+		WIDGET_CLASS(LayoutWidget, Widget)
 	public:
 
-		LayoutWidget(const std::string& inID = {}): Widget(inID) {}
+		LayoutWidget(const std::string& inID = {})
+			: Widget(inID) 
+			, m_Flags(WidgetFlags::None)
+		{}
 
 		void			OnParented(Widget* inParent) override {
 			Super::OnParented(inParent);
@@ -839,31 +1012,58 @@ namespace UI {
 					return true;
 				}
 				return false;
-
-			} else if(auto* event = inEvent->Cast<ParentLayoutEvent>()) {
+			} 
+			
+			if(auto* event = inEvent->Cast<ParentLayoutEvent>()) {
 				ExpandToParent(event);
 				return true;
-
-			} else if(auto* event = inEvent->Cast<DebugLogEvent>()) {
-				event->Archive->PushObject(GetClassName(), this, GetParent());
+			} 
+			
+			if(auto* event = inEvent->Cast<DebugLogEvent>()) {
+				event->Archive->PushObject(GetClassName().data(), this, GetParent());
 				DebugSerialize(*event->Archive);
-
-			} else if(inEvent->GetCategory() == EventCategory::Intent) {
+				return true;
+			} 
+			
+			if(inEvent->GetCategory() == EventCategory::Intent) {
 				return DispatchToParent(inEvent);
 			}
+
+			if(inEvent->IsA<DrawEvent>()) {
+				Assertm(false, "Draw event not handled nor dispatched to children!");
+				return true;
+			}
+
 			return false;
 		};
 
 		void			DebugSerialize(Debug::PropertyArchive& inArchive) override {
 			Super::DebugSerialize(inArchive);
+			inArchive.PushProperty("Flags", m_Flags);
 			inArchive.PushProperty("Origin", m_Origin);
 			inArchive.PushProperty("Size", m_Size);
+		}
+
+		Point			TransformLocalToGlobal(Point inLocalPos) const override {
+			return GetParent() ? GetParent()->TransformLocalToGlobal(inLocalPos + m_Origin) : inLocalPos + m_Origin;
 		}
 
 	public:
 
 		// Returns nearest parent which is LayoutWidget
 		LayoutWidget*	GetNearestLayoutParent() { return Super::GetParent<LayoutWidget>(); }
+
+		// If this widget has wrappers, returns outermost or nullptr
+		Wrapper*		GetOutermostWrapper() {
+			Wrapper* outermostWrapper = nullptr;
+
+			for(auto* parent = GetParent();
+				parent && parent->IsA<Wrapper>();
+				parent = parent->GetParent()) {
+				outermostWrapper = parent->Cast<Wrapper>();
+			}
+			return outermostWrapper;
+		}
 
 		AxisMode		GetAxisMode() const {
 			return {
@@ -900,6 +1100,8 @@ namespace UI {
 		void			SetSize(bool inAxis, float inSize) { m_Size[inAxis] = inSize; }
 
 		Rect			GetRect() const { return {m_Origin, m_Size}; }
+		// Returns Rect of this widget in global coordinates
+		Rect			GetRectGlobal() const { return Rect(GetParent() ? GetParent()->TransformLocalToGlobal(m_Origin) : m_Origin, m_Size); }
 		float2			GetSize() const { return m_Size; }
 		float			GetSize(bool bYAxis) const { return bYAxis ? m_Size.y : m_Size.x; }
 
@@ -908,9 +1110,13 @@ namespace UI {
 		// Helper to calculate outer size of a widget
 		float2			GetOuterSize() {
 			const auto size = GetSize();
-			const auto margins = GetMargins();
+			const auto margins = GetLayoutInfo().Margins;
 			return {size.x + margins.Left + margins.Right, size.y + margins.Top + margins.Bottom};
 		}
+
+		bool			HasAnyFlags(WidgetFlags inFlags) const { return m_Flags & inFlags; }
+		void			SetFlags(WidgetFlags inFlags) { m_Flags |= inFlags; }
+		void			ClearFlags(WidgetFlags inFlags) { m_Flags &= ~inFlags; }
 
 	public:
 
@@ -948,7 +1154,7 @@ namespace UI {
 		// @return true if our size has actually changed
 		bool			ExpandToParent(const ParentLayoutEvent* inEvent) {
 			const auto prevSize = GetSize();
-			const auto margins = GetMargins();
+			const auto margins = GetLayoutInfo().Margins;
 			SetOrigin(inEvent->Constraints.TL() + margins.TL());
 
 			for(auto axis = 0; axis != 2; ++axis) {
@@ -961,16 +1167,14 @@ namespace UI {
 		}
 
 	public:
-		// Margins of a widget which have StyleClass
-		virtual Margin  GetMargins() const { return {}; }
 
-		// Margins of a widget which have StyleClass
-		virtual Padding GetPaddings() const { return {}; }
+		virtual LayoutInfo GetLayoutInfo() const { return {}; }
 
 	private:
 		// Position in pixels relative to parent origin
 		Point			m_Origin;
 		float2			m_Size;
+		WidgetFlags		m_Flags;
 	};
 
 
@@ -981,7 +1185,7 @@ namespace UI {
 	* LayoutWidgett which contains children
 	*/
 	class Container: public LayoutWidget {
-		DEFINE_CLASS_META(Container, LayoutWidget)
+		WIDGET_CLASS(Container, LayoutWidget)
 	public:
 
 		Container(const std::string& inID = {}): LayoutWidget(inID) {}
@@ -992,18 +1196,30 @@ namespace UI {
 			
 			if(inEvent->GetCategory() == EventCategory::Intent) {
 				return DispatchToParent(inEvent);
+			} 
 
-			} else if(inEvent->IsA<HitTestEvent>()) {
+			if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
+				drawEvent->DrawList->PushTransform(Super::GetOrigin());
+				DispatchToChildren(drawEvent);
+				drawEvent->DrawList->PopTransform();
+				return true;
+			}
+			
+			if(inEvent->IsA<HitTestEvent>()) {
 				// Dispatch HitTest only if we was hit
 				auto bHandled = Super::OnEvent(inEvent);
-				if(bHandled) DispatchToChildren(inEvent);				
-				return bHandled;
 
-			} else if(inEvent->IsA<ParentLayoutEvent>()) {
+				if(bHandled) 
+					DispatchToChildren(inEvent);
+				return bHandled;
+			} 
+			
+			if(inEvent->IsA<ParentLayoutEvent>()) {
 				Super::OnEvent(inEvent);
 				return true;
-
-			} else if(inEvent->GetCategory() == EventCategory::Debug) {
+			} 
+			
+			if(inEvent->GetCategory() == EventCategory::Debug) {
 				Super::OnEvent(inEvent);
 				DispatchToChildren(inEvent);
 				return true;
@@ -1019,34 +1235,34 @@ namespace UI {
 	* LayoutWidget container that has one child
 	*/
 	class SingleChildContainer: public Container {
-		DEFINE_CLASS_META(SingleChildContainer, Container)
+		WIDGET_CLASS(SingleChildContainer, Container)
 	public:
 
 		SingleChildContainer(const std::string& inID = {})
 			: Container(inID)
-			, ChildSlot(this)
+			, DefaultSlot(this)
 		{}
 
 		// Called by a subclass or a widget which wants to be a child
 		void ParentChild(Widget* inChild, WidgetAttachSlot*) override {
-			ChildSlot.Parent(inChild);
+			DefaultSlot.Parent(inChild);
 		}
 
 		bool DispatchToChildren(IEvent* inEvent) override {
-			if(ChildSlot) {
-				return ChildSlot->OnEvent(inEvent);
+			if(DefaultSlot) {
+				return DefaultSlot->OnEvent(inEvent);
 			}
 			return false;
 		}
 
 		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = true) final {
-			if(!ChildSlot) return VisitResultContinue;
+			if(!DefaultSlot) return VisitResultContinue;
 
-			const auto result = inVisitor(ChildSlot.Get());
+			const auto result = inVisitor(DefaultSlot.Get());
 			if(!result.bContinue) return VisitResultExit;
 
 			if(bRecursive && !result.bSkipChildren) {
-				const auto result = ChildSlot->VisitChildren(inVisitor, bRecursive);
+				const auto result = DefaultSlot->VisitChildren(inVisitor, bRecursive);
 				if(!result.bContinue) return VisitResultExit;
 			}
 			return VisitResultContinue;
@@ -1056,8 +1272,9 @@ namespace UI {
 
 			if(inEvent->GetCategory() == EventCategory::Intent) {
 				return DispatchToParent(inEvent);
-
-			} else if(auto* event = inEvent->Cast<ChildLayoutEvent>()) {
+			} 
+			
+			if(auto* event = inEvent->Cast<ChildLayoutEvent>()) {
 				const auto bSizeChanged = HandleChildEvent(event);
 
 				if(bSizeChanged) {
@@ -1065,6 +1282,12 @@ namespace UI {
 				}
 				return true;
 			}
+
+			if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
+				DispatchDrawToChild(drawEvent);
+				return true;
+			}
+
 			return Super::OnEvent(inEvent);
 		}
 
@@ -1072,13 +1295,13 @@ namespace UI {
 
 		// Update child's size if its expanded
 		void NotifyChildOnSizeChanged() {
-			if(!ChildSlot) return;
-			const auto paddings = GetPaddings();
+			if(!DefaultSlot) return;
+			const auto paddings = GetLayoutInfo().Paddings;
 
 			ParentLayoutEvent layoutEvent;
 			layoutEvent.Parent = this;
 			layoutEvent.Constraints = Rect(paddings.TL(), GetSize() - paddings.Size());
-			ChildSlot->OnEvent(&layoutEvent);
+			DefaultSlot->OnEvent(&layoutEvent);
 		}
 
 		// Centers our child when child size changes
@@ -1092,7 +1315,7 @@ namespace UI {
 		void CenterChild(ParentLayoutEvent* inEvent) {
 
 			if(auto* child = Super::GetChild<LayoutWidget>()) {
-				const auto childOuterSize = child->GetSize() + child->GetMargins().Size();
+				const auto childOuterSize = child->GetSize() + child->GetLayoutInfo().Margins.Size();
 				const auto offset = (inEvent->Constraints.Size() - childOuterSize) * 0.5f;
 				// Pass tight constraints to force child position
 				ParentLayoutEvent onParent(this, Rect(offset, childOuterSize));
@@ -1101,10 +1324,21 @@ namespace UI {
 		}
 
 		// Dispatches draw event to children adding global offset
-		void DispatchDrawToChildren(DrawEvent* inEvent) {
-			auto eventCopy = *inEvent;
-			eventCopy.ParentOriginGlobal += Super::GetOrigin();
-			DispatchToChildren(&eventCopy);
+		void DispatchDrawToChild(DrawEvent* inEvent, float2 inAdditionalOffset = {}) {
+			inEvent->DrawList->PushTransform(Super::GetOrigin() + inAdditionalOffset);
+			DispatchToChildren(inEvent);
+			inEvent->DrawList->PopTransform();
+		}
+
+		// Dispatches draw event to children adding paddings to constraints
+		void DispatchLayoutToChild(ParentLayoutEvent* inEvent) {
+			if(!DefaultSlot) return;
+
+			const auto layoutInfo = GetLayoutInfo();
+			ParentLayoutEvent layoutEvent;
+			layoutEvent.Parent = this;
+			layoutEvent.Constraints = Rect(layoutInfo.Paddings.TL(), Super::GetSize() - layoutInfo.Paddings.Size());
+			DefaultSlot->OnEvent(&layoutEvent);
 		}
 
 		// Helper to update our size based on AxisMode
@@ -1113,7 +1347,7 @@ namespace UI {
 		bool HandleChildEvent(const ChildLayoutEvent* inEvent, bool bUpdateChildOnAdded = true) {
 			const auto axisMode = GetAxisMode();
 			const auto childAxisMode = inEvent->Child->GetAxisMode();
-			const auto paddings = GetPaddings();
+			const auto paddings = GetLayoutInfo().Paddings;
 			const auto paddingsSize = paddings.Size();
 			bool bSizeChanged = false;
 
@@ -1162,7 +1396,7 @@ namespace UI {
 		}
 	
 	public:
-		SingleWidgetSlot<> ChildSlot;
+		SingleWidgetSlot<> DefaultSlot;
 	};
 
 
@@ -1171,16 +1405,16 @@ namespace UI {
 	* LayoutWidget container that has multiple children
 	*/
 	class MultiChildContainer: public Container {
-		DEFINE_CLASS_META(MultiChildContainer, Container)
+		WIDGET_CLASS(MultiChildContainer, Container)
 	public:
 
 		MultiChildContainer(const std::string& inID = {})
 			: Container(inID) 
-			, ChildrenSlot(this)
+			, DefaultSlot(this)
 		{}
 
 		bool DispatchToChildren(IEvent* inEvent) override {
-			for(auto& child : ChildrenSlot.Get()) {
+			for(auto& child : DefaultSlot.Get()) {
 				auto result = child->OnEvent(inEvent);
 
 				if(result && !inEvent->IsBroadcast()) {
@@ -1191,9 +1425,9 @@ namespace UI {
 		}
 
 		void GetVisibleChildren(std::vector<LayoutWidget*>* outVisibleChildren) {
-			outVisibleChildren->reserve(ChildrenSlot.Size());
+			outVisibleChildren->reserve(DefaultSlot.Size());
 
-			for(auto& child : ChildrenSlot.Get()) {
+			for(auto& child : DefaultSlot.Get()) {
 				auto layoutChild = child->Cast<LayoutWidget>();
 
 				if(!layoutChild) {
@@ -1208,7 +1442,7 @@ namespace UI {
 
 		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = true) final {
 
-			for(auto& child : ChildrenSlot.Get()) {
+			for(auto& child : DefaultSlot.Get()) {
 				const auto result = inVisitor(child.get());
 				if(!result.bContinue) return VisitResultExit;
 
@@ -1230,7 +1464,11 @@ namespace UI {
 		}
 
 	public:
-		MultiChildSlot ChildrenSlot;
+		MultiChildSlot DefaultSlot;
 	};
 
+}
+
+constexpr void UI::HitStack::Push(LayoutWidget* inWidget, Point inPosLocal) {
+	Stack.push_back(HitData{inWidget->GetWeakAs<LayoutWidget>(), inPosLocal});
 }

@@ -349,7 +349,7 @@ namespace UI {
 				out = m_Parent->Find<StyleType>(inName);
 			}
 
-			Assertf(out, "This style class does not contain a style of type {} and name {}", StyleType::GetStaticClassName(), inName.String());
+			Assertf(out, "Style class '{}' does not contain a style of type '{}' and name '{}'", *m_Name, StyleType::GetStaticClassName(), inName.String());
 			return out;
 		}
 
@@ -520,7 +520,7 @@ namespace UI {
 
 		const StyleClass*	Find(StringID inStyleClass) const {
 			auto it = m_Styles.find(inStyleClass);
-			Assertf(it != m_Styles.end(), "Style class with the name {} not found", inStyleClass.String());
+			Assertf(it != m_Styles.end(), "Style class with the name '{}' not found", inStyleClass.String());
 			return it != m_Styles.end() ? &it->second : nullptr;
 		}
 		

@@ -7,127 +7,187 @@
 using namespace UI;
 UI::Application* g_Application = nullptr;
 
-void CreateTheme() {
-	using namespace UI;
+void SetDarkTheme() {
 	auto* theme = new UI::Theme();
-
-	// Button
 	{
-		auto& buttonStyle = theme->Add("Button"); {
-			buttonStyle.Add<LayoutStyle>("Normal").SetMargins(5, 5).SetPaddings(5, 5);
-			buttonStyle.Add<LayoutStyle>("Hovered", "Normal");
-			buttonStyle.Add<LayoutStyle>("Pressed", "Normal");
+		auto& buttonStyle = theme->Add("Button");
+		buttonStyle.Add<LayoutStyle>("Normal").SetMargins(5).SetPaddings(5);
+		buttonStyle.Add<LayoutStyle>("Hovered", "Normal");
+		buttonStyle.Add<LayoutStyle>("Pressed", "Normal");
 
-			buttonStyle.Add<BoxStyle>("Normal").SetFillColor("#454545").SetRounding(6);
-			buttonStyle.Add<BoxStyle>("Hovered", "Normal").SetFillColor("#808080");
-			buttonStyle.Add<BoxStyle>("Pressed", "Normal").SetFillColor("#eeeeee");
-		}
-
-		auto& popupMenuItem = theme->Add("PopupMenuItem", "Button");
-
-		auto& tooltip = theme->Add("Tooltip"); {
-			tooltip.Add<LayoutStyle>().SetMargins(5).SetPaddings(5);
-			tooltip.Add<BoxStyle>().SetFillColor("#dd5050").SetRounding(6);
-		}
+		buttonStyle.Add<BoxStyle>("Normal").SetFillColor("#505050").SetBorders(0).SetRounding(6);
+		buttonStyle.Add<BoxStyle>("Hovered", "Normal").SetFillColor("#707070");
+		buttonStyle.Add<BoxStyle>("Pressed", "Normal").SetFillColor("#909090");
 	}
-	Application::Get()->SetTheme(theme);
+	{
+		auto& windowStyle = theme->Add("FloatWindow");
+		windowStyle.Add<LayoutStyle>().SetMargins(5, 5).SetPaddings(5, 5);
+		windowStyle.Add<BoxStyle>().SetFillColor("#303030").SetRounding(6);		
+	}
+	{
+		auto& windowStyle = theme->Add("Popup");
+		windowStyle.Add<LayoutStyle>().SetMargins(5, 5).SetPaddings(5, 5);
+		windowStyle.Add<BoxStyle>().SetFillColor("#202020").SetRounding(6).SetBorders(1).SetBorderColor("#202020");		
+	}		
+	{
+		auto& tooltip = theme->Add("Tooltip");
+		tooltip.Add<LayoutStyle>().SetMargins(5).SetPaddings(5);
+		tooltip.Add<BoxStyle>().SetFillColor("#303030").SetRounding(4).SetBorders(1).SetBorderColor("#202020");
+	}
+	g_Application->SetTheme(theme);
 }
 
 
 
-void BuildAppScaffold() {
-	using namespace UI;
+std::unique_ptr<PopupWindow> Popup1(Point inMousePosGlobal, float2 inViewportSize, PopupSpawner* inSpawner) {
 
-	auto& windowStyle = g_Application->GetTheme()->Add("Window"); {
-		windowStyle.Add<BoxStyle>().SetFillColor("#101030").SetRounding(6);
-	}
-
-	auto& popupStyle = g_Application->GetTheme()->Add("MyPopup"); {
-		popupStyle.Add<BoxStyle>().SetFillColor("#101050").SetRounding(6);
-	}
-
-	auto* window1 = WindowBuilder()
-		.ID("Window1")
-		.StyleClass("Window")
-		.Position(200, 200)
-		.Size(600, 400)
-		.Parent(g_Application);
+	auto popup = PopupBuilder()
+		.ID("MyPopup")
+		.StyleClass("MyPopup")
+		.Position(inMousePosGlobal)
+		.Size(200, 400)
+		.Create();
 	{
 		auto* column = FlexboxBuilder()
 			.ID("Main_Column")
 			.DirectionColumn()
 			.Expand()
 			.JustifyContent(JustifyContent::Center)
-			.Parent(window1->ChildSlot);
+			.Create(popup->DefaultSlot);
 		{
-			auto* popup = new PopupSpawner(column->ChildrenSlot, [&](Point inMousePosGlobal) {
+			ButtonBuilder()
+				.Text("Button 1")
+				.Wrap<PopupSpawner>(Popup1)
+				.Create(column->DefaultSlot);
 
-				auto window1 = WindowBuilder()
-					.ID("MyPopup")
-					.StyleClass("MyPopup")
-					.Position(inMousePosGlobal)
-					.Size(100, 100)
-					.Flags(UI::WindowFlags::Popup)
-					.Create();
-				{
-					auto* column = FlexboxBuilder()
-						.ID("Main_Column")
-						.DirectionColumn()
-						.Expand()
-						.JustifyContent(JustifyContent::Center)
-						.Parent(window1->ChildSlot);
-					{
-						//auto* popup = new MyMenuItem(column->ChildrenSlot);
-						//auto* text = new Text(popup->ChildSlot, "Open a submenu");
+			ButtonBuilder()
+				.Text("Menu Item 1")
+				.Wrap<PopupMenuItem>()
+				.Wrap<TooltipSpawner>(TextTooltip("I'm a tooltip 1"))
+				.Create(column->DefaultSlot);
 
-						Button::TextButton(column->ChildrenSlot, "Menu Item 1");
-						Button::TextButton(column->ChildrenSlot, "Menu Item 2");
-						Button::TextButton(column->ChildrenSlot, "Menu Item 3");
-					}
-				}
-				return window1;			
-			});
-			Button::TextButton(popup->ChildSlot, "Menu Item 1");
+			ButtonBuilder()
+				.Text("Menu Item 2")
+				.Wrap<PopupMenuItem>()
+				.Wrap<TooltipSpawner>(TextTooltip("I'm a tooltip 2"))
+				.Create(column->DefaultSlot);
 
-			Button::TextButton(column->ChildrenSlot, "Menu Item 2");
-			Button::TextButton(column->ChildrenSlot, "Menu Item 3");
-			Button::TextButton(column->ChildrenSlot, "Menu Item 4");
-
-			auto* menuItem = new PopupMenuItem(column->ChildrenSlot, [&](Point inMousePosGlobal) {
-
-				auto window1 = WindowBuilder()
-					.ID("MyPopup")
-					.StyleClass("MyPopup")
-					.Position(inMousePosGlobal)
-					.Size(100, 100)
-					.Flags(UI::WindowFlags::Popup)
-					.Create();
-				{
-					auto* column = FlexboxBuilder()
-						.ID("Main_Column")
-						.DirectionColumn()
-						.Expand()
-						.JustifyContent(JustifyContent::Center)
-						.Parent(window1->ChildSlot);
-					{
-						//auto* popup = new MyMenuItem(column->ChildrenSlot);
-						//auto* text = new Text(popup->ChildSlot, "Open a submenu");
-
-						Button::TextButton(column->ChildrenSlot, "Menu Item 1");
-						Button::TextButton(column->ChildrenSlot, "Menu Item 2");
-						Button::TextButton(column->ChildrenSlot, "Menu Item 3");
-					}
-				}
-				return window1;
-			});
-			auto* menuItemText = new Text(menuItem->ChildSlot, "Submenu");
+			ButtonBuilder()
+				.Text("Menu Item 3")
+				.Wrap<PopupMenuItem>()
+				.Wrap<TooltipSpawner>(TextTooltip("I'm a tooltip 3"))
+				.Create(column->DefaultSlot);
 		}
 	}
 
+	auto windowPos = inMousePosGlobal;
+	auto* layoutChild = inSpawner->GetChild<LayoutWidget>();
 
+	if(layoutChild) {
+		windowPos = layoutChild->GetRectGlobal().BL();
+	}
+	const auto popupRect = popup->GetRect();
+
+	for(auto axis = 0; axis < 2; ++axis) {
+		if(popupRect.max[axis] > inViewportSize[axis]) {
+			windowPos[axis] = inViewportSize[axis] - popupRect.Size()[axis];
+		}
+	}
+	popup->SetOrigin(windowPos);
+	return popup;
+}
+
+void BuildSimple() {
+
+	// Popup 2
+	auto popup2 = [](Point inMousePosGlobal, float2 inViewportSize, PopupSpawner* inSpawner) {
+
+		auto popup = PopupBuilder()
+			.StyleClass("Popup")
+			.Position(inMousePosGlobal)
+			.Size(200, 400)
+			.Create();
+		{
+			auto* column = FlexboxBuilder()
+				.DirectionColumn()
+				.Expand()
+				.JustifyContent(JustifyContent::Center)
+				.Create(popup->DefaultSlot);
+			{
+				ButtonBuilder()
+					.Text("Menu Item 1")
+					.Wrap<PopupMenuItem>()
+					.Create(column->DefaultSlot);
+
+				ButtonBuilder()
+					.Text("Menu Item 2")
+					.Wrap<PopupMenuItem>()
+					.Create(column->DefaultSlot);
+
+				ButtonBuilder()
+					.Text("Menu Item 3")
+					.Wrap<PopupMenuItem>()
+					.Create(column->DefaultSlot);
+			}
+		}	
+		return popup;
+	};
+
+
+	// Main floating window
+	auto* window1 = WindowBuilder()
+		.ID("Window1")
+		.StyleClass("FloatWindow")
+		.Position(200, 200)
+		.Size(600, 400)
+		.Create(g_Application);
+	{
+		auto* column = FlexboxBuilder()
+			.ID("Column")
+			.DirectionColumn()
+			.Expand()
+			.JustifyContent(JustifyContent::Center)
+			.Wrap<PopupSpawner>(popup2)
+			.Create(window1->DefaultSlot);
+		{
+			ButtonBuilder()
+				.Text("Popup 1")
+				.Wrap<PopupSpawner>(popup2)
+				.Wrap<TooltipSpawner>(TextTooltip("Opens a popup 2 menu"))
+				.Create(column->DefaultSlot);
+
+			ButtonBuilder()
+				.Text("Button 2")
+				.Wrap<TooltipSpawner>(TextTooltip("I'm a Button 2"))
+				.Create(column->DefaultSlot);
+
+			ButtonBuilder()
+				.Text("Button 3")
+				.Wrap<TooltipSpawner>(TextTooltip("I'm a Button 3"))
+				.Create(column->DefaultSlot);
+		}
+	}
+}
+
+
+void BuildAppScaffold() {
+	using namespace UI;
+	{
+		auto& style = g_Application->GetTheme()->Add("Window");
+		style.Add<BoxStyle>().SetFillColor("#101030").SetRounding(6);
+		style.Add<LayoutStyle>().SetMargins(5, 5).SetPaddings(5, 5);
+	}
+	{
+		auto& style = g_Application->GetTheme()->Add("BackgroundWindow");
+		style.Add<BoxStyle>().SetFillColor("#101030").SetRounding(0);
+		style.Add<LayoutStyle>().SetMargins(0).SetPaddings(0);
+	}
+	g_Application->GetTheme()->Add("MyPopup", "Window");
+
+		
 	// Background window
-	auto* backgroundWindow = new Window(g_Application, "BackgroundWindow", WindowFlags::Background);
-	auto* centered = new Centered(backgroundWindow->ChildSlot, "Root_Centered"); {
+	auto* backgroundWindow = new Window(g_Application, "BackgroundWindow", WindowFlags::Background, "BackgroundWindow");
+	auto* centered = new Centered(backgroundWindow->DefaultSlot, "Root_Centered"); {
 
 		auto* column = FlexboxBuilder()
 			.ID("Main_Column")
@@ -136,32 +196,35 @@ void BuildAppScaffold() {
 			.JustifyContent(JustifyContent::Center)
 			.ExpandMainAxis(true)
 			.ExpandCrossAxis(true)
-			.Parent(centered->ChildSlot);
+			.Create(centered->DefaultSlot);
 		{
-			auto* menuBar = Flexbox::Row().ID("Menu Bar").Parent(column->ChildrenSlot); {
+			auto* menuBar = Flexbox::Row().ID("Menu Bar").Create(column->DefaultSlot); {
 
 				auto* leftGroup = Flexbox::Row()
 					.ID("Left_Group")
-					.Parent(menuBar->ChildrenSlot);
+					.Create(menuBar->DefaultSlot);
 				{
-					Button::TextButton(leftGroup->ChildrenSlot, "Menu Item 1");
-					Button::TextButton(leftGroup->ChildrenSlot, "Menu Item 2");
+					ButtonBuilder().Text("Menu item 1")
+						.Wrap<PopupSpawner>(Popup1)
+						.Create(leftGroup->DefaultSlot);
+
+					Button::TextButton(leftGroup->DefaultSlot, "Menu Item 2");
 				}
 
 				auto* rightGroup = Flexbox::Row()
 					.ID("Right_Group")
 					.JustifyContent(UI::JustifyContent::End)
-					.Parent(menuBar->ChildrenSlot); 
+					.Create(menuBar->DefaultSlot); 
 				{
-					Button::TextButton(rightGroup->ChildrenSlot, "Menu Item 3");
-					Button::TextButton(rightGroup->ChildrenSlot, "Menu Item 4");
+					Button::TextButton(rightGroup->DefaultSlot, "Menu Item 3");
+					Button::TextButton(rightGroup->DefaultSlot, "Menu Item 4");
 				}
 			}
 
 			auto* middleRow = Flexbox::Row()
 				.ID("Main_Middle_Row")
 				.ExpandCrossAxis(true)
-				.Parent(column->ChildrenSlot); 
+				.Create(column->DefaultSlot); 
 			{
 				struct ToolbarController {
 
@@ -184,7 +247,7 @@ void BuildAppScaffold() {
 				};
 				auto* toolbarController = new ToolbarController();
 
-				auto* leftSplitColumn = Flexbox::Column().ID("leftSplitColumn").Parent(middleRow->ChildrenSlot); {
+				auto* leftSplitColumn = Flexbox::Column().ID("leftSplitColumn").Create(middleRow->DefaultSlot); {
 
 					//auto* tooltip = new TooltipSpawner(leftSplitColumn->ChildrenSlot, []() { return Tooltip::Text("Press me to toggle toolbar"); });
 					//auto* toolbarBtn1 = Button::TextButton(tooltip->ChildSlot, "Tool 1\nOpen sidebar");
@@ -192,7 +255,8 @@ void BuildAppScaffold() {
 					auto* toolbarBtn11 = ButtonBuilder()
 						.ID("Btn 1")
 						.Text("Tool 1\nOpen sidebar")
-						.Tooltip(TooltipSpawner::Text("Opens a toolbar"))
+						.Wrap<TooltipSpawner>(TextTooltip("Opens a toolbar"))
+						.Wrap<PopupSpawner>(Popup1)
 						.Callback([=](bool bPressed) {
 							if(!bPressed) return;
 							static auto bVisible = true;
@@ -201,9 +265,9 @@ void BuildAppScaffold() {
 							if(bVisible) toolbarController->OpenToolbar();
 							else toolbarController->CloseToolbar();
 						})							
-						.Parent(leftSplitColumn->ChildrenSlot);													
+						.Create(leftSplitColumn->DefaultSlot);							
 							
-					auto* toolbarBtn2 = Button::TextButton(leftSplitColumn->ChildrenSlot, "Tool 2\nIncrease size");
+					auto* toolbarBtn2 = Button::TextButton(leftSplitColumn->DefaultSlot, "Tool 2\nIncrease size");
 
 					toolbarBtn2->SetCallback([btn = toolbarBtn2](bool bPressed) {
 						if(!bPressed) return;
@@ -215,120 +279,30 @@ void BuildAppScaffold() {
 					});
 				}
 
-				auto* leftToolboxSplitBox = new SplitBox(middleRow->ChildrenSlot, true, "Left_Tool_Main_Area_Split"); {
+				auto* leftToolboxSplitBox = new SplitBox(middleRow->DefaultSlot, true, "Left_Tool_Main_Area_Split"); {
 
-					auto* leftToolboxColumn = Flexbox::Column().ID("Left_Toolbar_Column").ExpandCrossAxis(true).Parent(leftToolboxSplitBox->FirstSlot); {
-						Button::TextButton(leftToolboxColumn->ChildrenSlot, "Tool Content");
+					auto* leftToolboxColumn = Flexbox::Column().ID("Left_Toolbar_Column").ExpandCrossAxis(true).Create(leftToolboxSplitBox->FirstSlot); {
+						Button::TextButton(leftToolboxColumn->DefaultSlot, "Tool Content");
 					}
 					toolbarController->SetToolbarWindow(leftToolboxColumn);
 
-					auto* rightMainAreaColumn = Flexbox::Column().ID("Right_Main_Area_Column").ExpandCrossAxis(true).Parent(leftToolboxSplitBox->SecondSlot); {
-						Button::TextButton(rightMainAreaColumn->ChildrenSlot, "Main Area Content");
+					auto* rightMainAreaColumn = Flexbox::Column().ID("Right_Main_Area_Column").ExpandCrossAxis(true).Create(leftToolboxSplitBox->SecondSlot); {
+						Button::TextButton(rightMainAreaColumn->DefaultSlot, "Main Area Content");
 					}
 				}
 			}
 
-			auto* bottomRow = Flexbox::Row().ID("Status_Bar_Row").Parent(column->ChildrenSlot); {
-				auto* b = Button::TextButton(bottomRow->ChildrenSlot, "Status bar");
+			auto* bottomRow = Flexbox::Row().ID("Status_Bar_Row").Create(column->DefaultSlot); {
+				ButtonBuilder()
+					.Text("Status bar")
+					.Wrap<TooltipSpawner>(TextTooltip("This is the place for displaying some status app info"))
+					.Wrap<PopupSpawner>(Popup1)
+					.Create(bottomRow->DefaultSlot);
 			}
 		}
 	}
 	
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//class BreadCrumbsList: public UI::Controller {
-//public:
-//
-//	BreadCrumbsList(FilesystemRootController* inRootController) {
-//
-//
-//	}
-//
-//
-//};
-//
-//class FileTiles: public UI::Controller {
-//public:
-//
-//	FileTiles(FilesystemRootController* inRootController) {
-//
-//
-//	}
-//
-//	void AddItem(FileInfo inFIle) {
-//		auto itemView = new ItemView(inFIle);
-//		Container->ChildrenSlot.Attach(itemView);
-//	}
-//
-//	void OnItemSelected(ItemView* inItem) {
-//
-//	}
-//
-//	void OnItemClicked(ItemVIew* inItem) {
-//		filelist = Filesystem::GetFilesInDirectory(inFile.IsDirectory());
-//		fileTiles.Clear();
-//
-//		auto chidlrenList;
-//		Build();		
-//
-//		RootController->OnItemOpened(Path);
-//	}
-//
-//	void Build(childrenlist) {
-//		{
-//			for(auto file : filelist) {
-//				fileTiles.AddItem(file);
-//			}
-//		}
-//	}
-//
-//	FilesystemRootController* RootController;
-//	Flexbox* Container;
-//};
-//
-//class FilesystemRootController: public UI::Controller {
-//public:
-//
-//	FilesystemRootController(const Path& inRootPath) {
-//
-//	}
-//
-//	Widget* Build() {
-//		auto fileTiles = new FileTiles(this);
-//		auto breadCrumbs = new BreadCrumbsList(this);
-//		auto forwardBtn = new Button(setCallback());
-//		auto backBtn = new Button(setCallback());
-//		auto upBtn = new Button();
-//
-//
-//		auto flexbox = new Flexbox();
-//		flexbox->ChildrenSlot.Attach({fileTiles, breadCrumbs});
-//	}
-//
-//	void OnFileClicked(Path inFile) {
-//		breadCrumbs.SetPath(inFile);
-//		fileTiles.OpenDirectory(inFile);
-//	}
-//
-//	Path m_Rootpath;
-//};
-
-
-
-
 
 int main(int argc, char* argv[]) {
 
@@ -338,8 +312,9 @@ int main(int argc, char* argv[]) {
 
 	g_Application = Application::Create("App", 1800, 900);
 
-	CreateTheme();
-	BuildAppScaffold();
+	SetDarkTheme();
+	BuildSimple();
+	//BuildAppScaffold();
 
 	while(g_Application->Tick());
 }

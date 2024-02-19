@@ -52,9 +52,9 @@ public:
 	/**
 	 * Returns intern or NULL for specified index
 	 */
-	const char* string(int32 inIndex) {
+	const std::string& string(int32 inIndex) {
 		Assert(inIndex < m_StringPool.size());
-		return m_StringPool[inIndex].c_str();
+		return m_StringPool[inIndex];
 	}
 
 private:
@@ -90,8 +90,8 @@ void StringID::_intern(std::string_view inName) {
 
 int StringID::_compareLexically(const StringID& right) const {
 	if (m_CompareIndex == right.m_CompareIndex) { return 0; }
-	const char* rightStr = StringPool::instance().string(m_CompareIndex);
-	const char* thisStr = StringPool::instance().string(m_DisplayIndex);
+	const char* rightStr = StringPool::instance().string(m_CompareIndex).c_str();
+	const char* thisStr = StringPool::instance().string(m_DisplayIndex).c_str();
 	auto len = std::min(std::strlen(thisStr), std::strlen(rightStr));
 	if (int32 diff = std::strncmp(thisStr, rightStr, len)) {
 		return diff;
@@ -99,12 +99,12 @@ int StringID::_compareLexically(const StringID& right) const {
 	return (int)std::strlen(thisStr) - (int)std::strlen(rightStr);
 }
 
-std::string StringID::String() const {
+const std::string& StringID::String() const {
 	return StringPool::instance().string(m_DisplayIndex);
 }
 
 const char* StringID::operator*() const {
-	return StringPool::instance().string(m_DisplayIndex);
+	return StringPool::instance().string(m_DisplayIndex).c_str();
 }
 
 void StringID::test() {
