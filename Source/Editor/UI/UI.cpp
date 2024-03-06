@@ -23,7 +23,7 @@ class ApplicationImpl;
 
 constexpr u32	 g_TooltipDelayMs = 500;
 constexpr u8	 g_DefaultFontSize = 13;
-constexpr bool	 g_DrawCliprects = false;
+constexpr bool	 g_DrawCliprects = true;
 
 INativeWindow*	 g_OSWindow = nullptr;
 Renderer*		 g_Renderer = nullptr;
@@ -48,6 +48,7 @@ public:
 
 	using TimerCallback = std::function<bool()>;
 	using TimePoint = std::chrono::high_resolution_clock::time_point;
+	using TimerHandle = void*;
 
 	struct Timer {
 		WeakPtr<Widget>	Widget;
@@ -58,12 +59,22 @@ public:
 	
 public:
 
-	void AddTimer(Widget* inWidget, const TimerCallback& inCallback, u64 inPeriodMs) {
+	TimerHandle AddTimer(Widget* inWidget, const TimerCallback& inCallback, u64 inPeriodMs) {
 		m_Timers.emplace_back(Timer(inWidget->GetWeakAs<Widget>(), inCallback, inPeriodMs, Now()));
+		return (TimerHandle)&m_Timers.back();
+	}
+
+	void		RemoveTimer(TimerHandle inHandle) {
+		for(auto it = m_Timers.begin(); it != m_Timers.end(); ++it) {
+			if(&*it == inHandle) {
+				m_Timers.erase(it);
+				break;
+			}
+		}
 	}
 
 	// Ticks timers and calls callbacks
-	void Tick() {
+	void		Tick() {
 		if(m_Timers.empty()) return;
 
 		const auto now = Now();
@@ -93,7 +104,7 @@ public:
 		}
 	}
 
-	size_t Size() const { return m_Timers.size(); }
+	size_t		Size() const { return m_Timers.size(); }
 
 private:
 
@@ -251,7 +262,7 @@ public:
 		Super::SetVisibility(false);
 		Super::SetOrigin(GetLayoutInfo().Margins.TL());
 
-		new UI::Text(DefaultSlot, "");
+		new UI::Text("", this);
 	}
 
 };
@@ -302,16 +313,15 @@ public:
 		mouseMoveEvent.MouseDelta = mouseDelta;
 		mouseMoveEvent.MouseButtonsPressedBitField = m_MouseButtonsPressedBitField;
 
-		//if(mousePosGlobal == NOPOINT) {
+		if(mousePosGlobal == NOPOINT && m_HoveredWidget) {
+			HoverEvent hoverEvent{false};
+			auto* outermostWrapper = m_HoveredWidget->GetOutermostWrapper();
+			outermostWrapper
+				? outermostWrapper->OnEvent(&hoverEvent)
+				: m_HoveredWidget->OnEvent(&hoverEvent);
+			m_HoveredWidget = nullptr;
 
-		//	if(m_HoveredWidget) {
-		//		m_HoveredWidget->OnEvent(&mouseMoveEvent);
-		//		m_HoveredWidget = nullptr;
-		//	}
-		//	m_HoveredWindow = nullptr;
-
-		//} else 
-		if(m_CapturingWidget) {
+		} else if(m_CapturingWidget) {
 			const auto mouseDeltaFromInitial = mousePosGlobal - m_MousePosOnCaptureGlobal;
 			// Convert global to local using hit test data
 			const auto* parentHitData = m_LastHitStack.Find(m_CapturingWidget->GetParent<LayoutWidget>());
@@ -383,17 +393,6 @@ public:
 		bPressed ? m_MouseButtonsPressedBitField |= (MouseButtonMask)inButton 
 				 : m_MouseButtonsPressedBitField &= ~(MouseButtonMask)inButton;
 
-		//if(m_MouseState == MouseState::Tooltip) {
-		//	m_Layers.Tooltip.Widget.reset();
-		//	m_MouseState = MouseState::Default;
-		//}
-
-		//// Close popups when not hitting a popup
-		//if(bPressed && !m_PopupWindowsStack.empty() && (!m_HoveredWindow || !m_HoveredWindow->HasAnyWindowFlags(WindowFlags::Popup))) {
-		//	m_PopupWindowsStack.front().Spawner->OnDestroy();
-		//	m_PopupWindowsStack.clear();
-		//}
-
 		// When pressed first time from default
 		if(bPressed && m_MouseButtonHeldNum == 1) {
 			m_PressedMouseButton = (MouseButton)inButton;
@@ -456,10 +455,6 @@ public:
 		if(inButton == KeyCode::KEY_RIGHT_ALT) m_ModifiersState[RightAlt] = !m_ModifiersState[RightAlt];
 
 		if(inButton == KeyCode::KEY_CAPS_LOCK) m_ModifiersState[CapsLock] = !m_ModifiersState[CapsLock];
-
-		/*if(m_MouseState == MouseState::Tooltip) {
-			m_Layers.Tooltip.Widget.reset();
-		}*/
 
 		if(inButton == KeyCode::KEY_P && bPressed) {
 			
@@ -633,22 +628,6 @@ public:
 			}
 			m_DebugOverlay->GetChild<Text>()->SetText(str);
 		}
-		
-		//// Process tooltip
-		//if(m_MouseState == MouseState::Default && m_Layers.Tooltip.Timer.IsReady()) {
-
-		//	m_LastHitStack.Top().Widget->VisitParent([&](Widget* inWidget)->VisitResult {
-
-		//		if(auto* tooltipSpawner = inWidget->As<TooltipSpawner>()) {
-		//			m_Layers.Tooltip.Widget.reset(tooltipSpawner->Spawn());
-		//			m_Layers.Tooltip.Widget->SetOrigin(m_LastMousePosGlobal);
-		//			m_MouseState = MouseState::Tooltip;
-		//			return VisitResultExit;
-		//		}
-		//		return VisitResultContinue;
-		//	});
-		//	m_Layers.Tooltip.Timer.Clear();
-		//}
 
 		// Draw views
 		g_Renderer->ResetDrawLists();
@@ -677,24 +656,7 @@ public:
 		++m_FrameNum;
 		m_LastFrameTimeMs = std::chrono::duration_cast<std::chrono::microseconds>(frameEndTimePoint - frameStartTimePoint).count() / 1000.f;
 		
-		g_Renderer->RenderFrame(true);
-		// Render UI async
-		/*{
-			if(m_RenderingJobEventRef && !m_RenderingJobEventRef.IsSignalled()) {
-				JobSystem::ThisFiber::WaitForEvent(m_RenderingJobEventRef);
-				m_RenderingJobEventRef.Reset();
-			}
-			JobSystem::Builder jb;
-
-			auto renderingJob = [](JobSystem::JobContext&) {
-				OPTICK_EVENT("Rendering UI vsync");
-				g_Renderer->RenderFrame(true);
-			};
-			jb.PushBack(renderingJob);
-			m_RenderingJobEventRef = jb.PushFence();
-			jb.Kick();
-		}*/
-		
+		g_Renderer->RenderFrame(true);		
 		return true;
 	}
 
@@ -734,7 +696,6 @@ public:
 			auto tooltip = spawnTooltipIntent->Spawner->OnSpawn(m_MousePosGlobal);
 			tooltip->OnParented(this);
 			LOGF("Opened the tooltip {}", tooltip->GetDebugIDString());
-
 			m_WindowStack.push_back(std::move(tooltip));
 			return true;
 		}
@@ -751,42 +712,55 @@ public:
 			return true;
 		}
 
-		if(auto* spawnPopupIntent = inEvent->Cast<SpawnPopupIntent>()) {
-			auto  popup = spawnPopupIntent->Spawner->OnSpawn(m_MousePosGlobal, g_OSWindow->GetSize());
-			auto* ptr = popup.get();
-			popup->OnParented(this);
-			LOGF("Opened the popup {}", popup->GetDebugIDString());
+		if(auto* popupEvent = inEvent->Cast<PopupEvent>()) {
 
-			for(auto it = m_WindowStack.begin(); it != m_WindowStack.end(); ++it) {
-				auto* window = it->get();
+			if(popupEvent->Type == PopupEvent::Type::Open) {
+				auto  popup = popupEvent->Spawner->OnSpawn(m_MousePosGlobal, g_OSWindow->GetSize());
+				auto* ptr = popup.get();
+				popup->OnParented(this);
+				LOGF("Opened the popup {}", popup->GetDebugIDString());
 
-				if(window->HasAnyWindowFlags(WindowFlags::Overlay)) {
-					m_WindowStack.insert(it, std::move(popup));
-					break;
+				for(auto it = m_WindowStack.begin(); it != m_WindowStack.end(); ++it) {
+					auto* window = it->get();
+
+					if(window->HasAnyWindowFlags(WindowFlags::Overlay)) {
+						m_WindowStack.insert(it, std::move(popup));
+						break;
+					}
 				}
+				ParentLayoutEvent layoutEvent;
+				layoutEvent.Constraints = Rect(g_OSWindow->GetSize());
+				ptr->OnEvent(&layoutEvent);
+				// Because we open a new window on top of other windows, update hovering state			
+				DispatchMouseMoveEvent(m_MousePosGlobal);
+				return true;
 			}
-			ParentLayoutEvent layoutEvent;
-			layoutEvent.Constraints = Rect(g_OSWindow->GetSize());
-			ptr->OnEvent(&layoutEvent);
-			// Because we open a new window on top of other windows, update hovering state			
-			DispatchMouseMoveEvent(m_MousePosGlobal);
-			return true;
-		}
 
-		if(auto* closePopupIntent = inEvent->Cast<ClosePopupIntent>()) {
+			if(popupEvent->Type == PopupEvent::Type::Close) {
+				for(auto it = m_WindowStack.begin(); it != m_WindowStack.end(); ++it) {
 
-			for(auto it = m_WindowStack.begin(); it != m_WindowStack.end(); ++it) {
-
-				if(it->get() == closePopupIntent->Popup) {
-					LOGF("Closed the popup {}", closePopupIntent->Popup->GetDebugIDString());
-					m_WindowStack.erase(it);
-					ResetState();
-					break;
+					if(it->get() == popupEvent->Popup) {
+						LOGF("Closed the popup {}", popupEvent->Popup->GetDebugIDString());
+						m_WindowStack.erase(it);
+						ResetState();
+						break;
+					}
 				}
+				return true;
 			}
-			return true;
-		}
 
+			if(popupEvent->Type == PopupEvent::Type::CloseAll) {
+				for(auto it = m_WindowStack.begin(); it != m_WindowStack.end(); ++it) {
+
+					if(it->get()->IsA<PopupWindow>()) {
+						LOGF("Closed the popup {}", it->get()->GetDebugIDString());
+						m_WindowStack.erase(it);
+						ResetState();
+					}
+				}
+				return true;
+			}			
+		}
 		return true;
 	}
 
@@ -821,8 +795,12 @@ public:
 		return state;
 	}	
 
-	void	AddTimer(Widget* inWidget, const TimerCallback& inCallback, u64 inPeriodMs) override {
-		m_Timers.AddTimer(inWidget, inCallback, inPeriodMs);
+	TimerHandle	AddTimer(Widget* inWidget, const TimerCallback& inCallback, u64 inPeriodMs) override {
+		return m_Timers.AddTimer(inWidget, inCallback, inPeriodMs);
+	}
+
+	void RemoveTimer(TimerHandle inHandle) override {
+		m_Timers.RemoveTimer(inHandle);
 	}
 
 private:
@@ -840,24 +818,23 @@ private:
 	bool					m_bMinimized = false;
 	bool					m_bResetState = false;
 
-	DebugOverlayWindow*		m_DebugOverlay = nullptr;
-
-	Point					m_MousePosGlobal;
-	WeakPtr<Window>			m_HoveredWindow;
+	// Position of the mouse cursor when button has been pressed
+	Point					m_MousePosOnCaptureGlobal;
+	Point					m_MousePosGlobal;	
 	
 	// Number of buttons currently held
 	u8						m_MouseButtonHeldNum = 0;
 	// We allow only one button to be pressed simultaniously
 	MouseButton				m_PressedMouseButton = MouseButton::None;
 	MouseButtonMask			m_MouseButtonsPressedBitField = MouseButtonMask::None;
-	// Position of the mouse cursor when button has been pressed
-	Point					m_MousePosOnCaptureGlobal;
-
+	KeyModifiersArray		m_ModifiersState{false};
+	
 	HitStack				m_LastHitStack;
 	WeakPtr<LayoutWidget>	m_HoveredWidget;
 	WeakPtr<LayoutWidget>	m_CapturingWidget;
+	WeakPtr<Window>			m_HoveredWindow;	
 
-	KeyModifiersArray		m_ModifiersState{false};
+	DebugOverlayWindow*		m_DebugOverlay = nullptr;
 
 	// Stack of windows, bottom are background windows and top are overlay windows
 	// Other windows in the middle
@@ -865,7 +842,6 @@ private:
 							m_WindowStack;
 
 	TimerList				m_Timers;
-
 	std::unique_ptr<Theme>	m_Theme;
 
 };

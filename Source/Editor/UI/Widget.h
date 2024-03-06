@@ -172,16 +172,18 @@ namespace UI {
 
 	using Margin = RectSides<u32>;
 	using Padding = RectSides<u32>;
-	using ChildSlotIndex = size_t;
+	using WidgetSlot = size_t;
+
+	constexpr auto DefaultWidgetSlot = WidgetSlot();
 
 	struct LayoutInfo {
 		Margin  Margins;
 		Padding Paddings;
 	};
 
-	enum class Axis { X, Y, Both };
-	constexpr AxisIndex ToAxisIndex(Axis inAxis) { assert(inAxis != Axis::Both); return inAxis == Axis::X ? AxisX : AxisY; }
-	constexpr Axis ToAxis(int inAxisIndex) { assert(inAxisIndex == 0 || inAxisIndex == 1); return inAxisIndex ? Axis::Y : Axis::X; }
+	//enum class Axis { X, Y, Both };
+	//constexpr AxisIndex ToAxisIndex(Axis inAxis) { assert(inAxis != Axis::Both); return inAxis == Axis::X ? AxisX : AxisY; }
+	//constexpr Axis ToAxis(int inAxisIndex) { assert(inAxisIndex == 0 || inAxisIndex == 1); return inAxisIndex ? Axis::Y : Axis::X; }
 
 	// Represent invalid point. I.e. null object for poins
 	constexpr auto NOPOINT = Point(std::numeric_limits<float>::max());
@@ -500,10 +502,8 @@ namespace UI {
 			Shrink
 		};
 
-		constexpr Mode operator[] (u8 inAxisIdx) const {
-			assert(inAxisIdx < 2);
-			if(inAxisIdx) return y;
-			return x;
+		constexpr Mode operator[] (Axis inAxis) const {
+			return inAxis == Axis::X ? x : y;
 		}
 
 		Mode x;
@@ -521,74 +521,7 @@ namespace UI {
 	};
 	DEFINE_ENUM_FLAGS_OPERATORS(WidgetFlags)	
 	DEFINE_ENUMFLAGS_TOSTRING_4(WidgetFlags, None, Hidden, AxisXExpand, AxisYExpand)
-
-
-
-	/*
-	* A slot in which a widget is added
-	* A widget can have multiple slots
-	*/
-	class WidgetAttachSlot {
-	public:
-		virtual ~WidgetAttachSlot() = default;
-
-		virtual void Parent(Widget* inChild) = 0;
-		virtual void Orphan(Widget* inChild) = 0;
-
-		WidgetAttachSlot(Widget* inOwner)
-			: m_Owner(inOwner) {}
-
-	protected:
-		Widget* m_Owner;
-	};
-
-
-
-	/*
-	* Configuration data for a widget base class
-	*/
-	struct WidgetConfig {
-		std::string				m_ID;
-		std::string				m_StyleClass;
-		WidgetAttachSlot*		m_Slot = nullptr;
-		// Stack of wrapper widget
-		std::unique_ptr<Widget>	m_WrapperTop;
-	};
-
-	/*
-	* Helper for easier widget creation through builders
-	* T should be a subclass to allow chaining
-	*/
-	template<class T>
-	struct WidgetBuilder: public WidgetConfig {
-
-		T& ID(const std::string& inID) { m_ID = inID; return static_cast<T&>(*this); }
-		T& StyleClass(const std::string& inStyleClass) { m_StyleClass = inStyleClass; return static_cast<T&>(*this); }
-		
-		template<class WrapperType, class ...ArgTypes>
-		T& Wrap(ArgTypes&&... inArgs) {
-			auto* wrapper = new WrapperType(std::forward<ArgTypes>(inArgs)...);
-
-			if(!m_Slot) {
-				m_WrapperTop.reset(wrapper);
-
-			} else {
-				m_Slot->Parent(wrapper);
-			}
-			m_Slot = &wrapper->ChildSlot;
-			return static_cast<T&>(*this);
-		}
-
-		constexpr operator WidgetConfig() const { return static_cast<WidgetConfig>(*this); }
-
-	protected:
-
-		void SetParentSlot(WidgetAttachSlot& inSlot) {
-			if(!m_Slot) m_Slot = &inSlot;
-			if(m_WrapperTop) inSlot.Parent(m_WrapperTop.release());
-		}
-	};
-
+	
 
 	// Returned by the callback to instruct iteration
 	struct VisitResult {
@@ -663,8 +596,8 @@ namespace UI {
 		}
 
 		// Attaches this widget to a parent slot
-		void				Parent(WidgetAttachSlot& inSlot) { inSlot.Parent(this); }
-		void				Orphan(WidgetAttachSlot& inSlot) { inSlot.Orphan(this); }
+		virtual void		Parent(Widget* inWidget, WidgetSlot inSlot = DefaultWidgetSlot) { Assertf(false, "Class {} cannot have children.", GetClassName()); }
+		virtual void		Orphan(Widget* inWidget, WidgetSlot inSlot = DefaultWidgetSlot) { Assertf(false, "Class {} cannot have children.", GetClassName()); }
 		
 		/*
 		* Called by a parent when widget is being parented
@@ -681,9 +614,6 @@ namespace UI {
 		* Generally a widget is not deleted on this step
 		*/
 		virtual void		OnOrphaned() { m_Parent = nullptr; }
-
-		virtual void		ParentChild(Widget* inChild, WidgetAttachSlot*) {}
-		virtual void		OrphanChild(Widget* inChild) {}
 			 
 		virtual bool		OnEvent(IEvent* inEvent) {	
 			if(auto* event = inEvent->Cast<DebugLogEvent>()) {
@@ -769,93 +699,61 @@ namespace UI {
 	};
 
 
-	
+
+
 	/*
-	* Slot for a single child
+	* Configuration data for a widget base class
 	*/
-	template<typename T = Widget>
-	class SingleWidgetSlot: public WidgetAttachSlot {
-	public:
-
-		SingleWidgetSlot(Widget* inOwner)
-			: WidgetAttachSlot(inOwner) {}
-
-		void Parent(Widget* inChild) override {
-			if(inChild == m_Child.get()) return;
-			m_Child.reset(inChild->Cast<T>());
-			m_Child->OnParented(m_Owner);
-		}
-
-		void Parent(std::unique_ptr<T>&& inChild) {
-			if(inChild == m_Child) return;
-			m_Child.reset(inChild.release()->Cast<T>());
-			m_Child->OnParented(m_Owner);
-		}
-
-		void Orphan(Widget* inChild) override {
-			m_Child.release();
-			inChild->OnOrphaned();
-		}
-
-		operator bool() const { return m_Child != nullptr; }
-
-		SingleWidgetSlot& operator=(T* inWidget) {
-			Parent(inWidget);
-			return *this;
-		}
-
-		SingleWidgetSlot& operator=(std::unique_ptr<T>&& inWidget) {
-			Parent(inWidget.release());		
-			return *this;
-		}
-
-		T* operator->() { return m_Child.get(); }
-		const T* operator->() const { return m_Child.get(); }
-
-		T* Get() { return m_Child.get(); }
-
-	public:
-		std::unique_ptr<T> m_Child;
+	struct WidgetConfig {
+		std::string				m_ID;
+		std::string				m_StyleClass;
+		// Stack of wrapper widget
+		std::unique_ptr<Widget>	m_WrapperTop;
+		WidgetSlot				m_ParentSlot = DefaultWidgetSlot;
+		// Bottom of the stack
+		Widget*					m_Parent = nullptr;
 	};
 
-	template<typename T>
-	bool operator==(const SingleWidgetSlot<T>& inSlot, const Widget* inWidget) {
-		return inSlot.Get() == inWidget;
-	}
+	/*
+	* Helper for easier widget creation through builders
+	* T should be a subclass to allow chaining
+	*/
+	template<class T>
+	struct WidgetBuilder: public WidgetConfig {
 
+		T& ID(const std::string& inID) { m_ID = inID; return static_cast<T&>(*this); }
+		T& StyleClass(const std::string& inStyleClass) { m_StyleClass = inStyleClass; return static_cast<T&>(*this); }
 
+		// Every call to this function adds a wrapper to the widget
+		// Each wrapper is added below the previous one, 
+		// I.e. the top wrapper is created on the first call
+		template<class WrapperType, class ...ArgTypes>
+		T& Wrap(ArgTypes&&... inArgs) {
+			auto* wrapper = new WrapperType(std::forward<ArgTypes>(inArgs)...);
 
-	class MultiChildSlot: public WidgetAttachSlot {
-	public:
+			if(!m_WrapperTop) {
+				m_WrapperTop.reset(wrapper);
 
-		MultiChildSlot(Widget* inOwner)
-			: WidgetAttachSlot(inOwner) {}
-
-		void Parent(Widget* inChild) override {
-			/// TODO check if already parented
-			m_Children.emplace_back(inChild);
-			inChild->OnParented(m_Owner);
+			} else {
+				m_Parent->Parent(wrapper);
+			}
+			m_Parent = wrapper;
+			return static_cast<T&>(*this);
 		}
 
-		template<typename T>
-		void Parent(std::unique_ptr<T>&& inChild) {
-			auto* child = inChild.release();
-			m_Children.emplace_back(child);
-			child->OnParented(m_Owner);
+		constexpr operator WidgetConfig() const { return static_cast<WidgetConfig>(*this); }
+
+	protected:
+
+		void SetParent(Widget* inParent, WidgetSlot inSlot) {
+			if(!m_Parent) {
+				m_Parent = inParent;
+				m_ParentSlot = inSlot;
+			}
+			if(m_WrapperTop) {
+				inParent->Parent(m_WrapperTop.release(), inSlot);
+			}
 		}
-
-		void Orphan(Widget* inChild) override {
-			m_Children.erase(std::ranges::find_if(m_Children, 
-				[&](const auto& inPtr) { return inPtr.get() == inChild; }));
-			inChild->OnOrphaned();
-		}
-
-		auto& Get() { return m_Children; }
-
-		size_t Size() const { return m_Children.size(); }
-
-	public:
-		std::vector<std::unique_ptr<Widget>> m_Children;
 	};
 
 
@@ -870,8 +768,22 @@ namespace UI {
 
 		Controller(const std::string& inID = {})
 			: Widget(inID)
-			, ChildSlot(this) 
+			, m_Child() 
 		{}
+
+		void Parent(Widget* inWidget, WidgetSlot inSlot = DefaultWidgetSlot) override {
+			Assert(inWidget && !inWidget->GetParent() && !m_Child);
+			m_Child.reset(inWidget);
+			m_Child->OnParented(this);
+		}
+
+		void Orphan(Widget* inWidget, WidgetSlot inSlot = DefaultWidgetSlot) override {
+			Assert(inWidget);
+			if(m_Child.get() == inWidget) {
+				m_Child.release();
+				m_Child->OnOrphaned();
+			}
+		}
 
 		bool OnEvent(IEvent* inEvent) override {
 			
@@ -887,24 +799,24 @@ namespace UI {
 				Super::OnEvent(inEvent);
 			}
 
-			return ChildSlot ? ChildSlot->OnEvent(inEvent) : false;
+			return m_Child ? m_Child->OnEvent(inEvent) : false;
 		};
 
 		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = true) final {
-			if(!ChildSlot) return VisitResultContinue;
+			if(!m_Child) return VisitResultContinue;
 
-			const auto result = inVisitor(ChildSlot.Get());
+			const auto result = inVisitor(m_Child.get());
 			if(!result.bContinue) return VisitResultExit;
 
 			if(bRecursive && !result.bSkipChildren) {
-				const auto result = ChildSlot->VisitChildren(inVisitor, bRecursive);
+				const auto result = m_Child->VisitChildren(inVisitor, bRecursive);
 				if(!result.bContinue) return {false};
 			}
 			return VisitResultContinue;
 		}
 
-	public:
-		SingleWidgetSlot<> ChildSlot;
+	private:
+		std::unique_ptr<Widget> m_Child;
 	};
 
 
@@ -922,7 +834,26 @@ namespace UI {
 
 		Wrapper(const std::string& inID = {})
 			: Widget(inID)
-			, ChildSlot(this) {}
+			, m_Child() 
+		{}
+
+		void OnParented(Widget* inParent) override;
+
+		void OnOrphaned() override;
+
+		void Parent(Widget* inWidget, WidgetSlot inSlot = DefaultWidgetSlot) override {
+			Assert(inWidget && !inWidget->GetParent() && !m_Child);
+			m_Child.reset(inWidget);
+			m_Child->OnParented(this);
+		}
+
+		void Orphan(Widget* inWidget, WidgetSlot inSlot = DefaultWidgetSlot) override {
+			Assert(inWidget);
+			if(m_Child.get() == inWidget) {
+				m_Child.release();
+				m_Child->OnOrphaned();
+			}
+		}
 
 		bool OnEvent(IEvent* inEvent) override {
 			
@@ -937,25 +868,28 @@ namespace UI {
 			if(inEvent->GetCategory() == EventCategory::Debug) {
 				Super::OnEvent(inEvent);
 			}
-
-			return ChildSlot ? ChildSlot->OnEvent(inEvent) : false;
+			return m_Child ? m_Child->OnEvent(inEvent) : false;
 		};
 
 		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = true) final {
-			if(!ChildSlot) return VisitResultContinue;
+			if(!m_Child) return VisitResultContinue;
 
-			const auto result = inVisitor(ChildSlot.Get());
+			const auto result = inVisitor(m_Child.get());
 			if(!result.bContinue) return VisitResultExit;
 
 			if(bRecursive && !result.bSkipChildren) {
-				const auto result = ChildSlot->VisitChildren(inVisitor, bRecursive);
+				const auto result = m_Child->VisitChildren(inVisitor, bRecursive);
 				if(!result.bContinue) return {false};
 			}
 			return VisitResultContinue;
 		}
 
-	public:
-		SingleWidgetSlot<> ChildSlot;
+		bool DispatchToChildren(IEvent* inEvent) {
+			if(m_Child) return m_Child->OnEvent(inEvent);
+		}
+
+	private:
+		std::unique_ptr<Widget> m_Child;
 	};
 
 
@@ -963,7 +897,7 @@ namespace UI {
 
 
 	/*
-	* A widget which have size and position
+	* A widget which has size and position
 	* And possibly can be drawn
 	*/
 	class LayoutWidget: public Widget {
@@ -1077,10 +1011,15 @@ namespace UI {
 			inMode.y == AxisMode::Expand ? SetFlags(WidgetFlags::AxisYExpand) : ClearFlags(WidgetFlags::AxisYExpand);
 		}
 
-		void			SetAxisMode(u8 inAxisIdx, AxisMode::Mode inMode) {
-			Assert(inAxisIdx < 2);
-			if(inAxisIdx == AxisX) inMode == AxisMode::Mode::Expand ? SetFlags(WidgetFlags::AxisXExpand) : ClearFlags(WidgetFlags::AxisXExpand);
-			else if(inAxisIdx == AxisY) inMode == AxisMode::Mode::Expand ? SetFlags(WidgetFlags::AxisYExpand) : ClearFlags(WidgetFlags::AxisYExpand);
+		void			SetAxisMode(Axis inAxis, AxisMode::Mode inMode) {
+			if(inAxis == Axis::X) 
+				inMode == AxisMode::Mode::Expand 
+				? SetFlags(WidgetFlags::AxisXExpand) 
+				: ClearFlags(WidgetFlags::AxisXExpand);
+			else if(inAxis == Axis::Y) 
+				inMode == AxisMode::Mode::Expand 
+				? SetFlags(WidgetFlags::AxisYExpand) 
+				: ClearFlags(WidgetFlags::AxisYExpand);
 		}
 
 		// Hiddent objects won't draw themselves and won't handle hovering 
@@ -1096,14 +1035,14 @@ namespace UI {
 		void			SetOrigin(int Axis, float inPos) { m_Origin[Axis] = inPos; }
 
 		void			SetSize(float2 inSize) { m_Size = inSize; }
-		void			SetSize(Axis inAxis, float inSize) { inAxis == Axis::X ? m_Size.x = inSize : m_Size.y = inSize; }
-		void			SetSize(bool inAxis, float inSize) { m_Size[inAxis] = inSize; }
+		void			SetSize(Axis inAxis, float inSize) { m_Size[(int)inAxis] = inSize; }
+		void			SetSize(float inX, float inY) { m_Size = {inX, inY}; }
 
 		Rect			GetRect() const { return {m_Origin, m_Size}; }
 		// Returns Rect of this widget in global coordinates
 		Rect			GetRectGlobal() const { return Rect(GetParent() ? GetParent()->TransformLocalToGlobal(m_Origin) : m_Origin, m_Size); }
 		float2			GetSize() const { return m_Size; }
-		float			GetSize(bool bYAxis) const { return bYAxis ? m_Size.y : m_Size.x; }
+		float			GetSize(Axis inAxis) const { return m_Size[inAxis]; }
 
 		Point			GetOrigin() const { return m_Origin; }
 
@@ -1157,7 +1096,7 @@ namespace UI {
 			const auto margins = GetLayoutInfo().Margins;
 			SetOrigin(inEvent->Constraints.TL() + margins.TL());
 
-			for(auto axis = 0; axis != 2; ++axis) {
+			for(auto axis: Axes2D) {
 
 				if(GetAxisMode()[axis] == AxisMode::Expand) {
 					SetSize(axis, inEvent->Constraints.Size()[axis] - margins.Size()[axis]);
@@ -1240,29 +1179,38 @@ namespace UI {
 
 		SingleChildContainer(const std::string& inID = {})
 			: Container(inID)
-			, DefaultSlot(this)
+			, m_Child()
 		{}
 
-		// Called by a subclass or a widget which wants to be a child
-		void ParentChild(Widget* inChild, WidgetAttachSlot*) override {
-			DefaultSlot.Parent(inChild);
+		void Parent(Widget* inWidget, WidgetSlot inSlot = DefaultWidgetSlot) override {
+			Assert(inWidget && !inWidget->GetParent() && !m_Child);
+			m_Child.reset(inWidget);
+			m_Child->OnParented(this);
+		}
+
+		void Orphan(Widget* inWidget, WidgetSlot inSlot = DefaultWidgetSlot) override {
+			Assert(inWidget);
+			if(m_Child.get() == inWidget) {
+				m_Child.release();
+				m_Child->OnOrphaned();
+			}
 		}
 
 		bool DispatchToChildren(IEvent* inEvent) override {
-			if(DefaultSlot) {
-				return DefaultSlot->OnEvent(inEvent);
+			if(m_Child) {
+				return m_Child->OnEvent(inEvent);
 			}
 			return false;
 		}
 
 		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = true) final {
-			if(!DefaultSlot) return VisitResultContinue;
+			if(!m_Child) return VisitResultContinue;
 
-			const auto result = inVisitor(DefaultSlot.Get());
+			const auto result = inVisitor(m_Child.get());
 			if(!result.bContinue) return VisitResultExit;
 
 			if(bRecursive && !result.bSkipChildren) {
-				const auto result = DefaultSlot->VisitChildren(inVisitor, bRecursive);
+				const auto result = m_Child->VisitChildren(inVisitor, bRecursive);
 				if(!result.bContinue) return VisitResultExit;
 			}
 			return VisitResultContinue;
@@ -1284,7 +1232,7 @@ namespace UI {
 			}
 
 			if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
-				DispatchDrawToChild(drawEvent);
+				DispatchDrawToChildren(drawEvent);
 				return true;
 			}
 
@@ -1295,13 +1243,13 @@ namespace UI {
 
 		// Update child's size if its expanded
 		void NotifyChildOnSizeChanged() {
-			if(!DefaultSlot) return;
+			if(!m_Child) return;
 			const auto paddings = GetLayoutInfo().Paddings;
 
 			ParentLayoutEvent layoutEvent;
 			layoutEvent.Parent = this;
 			layoutEvent.Constraints = Rect(paddings.TL(), GetSize() - paddings.Size());
-			DefaultSlot->OnEvent(&layoutEvent);
+			m_Child->OnEvent(&layoutEvent);
 		}
 
 		// Centers our child when child size changes
@@ -1324,7 +1272,7 @@ namespace UI {
 		}
 
 		// Dispatches draw event to children adding global offset
-		void DispatchDrawToChild(DrawEvent* inEvent, float2 inAdditionalOffset = {}) {
+		void DispatchDrawToChildren(DrawEvent* inEvent, float2 inAdditionalOffset = {}) {
 			inEvent->DrawList->PushTransform(Super::GetOrigin() + inAdditionalOffset);
 			DispatchToChildren(inEvent);
 			inEvent->DrawList->PopTransform();
@@ -1332,13 +1280,13 @@ namespace UI {
 
 		// Dispatches draw event to children adding paddings to constraints
 		void DispatchLayoutToChild(ParentLayoutEvent* inEvent) {
-			if(!DefaultSlot) return;
+			if(!m_Child) return;
 
 			const auto layoutInfo = GetLayoutInfo();
 			ParentLayoutEvent layoutEvent;
 			layoutEvent.Parent = this;
 			layoutEvent.Constraints = Rect(layoutInfo.Paddings.TL(), Super::GetSize() - layoutInfo.Paddings.Size());
-			DefaultSlot->OnEvent(&layoutEvent);
+			m_Child->OnEvent(&layoutEvent);
 		}
 
 		// Helper to update our size based on AxisMode
@@ -1358,7 +1306,7 @@ namespace UI {
 
 			} else if(inEvent->Subtype == ChildLayoutEvent::OnChanged) {
 
-				for(auto axis = 0; axis != 2; ++axis) {
+				for(auto axis: Axes2D) {
 
 					if(inEvent->bAxisChanged[axis] && axisMode[axis] == AxisMode::Shrink) {
 						Assertf(childAxisMode[axis] == AxisMode::Shrink,
@@ -1373,7 +1321,7 @@ namespace UI {
 			} else if(inEvent->Subtype == ChildLayoutEvent::OnAdded) {
 				bool bUpdateChild = false;
 
-				for(auto axis = 0; axis != 2; ++axis) {
+				for(auto axis: Axes2D) {
 
 					if(axisMode[axis] == AxisMode::Shrink) {
 						Assertf(childAxisMode[axis] == AxisMode::Shrink,
@@ -1396,7 +1344,7 @@ namespace UI {
 		}
 	
 	public:
-		SingleWidgetSlot<> DefaultSlot;
+		std::unique_ptr<Widget> m_Child;
 	};
 
 
@@ -1409,12 +1357,31 @@ namespace UI {
 	public:
 
 		MultiChildContainer(const std::string& inID = {})
-			: Container(inID) 
-			, DefaultSlot(this)
+			: Container(inID)
+			, m_Children()
 		{}
 
+		void Parent(Widget* inWidget, WidgetSlot inSlot = DefaultWidgetSlot) override {
+			Assert(inWidget && !inWidget->GetParent());
+			m_Children.emplace_back(inWidget);
+			inWidget->OnParented(this);
+		}
+
+		void Orphan(Widget* inWidget, WidgetSlot inSlot = DefaultWidgetSlot) override {
+			Assert(inWidget);
+
+			for(auto it = m_Children.begin(); it != m_Children.end(); ++it) {
+				if(it->get() == inWidget) {
+					it->release();
+					m_Children.erase(it);
+					break;
+				}
+			}			
+			inWidget->OnOrphaned();
+		}
+
 		bool DispatchToChildren(IEvent* inEvent) override {
-			for(auto& child : DefaultSlot.Get()) {
+			for(auto& child : m_Children) {
 				auto result = child->OnEvent(inEvent);
 
 				if(result && !inEvent->IsBroadcast()) {
@@ -1425,9 +1392,9 @@ namespace UI {
 		}
 
 		void GetVisibleChildren(std::vector<LayoutWidget*>* outVisibleChildren) {
-			outVisibleChildren->reserve(DefaultSlot.Size());
+			outVisibleChildren->reserve(m_Children.size());
 
-			for(auto& child : DefaultSlot.Get()) {
+			for(auto& child : m_Children) {
 				auto layoutChild = child->Cast<LayoutWidget>();
 
 				if(!layoutChild) {
@@ -1442,7 +1409,7 @@ namespace UI {
 
 		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = true) final {
 
-			for(auto& child : DefaultSlot.Get()) {
+			for(auto& child : m_Children) {
 				const auto result = inVisitor(child.get());
 				if(!result.bContinue) return VisitResultExit;
 
@@ -1463,10 +1430,38 @@ namespace UI {
 			return Super::OnEvent(inEvent);
 		}
 
-	public:
-		MultiChildSlot DefaultSlot;
+	private:
+		std::vector<std::unique_ptr<Widget>> m_Children;
 	};
 
+}
+
+inline void UI::Wrapper::OnParented(Widget* inParent) {
+	Super::OnParented(inParent);
+	if(!GetParent()->IsA<LayoutWidget>()) return;
+	auto* layoutChild = GetChild<LayoutWidget>();
+	// If a layout widget with wrappers is parented
+	// we need to notify the parent to update the layout
+	if(layoutChild) {
+		ChildLayoutEvent onChild;
+		onChild.Child = layoutChild;
+		onChild.Subtype = ChildLayoutEvent::OnAdded;
+		inParent->OnEvent(&onChild);
+	}
+}
+
+inline void UI::Wrapper::OnOrphaned() {
+	auto  bParentIsLayout = GetParent()->IsA<LayoutWidget>();
+	auto* child = GetChild<LayoutWidget>();
+
+	if(bParentIsLayout && child) {
+		ChildLayoutEvent onChild;
+		onChild.Child = child;
+		onChild.Size = child->GetSize();
+		onChild.Subtype = ChildLayoutEvent::OnRemoved;
+		GetParent()->OnEvent(&onChild);
+	}
+	Super::OnOrphaned();
 }
 
 constexpr void UI::HitStack::Push(LayoutWidget* inWidget, Point inPosLocal) {

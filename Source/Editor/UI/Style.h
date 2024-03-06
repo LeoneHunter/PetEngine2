@@ -5,6 +5,7 @@
 #include "Font.h"
 
 #include <set>
+#include <variant>
 
 namespace UI {
 
@@ -288,6 +289,10 @@ namespace UI {
 		Sides Margins;
 	};
 
+	template<typename T>
+	concept StyleParameterType = std::same_as<T, u32> || std::same_as<T, s32> || std::same_as<T, float>;
+
+	using StyleParameterVariant = std::variant<u32, s32, float>;
 
 
 	/*
@@ -331,6 +336,13 @@ namespace UI {
 			out->Name = name;
 			m_Styles.emplace_back(out);
 			return *out;
+		}
+
+		template<StyleParameterType T>
+		void AddParameter(std::string_view inName, T inVal) {
+			auto name = StringID(inName.data());
+
+			m_Parameters.emplace_back(StyleParameterVariant(inVal));
 		}
 
 		template<class StyleType>
@@ -389,12 +401,13 @@ namespace UI {
 				}
 				m_Styles.emplace_back(inStyle->Copy());
 			});
-		}
+		}		
 
 	public:
 		StringID							m_Name;
 		const StyleClass*					m_Parent;
 		std::vector<std::unique_ptr<Style>>	m_Styles;
+		std::vector<StyleParameterVariant>  m_Parameters;
 	};
 
 

@@ -8,6 +8,7 @@
 namespace UI {
 
 	using TimerCallback = std::function<bool()>;
+	using TimerHandle = void*;
 
 	/*
 	* Some global state information of the application
@@ -51,6 +52,7 @@ namespace UI {
 		// Merges inTheme styles with the prevous theme overriding existent styles 
 		virtual void			SetTheme(Theme* inTheme) = 0;
 
-		virtual void			AddTimer(Widget* inWidget, const TimerCallback& inCallback, u64 inPeriodMs) = 0;
+		virtual TimerHandle		AddTimer(Widget* inWidget, const TimerCallback& inCallback, u64 inPeriodMs) = 0;
+		virtual void			RemoveTimer(TimerHandle inHandle) = 0;
 	};
 }

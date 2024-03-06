@@ -2,6 +2,7 @@
 #include <random>
 #include <format>
 #include <cmath>
+#include <array>
 
 #include "BaseTypes.h"
 #include "ErrorMacros.h"
@@ -28,19 +29,12 @@ constexpr bool operator== (const Span<T>& left, const Span<T>& right) {
 	return left.start == right.start && left.end == right.end;
 }
 
+enum class Axis{ X, Y };
 
-
-
-
-
-/*
-* Used to index axes in containters
-*/
-enum AxisIndex: u8 {
-	AxisX,
-	AxisY
-};
-
+constexpr Axis operator! (Axis inAxis) { return inAxis == Axis::X ? Axis::Y : Axis::X; }
+constexpr Axis InvertAxis(Axis inAxis) { return inAxis == Axis::X ? Axis::Y : Axis::X; }
+// For easy iteration
+constexpr std::array<Axis, 2> Axes2D{Axis::X, Axis::Y};
 
 /**
  * Stores vector of 2 values
@@ -61,8 +55,8 @@ public:
 
 	constexpr T& operator[](u8 inAxisIndex) noexcept {
 		switch(inAxisIndex) {
-			case AxisX: return x;
-			case AxisY: return y;
+			case 0: return x;
+			case 1: return y;
 		}
 		assert(false && "Index out of bounds");
 		return x;
@@ -70,8 +64,26 @@ public:
 
 	constexpr T const& operator[](u8 inAxisIndex) const {
 		switch(inAxisIndex) {
-			case AxisX: return x;
-			case AxisY: return y;
+			case 0: return x;
+			case 1: return y;
+		}
+		assert(false && "Index out of bounds");
+		return x;
+	}
+
+	constexpr T& operator[](Axis inAxis) noexcept {
+		switch(inAxis) {
+			case Axis::X: return x;
+			case Axis::Y: return y;
+		}
+		assert(false && "Index out of bounds");
+		return x;
+	}
+
+	constexpr T const& operator[](Axis inAxis) const {
+		switch(inAxis) {
+			case Axis::X: return x;
+			case Axis::Y: return y;
 		}
 		assert(false && "Index out of bounds");
 		return x;

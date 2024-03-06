@@ -67,7 +67,11 @@ namespace UI {
 		WIDGET_CLASS(Window, SingleChildContainer)
 	public:
 
-		Window(Application* inApp, const std::string& inID, WindowFlags inFlags, const std::string& inStyleClassName = "Window");
+		Window(Application*			inApp, 
+			   const std::string&	inID, 
+			   WindowFlags			inFlags, 
+			   const std::string&	inStyleClassName = "Window");
+
 		Window(const WindowBuilder& inBuilder);
 		Point		TransformLocalToGlobal(Point inPosition) const;
 		bool		OnEvent(IEvent* inEvent) override;
@@ -92,7 +96,7 @@ namespace UI {
 	class Centered: public SingleChildContainer {
 		WIDGET_CLASS(Centered, SingleChildContainer)
 	public:
-		Centered(WidgetAttachSlot& inSlot, const std::string& inID = {});
+		Centered(Widget* inParent, WidgetSlot inSlot = DefaultWidgetSlot);
 		void OnParented(Widget* inParent) override;
 		bool OnEvent(IEvent* inEvent) override;
 	};
@@ -171,7 +175,7 @@ namespace UI {
 		FlexboxBuilder& Expand() { m_ExpandCrossAxis = true; m_ExpandMainAxis = true; return *this; }
 
 		// Finalizes creation
-		Flexbox*		Create(WidgetAttachSlot& inSlot);
+		Flexbox*		Create(Widget* inParent, WidgetSlot inSlot = DefaultWidgetSlot);
 
 	public:
 		
@@ -245,8 +249,7 @@ namespace UI {
 		WIDGET_CLASS(Text, LayoutWidget)
 	public:
 
-		Text(WidgetAttachSlot& inSlot, const std::string& inText, const std::string& inID = {});
-		Text(const std::string& inText, const std::string& inID = {});
+		Text(const std::string& inText, Widget* inParent, WidgetSlot inSlot = DefaultWidgetSlot);
 
 		void SetText(const std::string& inText);
 		bool OnEvent(IEvent* inEvent) override;
@@ -264,18 +267,14 @@ namespace UI {
 
 	using OnPressedFunc = VoidFunction<bool>;
 
-	struct ButtonDesc {
-		Widget* Child = nullptr;
-	};
-
 	struct ButtonBuilder: public WidgetBuilder<ButtonBuilder> {
 
 		ButtonBuilder&	Callback(const OnPressedFunc& inCallback) { m_Callback = inCallback; return *this; }
 		ButtonBuilder&	Child(Widget* inChild) { Assertm(!m_Child, "Child already set"); m_Child.reset(inChild); return *this; }
-		ButtonBuilder&	Text(const std::string& inText) { Assertm(!m_Child, "Child already set"); m_Child.reset(new UI::Text(inText)); return *this; }
+		ButtonBuilder&	Text(const std::string& inText) { Assertm(!m_Child, "Child already set"); m_Child.reset(new UI::Text(inText, nullptr)); return *this; }
 
 		// Finalizes creation
-		Button*			Create(WidgetAttachSlot& inSlot);
+		Button*			Create(Widget* inParent, WidgetSlot inSlot = DefaultWidgetSlot);
 
 	public:
 		ButtonBuilder() { StyleClass("Button"); }
@@ -291,20 +290,8 @@ namespace UI {
 		WIDGET_CLASS(Button, SingleChildContainer)
 	public:
 
-		static ButtonBuilder Build() { return {}; }
-
-		// Helper named constructor to create a simple button with the text
-		static Button* TextButton(WidgetAttachSlot& inSlot, const std::string& inText, OnPressedFunc inCallback = {}) {
-			auto* btn = new Button(inSlot, inCallback, inText);
-			auto* txt = new Text(btn->DefaultSlot, inText);
-			return btn;
-		}
-
-		Button(WidgetAttachSlot& inSlot, OnPressedFunc inCallback = {}, const std::string& inID = {});
 		Button(const ButtonBuilder& inBuilder);
-
 		bool OnEvent(IEvent* inEvent) override;
-
 		void DebugSerialize(Debug::PropertyArchive& inArchive) override {
 			Super::DebugSerialize(inArchive);
 			inArchive.PushProperty("ButtonState", *m_State);
@@ -339,7 +326,7 @@ namespace UI {
 		// @param float Delta - a dragged amount in one axis
 		using OnDraggedFunc = VoidFunction<MouseDragEvent*>;
 
-		Guideline(WidgetAttachSlot& inSlot, bool bIsVertical = true, OnDraggedFunc inCallback = {}, const std::string& inID = {});
+		Guideline(bool bIsVertical, OnDraggedFunc inCallback, Widget* inParent, WidgetSlot inSlot = DefaultWidgetSlot);
 		void SetCallback(OnDraggedFunc inCallback) { m_Callback = inCallback; }
 		bool OnEvent(IEvent* inEvent) override;
 
@@ -347,7 +334,7 @@ namespace UI {
 		void DebugSerialize(Debug::PropertyArchive& inArchive) override;
 
 	private:
-		AxisIndex		m_MainAxis;
+		Axis			m_MainAxis;
 		StringID		m_State;
 		OnDraggedFunc	m_Callback;
 	};
@@ -367,7 +354,10 @@ namespace UI {
 		DEFINE_CLASS_META(SplitBox, Container)
 	public:
 
-		SplitBox(WidgetAttachSlot& inSlot, bool bHorizontal = true, const std::string& inID = {});
+		constexpr static inline WidgetSlot FirstSlot{1};
+		constexpr static inline WidgetSlot SecondSlot{2};
+
+		SplitBox(bool bHorizontal, Widget* inParent, WidgetSlot inSlot = DefaultWidgetSlot);
 
 		bool OnEvent(IEvent* inEvent) override;
 		bool DispatchToChildren(IEvent* inEvent) override;
@@ -381,14 +371,11 @@ namespace UI {
 
 		void UpdateLayout();
 		
-	public:
-
-		SingleWidgetSlot<LayoutWidget>	FirstSlot;
-		SingleWidgetSlot<LayoutWidget>	SecondSlot;
-
 	private:
-		SingleWidgetSlot<Guideline>		m_Separator;
-		AxisIndex						m_MainAxis;
+		std::unique_ptr<Guideline>		m_First;
+		std::unique_ptr<Guideline>		m_Second;
+		std::unique_ptr<Guideline>		m_Separator;
+		Axis							m_MainAxis;
 		float							m_SplitRatio;
 	};
 
@@ -411,10 +398,10 @@ namespace UI {
 	};
 
 	// Builds simple text tooltip
-	auto TextTooltip(const std::string& inText) {
+	inline auto TextTooltip(const std::string& inText) {
 		return [=](Point inPos) {
 			auto tooltip = new Tooltip(inPos + float2(15));
-			auto text = new UI::Text(tooltip->DefaultSlot, inText);
+			auto text = new UI::Text(inText, tooltip);
 			return std::unique_ptr<Tooltip>(tooltip);
 		};
 	}
@@ -435,7 +422,7 @@ namespace UI {
 		TooltipSpawner* Spawner = nullptr;
 	};
 
-	class CloseTooltipIntent final: public IEvent{
+	class CloseTooltipIntent final: public IEvent {
 		EVENT_CLASS(CloseTooltipIntent, IEvent)
 	public:
 		EventCategory GetCategory() const override { return EventCategory::Intent; }
@@ -485,26 +472,16 @@ namespace UI {
 /*-------------------------------------------------------------------------------------------------*/
 //										POPUP
 /*-------------------------------------------------------------------------------------------------*/
-	class PopupItem;
 	class PopupWindow;
 	class PopupSpawner;
+	struct PopupBuilder;
 
-	struct PopupBuilder: public WidgetBuilder<PopupBuilder> {
-
-		PopupBuilder& Position(Point inPos) { m_Pos = inPos; return *this; }
-		PopupBuilder& Position(float inX, float inY) { m_Pos = {inX, inY}; return *this; }
-		PopupBuilder& Size(float2 inSize) { m_Size = inSize; return *this; }
-		PopupBuilder& Size(float inX, float inY) { m_Size = {inX, inY}; return *this; }
-		std::unique_ptr<PopupWindow> Create();
-
-	public:
-		PopupBuilder() { StyleClass("PopupWindow"); }
-		friend class Window;
-
-	public:
-		Point		  m_Pos;
-		float2		  m_Size;
+	struct PopupSpawnContext {
+		Point			MousePosGlobal;
+		float2			ViewportSize;
+		PopupSpawner*	Spawner;
 	};
+		
 
 	/*
 	* A popup window created by a PopupSpawner and owned by Application but can
@@ -515,60 +492,88 @@ namespace UI {
 		WIDGET_CLASS(PopupWindow, Window)
 	public:
 
-		PopupWindow(const std::string& inID);
 		PopupWindow(const PopupBuilder& inBuilder);
 		~PopupWindow();
 		bool OnEvent(IEvent* inEvent) override;
 
 		// Called by a child spawner when a child widget is hovered
-		void OnPopupItemHovered(PopupItem* inPopupItem);
-		void OnPopupItemPressed(PopupItem* inPopupItem);
+		void					OnItemHovered();
+		void					OnItemPressed();
+		// Creates a popup and parents it to itself
+		WeakPtr<PopupWindow>	OpenPopup(PopupSpawner* inSpawner);
 
 		void SetSpawner(PopupSpawner* inSpawner) { m_Spawner = inSpawner; }
 
 	private:
 		PopupSpawner*					m_Spawner;
-		SingleWidgetSlot<PopupWindow>	m_NextPopup;
+		std::unique_ptr<PopupWindow>	m_NextPopup;
 		// A widget that spawned the next popup
 		// Should be our child
 		PopupSpawner*					m_NextPopupSpawner;
 	};
 
+	struct PopupBuilder: public WidgetBuilder<PopupBuilder> {
+
+		PopupBuilder& Position(Point inPos) { m_Pos = inPos; return *this; }
+		PopupBuilder& Position(float inX, float inY) { m_Pos = {inX, inY}; return *this; }
+		PopupBuilder& Size(float2 inSize) { m_Size = inSize; return *this; }
+		PopupBuilder& Size(float inX, float inY) { m_Size = {inX, inY}; return *this; }
+		std::unique_ptr<PopupWindow> Create() { return std::make_unique<UI::PopupWindow>(*this); }
+
+	public:
+		PopupBuilder() { StyleClass("PopupWindow"); }
+
+	public:
+		Point		  m_Pos;
+		float2		  m_Size;
+	};
+
 
 	// Called by the Application to create a PopupWindow
-	using PopupSpawnFunc = 
-		std::function<std::unique_ptr<PopupWindow>(Point inMousePosGlobal, float2 inViewportSize, PopupSpawner* inSpawner)>;
+	using PopupSpawnFunc = std::function<std::unique_ptr<PopupWindow>(PopupSpawnContext)>;
 
 	/*
-	* An event propagated up
-	* Handled by the Application or PopupWindow
+	* Propagated up the widget stack until a PopupWindow or Application is found
 	*/
-	class SpawnPopupIntent final: public IEvent {
-		EVENT_CLASS(SpawnPopupIntent, IEvent)
+	class PopupEvent final: public IEvent {
+		EVENT_CLASS(PopupEvent, IEvent)
 	public:
 		EventCategory GetCategory() const override { return EventCategory::Intent; }
 
-		SpawnPopupIntent(PopupSpawner* inSpawner)
-			: Spawner(inSpawner)
-		{}
+		static PopupEvent OpenPopup(PopupSpawner* inSpawner) {
+			PopupEvent out;
+			out.Type = Type::Open;
+			out.Spawner = inSpawner;
+			return out;
+		}
 
-		PopupSpawner* Spawner = nullptr;
-	};
+		static PopupEvent ClosePopup(PopupWindow* inPopup) {
+			PopupEvent out;
+			out.Type = Type::Close;
+			out.Popup = inPopup;
+			return out;
+		}
 
-	class ClosePopupIntent final: public IEvent {
-		EVENT_CLASS(ClosePopupIntent, IEvent)
-	public:
-		EventCategory GetCategory() const override { return EventCategory::Intent; }
+		static PopupEvent CloseAll() {
+			PopupEvent out;
+			out.Type = Type::CloseAll;
+			return out;
+		}
 
-		ClosePopupIntent(PopupWindow* inPopup)
-			: Popup(inPopup) {}
+		enum class Type {
+			Open, 
+			Close,
+			CloseAll,
+		};
 
-		PopupWindow* Popup = nullptr;
+		Type			Type = Type::Open;
+		PopupSpawner*	Spawner = nullptr;
+		PopupWindow*	Popup = nullptr;
 	};
 
 
 	/*
-	* Creates a user defined popup
+	* Creates a user defined popup when clicked or hovered
 	*/
 	class PopupSpawner: public Wrapper {
 		WIDGET_CLASS(PopupSpawner, Wrapper)
@@ -579,7 +584,7 @@ namespace UI {
 			static inline StringID Opened{"Opened"};
 		};
 
-		enum class SpawnEvent {
+		enum class SpawnEventType {
 			LeftMouseRelease,
 			RightMouseRelease,
 			Hover,
@@ -587,51 +592,52 @@ namespace UI {
 
 	public:
 
-		PopupSpawner(const PopupSpawnFunc& inSpawner, SpawnEvent inSpawnEvent = SpawnEvent::RightMouseRelease)
+		PopupSpawner(const PopupSpawnFunc&	inSpawner, 
+						   SpawnEventType	inSpawnEvent = SpawnEventType::RightMouseRelease)
 			: m_Spawner(inSpawner)
 			, m_State(State::Normal)
-			, m_SpawnEvent(inSpawnEvent)
+			, m_SpawnEventType(inSpawnEvent)
 		{}
 
-		PopupSpawner(WidgetAttachSlot& inSlot, const PopupSpawnFunc& inSpawner, SpawnEvent inSpawnEvent = SpawnEvent::RightMouseRelease)
-			: PopupSpawner(inSpawner, inSpawnEvent)
-		{ 
-			inSlot.Parent(this);
+		PopupSpawner(const PopupSpawnFunc&	inSpawner, 
+						   Widget*			inParent, 
+						   WidgetSlot		inSlot = DefaultWidgetSlot,
+						   SpawnEventType	inSpawnEvent = SpawnEventType::RightMouseRelease)
+			: PopupSpawner(inSpawner, inSpawnEvent) 
+		{
+			if(inParent) inParent->Parent(this, inSlot);
 		}
 
-		bool			OnEvent(IEvent* inEvent) override {
+		bool					OnEvent(IEvent* inEvent) override {
 
 			if(auto* event = inEvent->Cast<MouseButtonEvent>()) {
 
-				if(m_SpawnEvent == SpawnEvent::RightMouseRelease && event->Button == MouseButton::ButtonRight) {
+				if(m_SpawnEventType == SpawnEventType::RightMouseRelease && event->Button == MouseButton::ButtonRight) {
 					Super::OnEvent(inEvent);
 
 					if(!event->bButtonPressed && m_State == State::Normal) {
-						SpawnPopupIntent event{this};
-						DispatchToParent(&event);
+						OpenPopup();
 					}
 					return true;
 				}
 
-				if(m_SpawnEvent == SpawnEvent::LeftMouseRelease && event->Button == MouseButton::ButtonLeft) {
+				if(m_SpawnEventType == SpawnEventType::LeftMouseRelease && event->Button == MouseButton::ButtonLeft) {
 					Super::OnEvent(inEvent);
 
 					if(!event->bButtonPressed && m_State == State::Normal) {
-						SpawnPopupIntent event{this};
-						DispatchToParent(&event);
+						OpenPopup();
 					}
 					return true;
 				}				
 			}
 
 			if(auto* hoverEvent = inEvent->Cast<HoverEvent>(); 
-				hoverEvent && m_SpawnEvent == SpawnEvent::Hover) 
+				hoverEvent && m_SpawnEventType == SpawnEventType::Hover) 
 			{
 				const auto bHandledByChild = Super::OnEvent(inEvent);
 
 				if(bHandledByChild && m_State == State::Normal) {
-					SpawnPopupIntent event{this};
-					DispatchToParent(&event);
+					OpenPopup();
 				}
 				return bHandledByChild;
 			}
@@ -641,53 +647,172 @@ namespace UI {
 
 		// Called by Application to create a popup
 		std::unique_ptr<PopupWindow> OnSpawn(Point inMousePosGlobal, float2 inWindowSize) {
-			auto out = m_Spawner(inMousePosGlobal, inWindowSize, this);
+			auto out = m_Spawner({inMousePosGlobal, inWindowSize, this});
 			out->SetSpawner(this);
+			m_Popup = out->GetWeak();
 			m_State = State::Opened;
 			return out;
 		}
 
-		void			OnPopupDestroyed() { m_State = State::Normal; }
+		void					OnPopupDestroyed() { m_State = State::Normal; }
 
 		// Can be called by the user to create a popup
-		void			OpenPopup() {
-			SpawnPopupIntent event{this};
-			Super::DispatchToParent(&event);
+		void					OpenPopup() {
+			if(!m_Popup) {
+				auto msg = PopupEvent::OpenPopup(this);
+				DispatchToParent(&msg);
+			}
 		}
 
-		bool			IsOpened() const { return m_State == State::Opened; }
+		void					ClosePopup() {
+			if(m_Popup) {
+				auto msg = PopupEvent::ClosePopup(*m_Popup);
+				DispatchToParent(&msg);
+				m_State = State::Normal;
+				Assert(!m_Popup);
+				m_Popup = nullptr;
+			}
+		}
+
+		bool					IsOpened() const { return m_State == State::Opened; }
+
+		WeakPtr<PopupWindow>	GetPopupWeakPtr() { return m_Popup; }
 
 	private:
-		SpawnEvent		m_SpawnEvent;
-		PopupSpawnFunc	m_Spawner;
-		StringID		m_State;
+		WeakPtr<PopupWindow>	m_Popup;
+		SpawnEventType			m_SpawnEventType;
+		PopupSpawnFunc			m_Spawner;
+		StringID				m_State;
 	};
-
 
 
 	/*
 	* When clicked closes parent popup
+	* Can be used to place custom widgets into a popup window
 	*/
 	class PopupMenuItem: public Wrapper {
 		WIDGET_CLASS(PopupMenuItem, Wrapper)
 	public:
 
-		PopupMenuItem() {}
-
+		PopupMenuItem() = default;
 		bool OnEvent(IEvent* inEvent) override {
+
+			if(auto* hoverEvent = inEvent->Cast<HoverEvent>()) {
+				const auto bHandledByChild = Super::OnEvent(inEvent);
+
+				if(bHandledByChild) {
+					GetParent<PopupWindow>()->OnItemHovered();
+				}
+				return bHandledByChild;
+			}
 
 			if(auto* event = inEvent->Cast<MouseButtonEvent>()) {
 				const auto bHandledByChild = Super::OnEvent(inEvent);
 
 				if(bHandledByChild && !event->bButtonPressed) {
-					ClosePopupIntent closePopup(Super::GetParent<PopupWindow>());
-					Super::DispatchToParent(&closePopup);
+					GetParent<PopupWindow>()->OnItemPressed();
 				}
 				return bHandledByChild;
 			}
 			return Super::OnEvent(inEvent);
 		}
 
+	};
+
+	struct ContextMenuBuilder;
+
+	/*
+	* A popup with buttons and icons
+	*/
+	class ContextMenu: public PopupWindow {
+		WIDGET_CLASS(ContextMenu, PopupWindow)
+	public:
+
+		ContextMenu(const ContextMenuBuilder& inBuilder);
+		void Parent(Widget* inWidget, WidgetSlot inSlot = DefaultWidgetSlot) override;
+
+	private:
+		Flexbox* m_Container;
+	};	
+
+	/*
+	* A button that's added to the ContextMenu
+	*/
+	class ContextMenuItem: public PopupMenuItem {
+		WIDGET_CLASS(ContextMenuItem, PopupMenuItem)
+	public:
+
+		ContextMenuItem(const std::string& inText, ContextMenu* inParent);
+		bool OnEvent(IEvent* inEvent) override;
+	};
+
+	/*
+	* A button that opens a submenu
+	*/
+	class SubMenuItem: public PopupSpawner {
+		WIDGET_CLASS(SubMenuItem, PopupSpawner)
+	public:
+
+		SubMenuItem(const std::string& inText, const PopupSpawnFunc& inSpawner, ContextMenu* inParent);
+		bool OnEvent(IEvent* inEvent) override;
+	};
+
+
+	struct ContextMenuBuilder: public WidgetBuilder<ContextMenuBuilder> {
+		Point m_Pos;
+		mutable	std::list<std::unique_ptr<Wrapper>> m_Children;
+
+		ContextMenuBuilder& Position(Point inPos) { m_Pos = inPos; return *this; }
+		ContextMenuBuilder& Position(float inX, float inY) { m_Pos = {inX, inY}; return *this; }
+		ContextMenuBuilder& MenuItem(const std::string& inText) { m_Children.emplace_back(new ContextMenuItem(inText, nullptr)); return *this; }
+
+		ContextMenuBuilder& SubMenu(const std::string& inText, const PopupSpawnFunc& inSpawner) { 
+			m_Children.emplace_back(new SubMenuItem(inText, inSpawner, nullptr)); return *this;
+		}
+
+		std::unique_ptr<ContextMenu> Create() { return std::make_unique<ContextMenu>(*this); };
+
+		ContextMenuBuilder() { StyleClass("ContextMenu"); }
+	};
+
+
+
+	/*
+	* A drawable rectangular box 
+	*/
+	class Frame: public SingleChildContainer{
+		WIDGET_CLASS(Frame, SingleChildContainer)
+	public:
+
+		Frame() {
+			SetAxisMode(AxisModeShrink);
+		}
+
+		bool OnEvent(IEvent* inEvent) override {
+			
+			if(auto* event = inEvent->Cast<ChildLayoutEvent>()) {
+				HandleChildEvent(event);
+				NotifyParentOnSizeChanged();
+				return true;
+			}
+
+			if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
+
+				if(m_Style) {
+					drawEvent->DrawList->PushBox(GetRect(), m_Style->Find<BoxStyle>());
+				}				
+				DispatchDrawToChildren(drawEvent);
+				return true;
+			}
+			return Super::OnEvent(inEvent);
+		}
+
+		void SetStyle(const std::string& inStyleName) {
+			m_Style = Application::Get()->GetTheme()->Find(inStyleName);
+		}
+
+	private:
+		const StyleClass* m_Style = nullptr;
 	};
 
 }

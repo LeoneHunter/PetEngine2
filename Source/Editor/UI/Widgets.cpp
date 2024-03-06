@@ -92,7 +92,7 @@ bool UI::Window::OnEvent(IEvent* inEvent) {
 		drawEvent->DrawList->PushBox(GetRect(), m_Style->Find<BoxStyle>());
 		drawEvent->DrawList->PushClipRect(GetRect());
 
-		DispatchDrawToChild(drawEvent);
+		DispatchDrawToChildren(drawEvent);
 		drawEvent->DrawList->PopClipRect();
 		return true;
 	}
@@ -112,11 +112,9 @@ UI::LayoutInfo UI::Window::GetLayoutInfo() const {
 /*-------------------------------------------------------------------------------------------------*/
 //										CENTERED
 /*-------------------------------------------------------------------------------------------------*/
-UI::Centered::Centered(WidgetAttachSlot& inSlot, const std::string& inID)
-	: Super(inID)
-{
+UI::Centered::Centered(Widget* inParent, WidgetSlot inSlot) {
 	SetAxisMode(AxisModeExpand);
-	inSlot.Parent(this);
+	if(inParent) inParent->Parent(this, inSlot);
 }
 
 void UI::Centered::OnParented(Widget* inParent) {
@@ -150,8 +148,8 @@ bool UI::Centered::OnEvent(IEvent* inEvent) {
 /*-------------------------------------------------------------------------------------------------*/
 //										FLEXBOX
 /*-------------------------------------------------------------------------------------------------*/
-UI::Flexbox* UI::FlexboxBuilder::Create(WidgetAttachSlot& inSlot) {	
-	SetParentSlot(inSlot);
+UI::Flexbox* UI::FlexboxBuilder::Create(Widget* inParent, WidgetSlot inSlot) {
+	SetParent(inParent, inSlot);
 	return new Flexbox(*this);
 }
 
@@ -162,16 +160,16 @@ UI::Flexbox::Flexbox(const FlexboxBuilder& inBuilder)
 	, m_Alignment(inBuilder.m_Alignment)
 	, m_OverflowPolicy(inBuilder.m_OverflowPolicy)
 {
-	const auto mainAxis = m_Direction == ContentDirection::Row ? 0 : 1;
+	const auto mainAxis = m_Direction == ContentDirection::Row ? Axis::X : Axis::Y;
 	SetAxisMode(mainAxis, inBuilder.m_ExpandMainAxis ? AxisMode::Expand : AxisMode::Shrink);
-	SetAxisMode(!mainAxis, inBuilder.m_ExpandCrossAxis ? AxisMode::Expand : AxisMode::Shrink);
+	SetAxisMode(InvertAxis(mainAxis), inBuilder.m_ExpandCrossAxis ? AxisMode::Expand : AxisMode::Shrink);
 
-	if(inBuilder.m_Slot) inBuilder.m_Slot->Parent(this);
+	if(inBuilder.m_Parent) inBuilder.m_Parent->Parent(this, inBuilder.m_ParentSlot);
 }
 
 bool UI::Flexbox::OnEvent(IEvent* inEvent) {
 
-	if(auto* event = inEvent->Cast<ParentLayoutEvent>()) {
+	if(auto* event = dynamic_cast<ParentLayoutEvent*>(inEvent)) {
 		// Update our size if expanded
 		ExpandToParent(event);
 		UpdateLayout();
@@ -181,7 +179,7 @@ bool UI::Flexbox::OnEvent(IEvent* inEvent) {
 	if(auto* event = inEvent->Cast<ChildLayoutEvent>()) {
 
 		if(event->Subtype == ChildLayoutEvent::OnAdded) {
-			const auto crossAxis = m_Direction == ContentDirection::Row ? AxisY : AxisX;
+			const auto crossAxis = m_Direction == ContentDirection::Row ? Axis::Y : Axis::X;
 			Assertf(GetAxisMode()[crossAxis] == AxisMode::Expand || event->Child->GetAxisMode()[crossAxis] == AxisMode::Shrink,
 								"Parent child axis shrink/expand mismatch. A child with an expanded axis has been added to the containter with that axis shrinked."
 								"Parent {}, Child {}", GetDebugIDString(), event->Child->GetDebugIDString());
@@ -192,7 +190,7 @@ bool UI::Flexbox::OnEvent(IEvent* inEvent) {
 	} 
 	
 	if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
-		//drawEvent->DrawList->PushBox(GetRect(), Colors::Blue, false);
+		//drawEvent->DrawList->PushBox(GetRect(), Colors::Green, false);
 		drawEvent->DrawList->PushClipRect(GetRect());
 		drawEvent->DrawList->PushTransform(GetOrigin());
 
@@ -242,8 +240,8 @@ void UI::Flexbox::UpdateLayout() {
 	// Calculate positions
 	// Align on the cross axis
 	const bool bDirectionRow = m_Direction == ContentDirection::Row;
-	const auto mainAxisIndex = bDirectionRow ? AxisX : AxisY;
-	const auto crossAxisIndex = bDirectionRow ? AxisY : AxisX;
+	const auto mainAxisIndex = bDirectionRow ? Axis::X : Axis::Y;
+	const auto crossAxisIndex = bDirectionRow ? Axis::Y : Axis::X;
 
 	const auto paddings = GetLayoutInfo().Paddings;
 	const auto innerSize = GetSize() - paddings.Size();
@@ -283,7 +281,8 @@ void UI::Flexbox::UpdateLayout() {
 			const auto childAxisMode = child->GetAxisMode()[mainAxisIndex];
 
 			if(childAxisMode == AxisMode::Expand) {
-				Assertf(axisMode[mainAxisIndex] == AxisMode::Expand, "Flexbox main axis set to AxisMode::Shrink, but an expanded child is found");
+				Assertf(axisMode[mainAxisIndex] == AxisMode::Expand, 
+						"Flexbox main axis set to AxisMode::Shrink, but an expanded child is found");
 				temp.MainAxisSize = -1.f;
 				totalFlexFactor += temp.MainAxisSize;
 
@@ -425,18 +424,9 @@ void UI::Flexbox::UpdateLayout() {
 /*-------------------------------------------------------------------------------------------------*/
 //										BUTTON
 /*-------------------------------------------------------------------------------------------------*/
-UI::Button* UI::ButtonBuilder::Create(WidgetAttachSlot& inSlot) {
-	SetParentSlot(inSlot);
+UI::Button* UI::ButtonBuilder::Create(Widget* inParent, WidgetSlot inSlot) {
+	SetParent(inParent, inSlot);
 	return new UI::Button(*this);
-}
-
-UI::Button::Button(WidgetAttachSlot& inSlot, OnPressedFunc inCallback, const std::string& inID)
-	: Super(inID)
-	, m_Style(Application::Get()->GetTheme()->Find(GetClassName().data()))
-	, m_State(State::Normal)
-	, m_Callback(inCallback)
-{
-	inSlot.Parent(this);
 }
 
 UI::Button::Button(const ButtonBuilder& inBuilder)
@@ -445,10 +435,8 @@ UI::Button::Button(const ButtonBuilder& inBuilder)
 	, m_State(State::Normal)
 	, m_Callback(inBuilder.m_Callback)
 {
-	DefaultSlot = inBuilder.m_Child.release();
-
-	if(inBuilder.m_Slot)
-		inBuilder.m_Slot->Parent(this);	
+	Parent(inBuilder.m_Child.release());
+	if(inBuilder.m_Parent) inBuilder.m_Parent->Parent(this, inBuilder.m_ParentSlot);
 }
 
 bool UI::Button::OnEvent(IEvent* inEvent) {
@@ -490,7 +478,7 @@ bool UI::Button::OnEvent(IEvent* inEvent) {
 	
 	if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
 		drawEvent->DrawList->PushBox(GetRect(), m_Style->Find<BoxStyle>(m_State));
-		DispatchDrawToChild(drawEvent);
+		DispatchDrawToChildren(drawEvent);
 		return true;
 	}
 
@@ -515,18 +503,13 @@ UI::LayoutInfo UI::Button::GetLayoutInfo() const {
 /*-------------------------------------------------------------------------------------------------*/
 //										TEXT
 /*-------------------------------------------------------------------------------------------------*/
-UI::Text::Text(const std::string& inText, const std::string& inID /*= {}*/)
-	: Super(inID)
-	, m_Style(Application::Get()->GetTheme()->Find(GetClassName().data()))
-	, m_Text(inText) 
+UI::Text::Text(const std::string& inText, Widget* inParent, WidgetSlot inSlot)
+	: m_Style(Application::Get()->GetTheme()->Find(GetClassName().data()))
+	, m_Text(inText)
 {
 	const auto size = m_Style->Find<TextStyle>()->CalculateTextSize(m_Text);
 	SetSize(size);
-}
-
-UI::Text::Text(WidgetAttachSlot& inSlot, const std::string& inText, const std::string& inID)
-	: Text(inText, inID) {
-	inSlot.Parent(this);
+	if(inParent) inParent->Parent(this, inSlot);
 }
 
 void UI::Text::SetText(const std::string& inText) {
@@ -571,13 +554,12 @@ bool UI::Text::OnEvent(IEvent* inEvent) {
 /*-------------------------------------------------------------------------------------------------*/
 //										GUIDELINE
 /*-------------------------------------------------------------------------------------------------*/
-UI::Guideline::Guideline(WidgetAttachSlot& inSlot, bool bIsVertical /*= true*/, OnDraggedFunc inCallback /*= {}*/, const std::string& inID /*= {}*/) 
-	: Super(std::string(inID))
-	, m_MainAxis(bIsVertical ? AxisY : AxisX)
+UI::Guideline::Guideline(bool bIsVertical, OnDraggedFunc inCallback, Widget* inParent, WidgetSlot inSlot)
+	: m_MainAxis(bIsVertical ? Axis::Y : Axis::X)
 	, m_State(State::Normal)
 	, m_Callback(inCallback)
 {
-	inSlot.Parent(this);
+	if(inParent) inParent->Parent(this, inSlot);
 }
 
 bool UI::Guideline::OnEvent(IEvent* inEvent) {
@@ -595,7 +577,7 @@ bool UI::Guideline::OnEvent(IEvent* inEvent) {
 	if(auto* event = inEvent->Cast<ParentLayoutEvent>()) {
 		float2 size;
 		size[m_MainAxis] = event->Constraints.Size()[m_MainAxis];
-		size[!m_MainAxis] = 10.f;
+		size[InvertAxis(m_MainAxis)] = 10.f;
 		SetSize(size);
 		SetOrigin(event->Constraints.TL());
 		return true;
@@ -618,7 +600,7 @@ bool UI::Guideline::OnEvent(IEvent* inEvent) {
 	if(auto* event = inEvent->Cast<MouseDragEvent>()) {
 		
 		if(m_State == State::Pressed) {
-			const auto delta = event->MouseDelta[!m_MainAxis];
+			const auto delta = event->MouseDelta[InvertAxis(m_MainAxis)];
 			if(m_Callback) m_Callback(event);
 		}
 		return true;
@@ -634,7 +616,7 @@ bool UI::Guideline::OnEvent(IEvent* inEvent) {
 
 void UI::Guideline::DebugSerialize(Debug::PropertyArchive& inArchive) {
 	Super::DebugSerialize(inArchive);
-	inArchive.PushProperty("MainAxis", !m_MainAxis ? "X" : "Y");
+	inArchive.PushProperty("MainAxis", m_MainAxis == Axis::X ? "X" : "Y");
 	inArchive.PushProperty("State", m_State.String());
 }
 
@@ -644,22 +626,16 @@ void UI::Guideline::DebugSerialize(Debug::PropertyArchive& inArchive) {
 /*-------------------------------------------------------------------------------------------------*/
 //										SPLITBOX
 /*-------------------------------------------------------------------------------------------------*/
-UI::SplitBox::SplitBox(WidgetAttachSlot& inSlot, bool bHorizontal /*= true*/, const std::string& inID /*= {}*/) 
-	: Super(inID)
-	, m_MainAxis(bHorizontal ? AxisX : AxisY)
+UI::SplitBox::SplitBox(bool bHorizontal, Widget* inParent, WidgetSlot inSlot) 
+	: m_MainAxis(bHorizontal ? Axis::X : Axis::Y)
 	, m_SplitRatio(0.5f)
-	, FirstSlot(this)
-	, SecondSlot(this)
-	, m_Separator(this)
+	, m_Separator()
 {
-	new Guideline(
-		m_Separator,
-		bHorizontal,
-		[this](auto* inDragEvent) { OnSeparatorDragged(inDragEvent); },
-		std::string(*GetID()).append("::Separator"));
-
 	SetAxisMode(AxisModeExpand);
-	inSlot.Parent(this);
+	if(inParent) inParent->Parent(this, inSlot);
+
+	m_Separator.reset(new Guideline(bHorizontal, [this](auto* inDragEvent) { OnSeparatorDragged(inDragEvent); }, nullptr));
+	m_Separator->OnParented(this);
 }
 
 bool UI::SplitBox::OnEvent(IEvent* inEvent) {
@@ -689,7 +665,7 @@ bool UI::SplitBox::DispatchToChildren(IEvent* inEvent) {
 	bool bBroadcast = inEvent->IsBroadcast();
 
 	for(auto i = 0; i < 3; ++i) {
-		auto* child = i == 0 ? FirstSlot.Get() : i == 1 ? m_Separator.Get() : SecondSlot.Get();
+		auto* child = i == 0 ? m_First.get() : i == 1 ? m_Separator.get() : m_Second.get();
 		const auto bHandled = child->IsVisible() ? child->OnEvent(inEvent) : false;
 
 		if(bHandled && !bBroadcast) {
@@ -701,13 +677,13 @@ bool UI::SplitBox::DispatchToChildren(IEvent* inEvent) {
 
 void UI::SplitBox::DebugSerialize(Debug::PropertyArchive& inArchive) {
 	Super::DebugSerialize(inArchive);
-	inArchive.PushProperty("Direction", m_MainAxis ? "Column" : "Row");
+	inArchive.PushProperty("Direction", m_MainAxis == Axis::Y ? "Column" : "Row");
 	inArchive.PushProperty("SplitRatio", m_SplitRatio);
 }
 
 UI::VisitResult UI::SplitBox::VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive) {
 	for(auto i = 0; i < 3; ++i) {
-		auto* child = i == 0 ? FirstSlot.Get() : i == 1 ? m_Separator.Get() : SecondSlot.Get();
+		auto* child = i == 0 ? m_First.get() : i == 1 ? m_Separator.get() : m_Second.get();
 
 		const auto result = inVisitor(child);
 		if(!result.bContinue) return VisitResultExit;
@@ -721,7 +697,7 @@ UI::VisitResult UI::SplitBox::VisitChildren(const WidgetVisitor& inVisitor, bool
 }
 
 void UI::SplitBox::OnSeparatorDragged(MouseDragEvent* inDragEvent) {
-	const auto mainAxisSize = Super::GetSize(m_MainAxis);
+	const auto mainAxisSize = GetSize(m_MainAxis);
 	const auto clampedPos = Math::Clamp(inDragEvent->MousePosLocal[m_MainAxis], 10.f, mainAxisSize - 10.f);
 	const auto posNorm = clampedPos / mainAxisSize;
 	m_SplitRatio = posNorm;
@@ -738,40 +714,40 @@ void UI::SplitBox::UpdateLayout() {
 
 	LayoutWidget* firstLayoutWidget = nullptr;
 
-	if(FirstSlot) {
-		firstLayoutWidget = FirstSlot->Cast<LayoutWidget>();
+	if(m_First) {
+		firstLayoutWidget = m_First->Cast<LayoutWidget>();
 
 		if(!firstLayoutWidget) {
-			firstLayoutWidget = FirstSlot->GetChild<LayoutWidget>();
+			firstLayoutWidget = m_First->GetChild<LayoutWidget>();
 		}
 	}
 
 	LayoutWidget* secondLayoutWidget = nullptr;
 
-	if(SecondSlot) {
-		secondLayoutWidget = SecondSlot->Cast<LayoutWidget>();
+	if(m_Second) {
+		secondLayoutWidget = m_Second->Cast<LayoutWidget>();
 
 		if(!secondLayoutWidget) {
-			secondLayoutWidget = SecondSlot->GetChild<LayoutWidget>();
+			secondLayoutWidget = m_Second->GetChild<LayoutWidget>();
 		}
 	}
 
 	if(!firstLayoutWidget && !secondLayoutWidget) return;
 
 	if(!firstLayoutWidget || !firstLayoutWidget->IsVisible()) {
-		ParentLayoutEvent onParent(this, Rect(Super::GetSize()));
+		ParentLayoutEvent onParent(this, Rect(GetSize()));
 		secondLayoutWidget->OnEvent(&onParent);
 		m_Separator->SetVisibility(false);
 
 	} else if(!secondLayoutWidget || !secondLayoutWidget->IsVisible()) {
-		ParentLayoutEvent onParent(this, Rect(Super::GetSize()));
+		ParentLayoutEvent onParent(this, Rect(GetSize()));
 		firstLayoutWidget->OnEvent(&onParent);
 		m_Separator->SetVisibility(false);
 
 	} else {		
 		m_Separator->SetVisibility(true);
 
-		const auto size = Super::GetSize();
+		const auto size = GetSize();
 		const auto mainAxisSize = size[m_MainAxis];
 		const auto crossAxisSize = size[!m_MainAxis];
 		const auto separatorThickness = m_Separator->GetOuterSize()[m_MainAxis];
@@ -837,6 +813,7 @@ bool UI::Tooltip::OnEvent(IEvent* inEvent) {
 
 bool UI::TooltipSpawner::OnEvent(IEvent* inEvent) {
 	constexpr unsigned delayMs = 1500;
+	static TimerHandle hTimer{};
 
 	if(auto* hoverEvent = inEvent->Cast<HoverEvent>()) {
 
@@ -854,7 +831,7 @@ bool UI::TooltipSpawner::OnEvent(IEvent* inEvent) {
 					}
 					return false;
 				};
-				Application::Get()->AddTimer(this, timerCallback, delayMs);
+				hTimer = Application::Get()->AddTimer(this, timerCallback, delayMs);
 			}
 			return bHandledByChild;
 
@@ -863,7 +840,9 @@ bool UI::TooltipSpawner::OnEvent(IEvent* inEvent) {
 			if(s_State == State::Active) {
 				CloseTooltip();
 
-			} else if(s_State == State::Disabled || s_State == State::Waiting) {
+			} else {
+				Application::Get()->RemoveTimer(hTimer);
+				hTimer = {};
 				s_State = State::Normal;
 			}
 			return Super::OnEvent(inEvent);
@@ -901,21 +880,6 @@ void UI::TooltipSpawner::CloseTooltip() {
 /*-------------------------------------------------------------------------------------------------*/
 //										POPUP
 /*-------------------------------------------------------------------------------------------------*/
-std::unique_ptr<UI::PopupWindow> UI::PopupBuilder::Create() {
-	return std::make_unique<UI::PopupWindow>(*this);
-}
-
-UI::PopupWindow::PopupWindow(const std::string& inID)
-	: Window(nullptr, inID, WindowFlags::Popup)
-	, m_Spawner(nullptr)
-	, m_NextPopup(this)
-	, m_NextPopupSpawner(nullptr)
-{}
-
-UI::PopupWindow::~PopupWindow() {
-	m_Spawner->OnPopupDestroyed();
-}
-
 UI::PopupWindow::PopupWindow(const PopupBuilder& inBuilder)
 	: Window(
 		WindowBuilder()
@@ -925,9 +889,13 @@ UI::PopupWindow::PopupWindow(const PopupBuilder& inBuilder)
 		.ID(inBuilder.m_ID)
 		.StyleClass(inBuilder.m_StyleClass))
 	, m_Spawner(nullptr)
-	, m_NextPopup(this)
+	, m_NextPopup()
 	, m_NextPopupSpawner(nullptr) 
 {}
+
+UI::PopupWindow::~PopupWindow() {
+	m_Spawner->OnPopupDestroyed();
+}
 
 bool UI::PopupWindow::OnEvent(IEvent* inEvent) {
 
@@ -935,9 +903,8 @@ bool UI::PopupWindow::OnEvent(IEvent* inEvent) {
 
 		// Close if clicked outside the window
 		if(!GetRect().Contains(mouseButtonEvent->MousePosGlobal)) {
-			ClosePopupIntent closePopup(this);
-			DispatchToParent(&closePopup);
-
+			auto msg = PopupEvent::ClosePopup(this);
+			DispatchToParent(&msg);
 			return true;
 		}
 		return false;
@@ -948,7 +915,6 @@ bool UI::PopupWindow::OnEvent(IEvent* inEvent) {
 		if(m_NextPopup && m_NextPopup->OnEvent(inEvent)) {
 			return false;
 		}
-
 		auto bHandledByChildren = DispatchToChildren(inEvent);
 
 		if(!bHandledByChildren && !GetParent<PopupWindow>()) {
@@ -973,23 +939,46 @@ bool UI::PopupWindow::OnEvent(IEvent* inEvent) {
 			DispatchToChildren(inEvent);
 		}
 		// Because we are a Popup, block this event for propagating 
-		// even if we aren't hovered
+		// even if we aren't hovered and have no parent popup
 		return !GetParent<PopupWindow>() || bThisHovered;
 	}
 
-	if(auto* spawnPopupIntent = inEvent->Cast<SpawnPopupIntent>()) {
-		const auto ctx = Application::GetFrameState();
-		m_NextPopup = spawnPopupIntent->Spawner->OnSpawn(ctx.MousePosGlobal, ctx.WindowSize);
-		m_NextPopup->OnParented(this);
-		m_NextPopupSpawner = spawnPopupIntent->Spawner;
-		return true;
+	// BUGFIX Because we are a parent for a submenu popup, 
+	//  we receive this event when a popup is created,
+	//	but it's not part of our layout, so ignore
+	if(auto* childEvent = inEvent->Cast<ChildLayoutEvent>()) {
+
+		if((childEvent->Subtype == ChildLayoutEvent::OnAdded 
+		   || childEvent->Subtype == ChildLayoutEvent::OnRemoved)
+		   && childEvent->Child == m_NextPopup.get()) {
+			return true;
+		}
+		return Super::OnEvent(inEvent);
 	}
 
-	if(auto* closePopupIntent = inEvent->Cast<ClosePopupIntent>()) {
-		// Close all popup stack 
-		ClosePopupIntent closePopup(this);
-		DispatchToParent(&closePopup);
-		return true;
+	if(auto* popupEvent = inEvent->Cast<PopupEvent>()) {
+
+		if(popupEvent->Type == PopupEvent::Type::Open) {
+			const auto ctx = Application::GetFrameState();
+			m_NextPopup = popupEvent->Spawner->OnSpawn(ctx.MousePosGlobal, ctx.WindowSize);
+			m_NextPopup->OnParented(this);
+			m_NextPopupSpawner = popupEvent->Spawner;
+			return true;
+		}
+
+		if(popupEvent->Type == PopupEvent::Type::Close) {
+			Assert(popupEvent->Popup == m_NextPopup.get());
+			m_NextPopup.reset();
+			m_NextPopupSpawner = nullptr;
+			return true;
+		}
+
+		if(popupEvent->Type == PopupEvent::Type::CloseAll) {
+			// Close all popup stack 
+			auto msg = PopupEvent::CloseAll();
+			DispatchToParent(&msg);
+			return true;
+		}
 	}
 
 	if(auto* layoutEvent = inEvent->Cast<ParentLayoutEvent>()) {
@@ -997,7 +986,7 @@ bool UI::PopupWindow::OnEvent(IEvent* inEvent) {
 		const auto popupRect = GetRect();
 			  auto newOrigin = GetOrigin();
 
-		for(auto axis = 0; axis < 2; ++axis) {
+		for(auto axis: Axes2D) {
 			if(popupRect.max[axis] > viewportSize[axis]) {
 				newOrigin[axis] = viewportSize[axis] - popupRect.Size()[axis];
 			}
@@ -1015,12 +1004,114 @@ bool UI::PopupWindow::OnEvent(IEvent* inEvent) {
 	return Super::OnEvent(inEvent);
 }
 
-void UI::PopupWindow::OnPopupItemHovered(PopupItem* inPopupItem) {
-
+void UI::PopupWindow::OnItemHovered() {
+	if(m_NextPopupSpawner) {
+		m_NextPopupSpawner->ClosePopup();
+	}
+	m_NextPopup.reset();
+	m_NextPopupSpawner = nullptr;
 }
 
-void UI::PopupWindow::OnPopupItemPressed(PopupItem* inPopupItem) {
+void UI::PopupWindow::OnItemPressed() {
+	// When pressed, closes the stack
+	auto msg = PopupEvent::CloseAll();
+	DispatchToParent(&msg);
+}
 
+UI::WeakPtr<UI::PopupWindow> UI::PopupWindow::OpenPopup(PopupSpawner* inSpawner) {
+	const auto ctx = Application::GetFrameState();
+	m_NextPopup = inSpawner->OnSpawn(ctx.MousePosGlobal, ctx.WindowSize);
+	m_NextPopup->OnParented(this);
+	m_NextPopupSpawner = inSpawner;
+	return m_NextPopup->GetWeak();
 }
 
 
+
+/*-------------------------------------------------------------------------------------------------*/
+//										CONTEXT MENU
+/*-------------------------------------------------------------------------------------------------*/
+UI::ContextMenu::ContextMenu(const ContextMenuBuilder& inBuilder) 
+	: PopupWindow(PopupBuilder()
+		.StyleClass(inBuilder.m_StyleClass)
+		.Position(inBuilder.m_Pos)
+		.ID(inBuilder.m_ID))
+	, m_Container(nullptr)
+{
+	constexpr auto menuWidthPx = 300;
+	SetSize(menuWidthPx, 0);
+	SetAxisMode({AxisMode::Expand, AxisMode::Shrink});
+
+	m_Container = FlexboxBuilder()
+		.DirectionColumn()
+		.ExpandCrossAxis(true)
+		.ExpandMainAxis(false)
+		.JustifyContent(JustifyContent::Center)
+		.Create(nullptr);
+
+	Super::Parent(m_Container);
+
+	for(auto& child : inBuilder.m_Children) {
+		Parent(child.release());
+	}
+}
+
+void UI::ContextMenu::Parent(Widget* inWidget, WidgetSlot inSlot) {
+	Assertm(inWidget->IsA<ContextMenuItem>() || inWidget->GetChild<ContextMenuItem>() 
+			|| inWidget->IsA<SubMenuItem>() || inWidget->GetChild<SubMenuItem>(),
+			"A children of a ContextMenu should be a ContextMenuItem widgets");
+	m_Container->Parent(inWidget);
+}
+
+UI::ContextMenuItem::ContextMenuItem(const std::string& inText, ContextMenu* inParent) {
+	auto* child = ButtonBuilder().Text(inText).Create(this);
+	child->SetAxisMode({AxisMode::Expand, AxisMode::Shrink});
+	if(inParent) inParent->Parent(this);
+}
+
+bool UI::ContextMenuItem::OnEvent(IEvent* inEvent) {
+	return Super::OnEvent(inEvent);
+}
+
+UI::SubMenuItem::SubMenuItem(const std::string& inText, const PopupSpawnFunc& inSpawner, ContextMenu* inParent)
+	: Super(inSpawner, PopupSpawner::SpawnEventType::LeftMouseRelease)
+{
+	auto* child = ButtonBuilder().Text(inText).Create(this);
+	child->SetAxisMode({AxisMode::Expand, AxisMode::Shrink});
+	if(inParent) inParent->Parent(this);
+}
+
+bool UI::SubMenuItem::OnEvent(IEvent* inEvent) {
+	constexpr unsigned delayMs = 1500;
+	static TimerHandle hTimer{};
+
+	if(auto* hoverEvent = inEvent->Cast<HoverEvent>()) {
+		const auto bHandledByChild = DispatchToChildren(inEvent);
+
+		if(hoverEvent->bHovered && bHandledByChild) {
+			auto popup = GetParent<PopupWindow>()->OpenPopup(this);
+
+			if(popup) {
+				constexpr auto popupHorizontalOffsetPx = 5;
+				const auto rootWindowSize = Application::GetFrameState().WindowSize;
+				const auto childRect = GetChild<LayoutWidget>()->GetRectGlobal();
+				const auto popupSize = popup->GetSize();
+				Point popupPos;
+				popupPos.y = childRect.Top();
+				popupPos.x = childRect.Right() - popupHorizontalOffsetPx;
+
+				if(popupPos.x + popupSize.x >= rootWindowSize.x) {
+					popupPos.x = childRect.Left() - popupSize.x + popupHorizontalOffsetPx;
+					popupPos.x = Math::Clamp(popupPos.x, 0.f);
+				}
+
+				if(popupPos.y + popupSize.y > rootWindowSize.y) {
+					popupPos.y = Math::Clamp(rootWindowSize.y - popupSize.y, 0.f);
+				}
+				popup->SetOrigin(popupPos);
+			}
+		}
+		return bHandledByChild;		
+	}
+	return Super::OnEvent(inEvent);
+}
