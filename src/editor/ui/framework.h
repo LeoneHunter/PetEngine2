@@ -246,7 +246,7 @@ namespace UI {
 		Point					mousePosOnCaptureGlobal;
 		KeyModifiersArray		keyModifiersState{false};
 		float2					windowSize;
-		Theme* theme = nullptr;
+		Theme* 					theme = nullptr;
 	};
 
 	/*
@@ -432,12 +432,12 @@ namespace UI {
 		};
 
 	public:
-
 		constexpr void Push(LayoutWidget* inWidget, Point inPosLocal);
 
 		constexpr bool Empty() const { return stack.empty(); }
 
 		constexpr HitData& Top() { return stack.back(); }
+		constexpr LayoutWidget*  TopWidget() { return stack.empty() ? nullptr : stack.back().widget.GetChecked(); }
 		
 		// Find hit data for a specified widget
 		constexpr const HitData* Find(const LayoutWidget* inWidget) const {
@@ -492,7 +492,6 @@ namespace UI {
 		static HoverEvent EnterEvent() { 
 			HoverEvent e; 
 			e.bHoverEnter = true;
-			e.bHandled = false;
 			e.bHoverLeave = false;
 			return e; 
 		}
@@ -500,7 +499,6 @@ namespace UI {
 		static HoverEvent LeaveEvent() { 
 			HoverEvent e; 
 			e.bHoverEnter = false;
-			e.bHandled = false;
 			e.bHoverLeave = true;
 			return e; 
 		}
@@ -508,7 +506,6 @@ namespace UI {
 		static HoverEvent Normal() { 
 			HoverEvent e; 
 			e.bHoverEnter = false;
-			e.bHandled = false;
 			e.bHoverLeave = false;
 			return e; 
 		}
@@ -517,7 +514,6 @@ namespace UI {
 
 		u8 bHoverEnter: 1;
 		u8 bHoverLeave: 1;
-		u8 bHandled: 1;
 	};
 
 	
@@ -1038,6 +1034,7 @@ namespace UI {
 		void				SetLayoutStyle(const LayoutStyle* inStyle) { m_LayoutStyle = inStyle; }
 		const LayoutStyle*	GetLayoutStyle() const { return m_LayoutStyle; }
 
+		// Widget's position won't be affected by parent's layout events
 		void			SetFloatLayout(bool bEnable) {  bEnable ? SetFlags(WidgetFlags::FloatLayout) : ClearFlags(WidgetFlags::FloatLayout); }
 
 	private:
@@ -1214,14 +1211,14 @@ namespace UI {
 			if(auto* child = Super::FindChildOfClass<LayoutWidget>()) {
 				const auto margins = GetLayoutStyle() ? GetLayoutStyle()->margins : Margins{};
 				const auto childOuterSize = child->GetSize() + margins.Size();
-				const auto offset = (inEvent->constraints.Size() - childOuterSize) * 0.5f;
+				const auto float2 = (inEvent->constraints.Size() - childOuterSize) * 0.5f;
 				// Pass tight constraints to force child position
-				ParentLayoutEvent onParent(this, Rect(offset, childOuterSize));
+				ParentLayoutEvent onParent(this, Rect(float2, childOuterSize));
 				child->OnEvent(&onParent);
 			}
 		}
 
-		// Dispatches draw event to children adding global offset
+		// Dispatches draw event to children adding global float2
 		void DispatchDrawToChildren(DrawEvent* inEvent, float2 inAdditionalOffset = {}) {
 			inEvent->drawList->PushTransform(Super::GetOrigin() + inAdditionalOffset);
 			DispatchToChildren(inEvent);
@@ -1425,6 +1422,112 @@ namespace UI {
 	private:
 		std::vector<std::unique_ptr<Widget>> m_Children;
 	};
+
+
+
+
+	class MouseRegionBuilder;
+
+	using MouseEnterEventCallback = std::function<void()>;
+	using MouseLeaveEventCallback = std::function<void()>;
+	using MouseHoverEventCallback = std::function<void(const HoverEvent&)>;
+	using MouseButtonEventCallback = std::function<void(const MouseButtonEvent&)>;
+
+	struct MouseRegionConfig {
+		MouseEnterEventCallback  onMouseEnter;
+		MouseLeaveEventCallback  onMouseLeave;
+		MouseHoverEventCallback  onMouseHover;
+		MouseButtonEventCallback onMouseButton;
+		// Whether to handle events even if other MouseRegion widget 
+		//     has already handled the event
+		bool					 bHandleHoverAlways = false;
+		bool					 bHandleButtonAlways = false;
+	};
+
+	/*
+	* Widget that detects mouse events
+	* Allows to receive events even if handled by children
+	* Uses underlying LayoutWidget for hit detection
+	* Other widget types can still receive these events but only if not captured by children
+	*/
+	class MouseRegion: public SingleChildWidget {
+		WIDGET_CLASS(MouseRegion, SingleChildWidget)
+	public:
+		static MouseRegionBuilder Build();
+
+		static MouseRegion* New(const MouseRegionConfig& inConfig, Widget* inChild) { 
+			Assertf(inConfig.onMouseLeave && (inConfig.onMouseHover || inConfig.onMouseEnter),
+					"OnMouseLeave and OnMouseEnter or OnMouseHover listeners should be set.");
+			auto* out = new MouseRegion(inConfig); 
+			out->SetChild(inChild);
+			return out;
+		}
+
+		bool OnEvent(IEvent* inEvent) override {
+
+			if(auto* event = inEvent->Cast<HoverEvent>()) {
+				if(event->bHoverEnter) {
+					if(m_Config.onMouseEnter) {
+						m_Config.onMouseEnter();
+					} else {
+						m_Config.onMouseHover(*event);
+					}
+				} else if(event->bHoverLeave) {
+					if(m_Config.onMouseLeave) {
+						m_Config.onMouseLeave();
+					}
+				} else if(m_Config.onMouseHover) {
+					m_Config.onMouseHover(*event);
+				}
+				// We're hoverable if either of callbacks is set
+				return m_Config.onMouseEnter || m_Config.onMouseHover;
+			}
+
+			if(auto* event = inEvent->Cast<MouseButtonEvent>()) {
+				if(event->button == MouseButton::ButtonLeft && !event->bHandled) {
+					if(event->bButtonPressed) {
+
+					} else {
+
+					}
+					return true;
+				}
+				return false;
+			}
+			return Super::OnEvent(inEvent);
+		}
+
+		bool ShouldAlwaysReceiveHover() const { return m_Config.bHandleHoverAlways; }
+		bool ShouldAlwaysReceiveButton() const { return m_Config.bHandleButtonAlways; }
+
+	protected:
+		MouseRegion(const MouseRegionConfig& inConfig) 
+			: m_Config(inConfig)
+		{}
+	
+	private:	
+		MouseRegionConfig m_Config;
+	};
+
+	class MouseRegionBuilder {
+	public:
+		MouseRegionBuilder() {}
+
+		MouseRegionBuilder& OnMouseEnter(const MouseEnterEventCallback& c) { config.onMouseEnter = c; return *this; }
+		MouseRegionBuilder& OnMouseLeave(const MouseLeaveEventCallback& c) { config.onMouseLeave = c; return *this; }
+		MouseRegionBuilder& OnMouseHover(const MouseHoverEventCallback& c) { config.onMouseHover = c; return *this; }
+		MouseRegionBuilder& HandleHoverAlways(bool b = true) { config.bHandleHoverAlways = b; return *this; }
+		MouseRegionBuilder& HandleButtonAlways(bool b = true) { config.bHandleButtonAlways = b; return *this; }
+		MouseRegionBuilder& Child(Widget* inChild) { child.reset(inChild); return *this; }
+
+		MouseRegion* 		New() { return MouseRegion::New(config, child.release()); }
+
+	private:
+		MouseRegionConfig       config;
+		std::unique_ptr<Widget> child;
+	};
+
+	inline MouseRegionBuilder MouseRegion::Build() { return {}; }
 
 }
 

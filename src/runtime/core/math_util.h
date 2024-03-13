@@ -397,7 +397,7 @@ struct Rect {
 	}
 
 	constexpr void		ClosestPoint(point_type inPoint, point_type& outClosest) const {
-		for(int i = 0; i < 2; i++) {
+		for(u8 i = 0; i < 2; i++) {
 			auto v = inPoint[i];
 			if(v < min[i]) v = min[i];
 			if(v > max[i]) v = max[i];

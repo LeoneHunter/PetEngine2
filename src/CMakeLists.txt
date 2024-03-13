@@ -30,6 +30,10 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 	_UNICODE
 )
 
+target_compile_options(${PROJECT_NAME} PRIVATE
+	/W3
+)
+
 target_link_options(${PROJECT_NAME} PRIVATE
 	$<$<NOT:$<CONFIG:Debug>>:/OPT:REF /OPT:ICF>
 	# suppress linking warning due to /INCREMENTAL and /OPT:ICF being both ON

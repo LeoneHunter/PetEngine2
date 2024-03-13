@@ -281,13 +281,13 @@ public:
 
 	WindowBuilder& DefaultFloat() { return *this; }
 	WindowBuilder& ID(const std::string& inID) { config.id = inID; return *this; }
-	WindowBuilder& StyleClass(const std::string& inStyle) { config.style = inStyle; return *this; }
+	WindowBuilder& Style(const std::string& inStyle) { config.style = inStyle; return *this; }
 	WindowBuilder& Position(Point inPos) { config.pos = inPos; return *this; }
 	WindowBuilder& Position(float inX, float inY) { config.pos = {inX, inY}; return *this; }
 	WindowBuilder& Size(float2 inSize) { config.size = inSize; return *this; }
 	WindowBuilder& Size(float inX, float inY) { config.size = {inX, inY}; return *this; }
 
-	Window* New() { return Window::New(config); }
+	Window* 	   New() { return Window::New(config); }
 
 private:
 	WindowConfig config;
@@ -370,16 +370,18 @@ enum class OverflowPolicy {
 				 // Could be used with Scrolled widget to scroll content on overflow
 };
 
+struct FlexboxBuilder;
+
 struct FlexboxConfig {
 	static const inline StringID defaultStyleName = "Flexbox";
 
-	std::string 	     id;
-	StringID    		 style = defaultStyleName;
-	UI::ContentDirection direction = ContentDirection::Row;
-	UI::JustifyContent   justifyContent = JustifyContent::Start;
-	UI::AlignContent     alignment = AlignContent::Start;
-	UI::OverflowPolicy   overflowPolicy = OverflowPolicy::Clip;
-	bool                 expandMainAxis = true;
+	std::string          id;
+	StringID             style           = defaultStyleName;
+	UI::ContentDirection direction       = ContentDirection::Row;
+	UI::JustifyContent   justifyContent  = JustifyContent::Start;
+	UI::AlignContent     alignment       = AlignContent::Start;
+	UI::OverflowPolicy   overflowPolicy  = OverflowPolicy::Clip;
+	bool                 expandMainAxis  = true;
 	bool                 expandCrossAxis = false;
 	std::vector<Widget*> children;
 };
@@ -392,7 +394,13 @@ struct FlexboxConfig {
 class Flexbox: public MultiChildLayoutWidget {
 	WIDGET_CLASS(Flexbox, MultiChildLayoutWidget)
 public:
-	Flexbox(const FlexboxConfig& inConfig);
+	static FlexboxBuilder Build();
+
+	static Flexbox* New(const FlexboxConfig& inConfig, const std::vector<Widget*>& inChildren) { 
+		auto* out = new Flexbox(inConfig); 
+		for(auto* child: inChildren) { out->AddChild(child); }
+		return out;
+	}	
 
 	bool OnEvent(IEvent* inEvent) override;
 	void DebugSerialize(PropertyArchive& inArchive) override;
@@ -401,6 +409,9 @@ public:
 
 private:
 	void UpdateLayout();
+
+protected:
+	Flexbox(const FlexboxConfig& inConfig);
 
 private:
 	ContentDirection m_Direction;
@@ -415,76 +426,34 @@ DEFINE_ENUM_TOSTRING_3(AlignContent, Start, End, Center)
 DEFINE_ENUM_TOSTRING_2(OverflowPolicy, Clip, Wrap)
 
 
+struct FlexboxBuilder {
+	FlexboxBuilder& ID(const std::string& inID) { config.id = inID; return *this; }
+	FlexboxBuilder& Style(const std::string& inStyle) { config.style = inStyle; return *this; }
+	// Direction of the main axis
+	FlexboxBuilder& Direction(ContentDirection inDirection) { config.direction = inDirection; return *this; }
+	FlexboxBuilder& DirectionRow() { config.direction = ContentDirection::Row; return *this; }
+	FlexboxBuilder& DirectionColumn() { config.direction = ContentDirection::Column; return *this; }
+	// Distribution of children on the main axis
+	FlexboxBuilder& JustifyContent(UI::JustifyContent inJustify) { config.justifyContent = inJustify; return *this; }
+	// Alignment on the cross axis
+	FlexboxBuilder& Alignment(AlignContent inAlignment) { config.alignment = inAlignment; return *this; }
+	// What to do when children don't fit into container
+	FlexboxBuilder& OverflowPolicy(OverflowPolicy inPolicy) { config.overflowPolicy = inPolicy; return *this; }
+	FlexboxBuilder& ExpandMainAxis(bool bExpand) { config.expandMainAxis = bExpand; return *this; }
+	FlexboxBuilder& ExpandCrossAxis(bool bExpand) { config.expandCrossAxis = bExpand; return *this; }
+	FlexboxBuilder& Expand() { config.expandCrossAxis = true; config.expandMainAxis  = true; return *this; }
 
+	FlexboxBuilder& Children(std::initializer_list<Widget*> inChildren) { children.insert(children.end(), inChildren.begin(), inChildren.end()); return *this; }
 
+	// Finalizes creation
+	Flexbox* 		New() { return Flexbox::New(config, children); }
 
-// struct FlexboxBuilder: public WidgetBuilder<FlexboxBuilder> {
-// 	// Direction of the main axis
-// 	FlexboxBuilder& Direction(ContentDirection inDirection) {
-// 		m_Direction = inDirection;
-// 		return *this;
-// 	}
-// 	FlexboxBuilder& DirectionRow() {
-// 		m_Direction = ContentDirection::Row;
-// 		return *this;
-// 	}
-// 	FlexboxBuilder& DirectionColumn() {
-// 		m_Direction = ContentDirection::Column;
-// 		return *this;
-// 	}
-// 	// Distribution of children on the main axis
-// 	FlexboxBuilder& JustifyContent(UI::JustifyContent inJustify) {
-// 		m_JustifyContent = inJustify;
-// 		return *this;
-// 	}
-// 	// Alignment on the cross axis
-// 	FlexboxBuilder& Alignment(AlignContent inAlignment) {
-// 		m_Alignment = inAlignment;
-// 		return *this;
-// 	}
-// 	// What to do when children don't fit into container
-// 	FlexboxBuilder& OverflowPolicy(OverflowPolicy inPolicy) {
-// 		m_OverflowPolicy = inPolicy;
-// 		return *this;
-// 	}
-// 	FlexboxBuilder& ExpandMainAxis(bool bExpand) {
-// 		m_ExpandMainAxis = bExpand;
-// 		return *this;
-// 	}
-// 	FlexboxBuilder& ExpandCrossAxis(bool bExpand) {
-// 		m_ExpandCrossAxis = bExpand;
-// 		return *this;
-// 	}
-// 	FlexboxBuilder& Expand() {
-// 		m_ExpandCrossAxis = true;
-// 		m_ExpandMainAxis  = true;
-// 		return *this;
-// 	}
+private:
+	FlexboxConfig config;
+	std::vector<Widget*> children;
+};
+inline FlexboxBuilder Flexbox::Build() { return {}; }
 
-// 	// Finalizes creation
-// 	Flexbox* Create(Widget* inParent, WidgetSlot inSlot = defaultWidgetSlot);
-
-// public:
-// 	FlexboxBuilder()
-// 		: m_Direction(ContentDirection::Row)
-// 		, m_JustifyContent(JustifyContent::Start)
-// 		, m_Alignment(AlignContent::Start)
-// 		, m_OverflowPolicy(OverflowPolicy::Clip)
-// 		, m_ExpandMainAxis(true)
-// 		, m_ExpandCrossAxis(false) {
-// 		StyleClass("Container");
-// 	}
-
-// 	friend class Flexbox;
-
-// public:
-// 	UI::ContentDirection m_Direction;
-// 	UI::JustifyContent   m_JustifyContent;
-// 	UI::AlignContent     m_Alignment;
-// 	UI::OverflowPolicy   m_OverflowPolicy;
-// 	bool                 m_ExpandMainAxis;
-// 	bool                 m_ExpandCrossAxis;
-// };
 // /*-------------------------------------------------------------------------------------------------*/
 // //										GUIDELINE
 // /*-------------------------------------------------------------------------------------------------*/
@@ -552,8 +521,14 @@ DEFINE_ENUM_TOSTRING_2(OverflowPolicy, Clip, Wrap)
 // 		Axis							m_MainAxis;
 // 		float							m_SplitRatio;
 // 	};
+class TooltipPortal;
 
-using TooltipBuilderFunc = std::function<Widget*()>;
+struct TooltipBuildContext {
+	Point 			mousePosGlobal;
+	TooltipPortal* 	sourceWidget{};
+};
+
+using TooltipBuilderFunc = std::function<Widget*(const TooltipBuildContext&)>;
 
 /*
  * Builds a simple text tooltip
@@ -569,8 +544,8 @@ public:
 /*
  * Opens a tooltip when hovered
  */
-class TooltipPortal: public SingleChildWidget {
-	WIDGET_CLASS(TooltipPortal, SingleChildWidget)
+class TooltipPortal: public MouseRegion {
+	WIDGET_CLASS(TooltipPortal, MouseRegion)
 public:
 	static TooltipPortal* New(const TooltipBuilderFunc& inBuilder, Widget* inChild) {
 		auto* out      = new TooltipPortal();
@@ -578,8 +553,6 @@ public:
 		out->SetChild(inChild);
 		return out;
 	}
-
-	bool OnEvent(IEvent* inEvent) override;
 
 	void DebugSerialize(PropertyArchive& ar) override {
 		Super::DebugSerialize(ar);
@@ -589,18 +562,93 @@ public:
 	}
 
 protected:
-	TooltipPortal() = default;
+	TooltipPortal()
+		: MouseRegion(MouseRegionConfig{
+			.onMouseLeave = [this]() { OnMouseLeave(); },
+			.onMouseHover = [this](const auto& e) { OnMouseHover(e); }, 
+			.onMouseButton = [this](const auto& e) { OnMouseButton(e); },
+			.bHandleHoverAlways = true,
+			.bHandleButtonAlways = true}
+		) 
+	{}
 
 private:
-	void CloseTooltip();
+	void OnMouseButton(const MouseButtonEvent& inEvent) {
+		CloseTooltip();
+		if(sharedState.timerHandle) {
+			Application::Get()->RemoveTimer(sharedState.timerHandle);
+			sharedState.timerHandle = {};
+		}
+		sharedState.bDisabled = true;
+	}
+
+	void OnMouseHover(const HoverEvent& inEvent) {
+		constexpr unsigned delayMs = 500;
+
+		const bool bOverlapping = sharedState.portal && sharedState.portal != this;
+		// If this tooltip area covers another tooltip area
+		// For example a tab and a tab close button with different tooltips
+		if(bOverlapping && inEvent.bHoverEnter) {
+			// Reset state and close tooltip
+			if(sharedState.timerHandle) {
+				Application::Get()->RemoveTimer(sharedState.timerHandle);
+				sharedState.timerHandle = {};
+			} else if(sharedState.widget) {
+				CloseTooltip();
+			}
+			sharedState.bDisabled = false;
+		}
+		const bool bStateClean = !sharedState.bDisabled && !sharedState.widget && !sharedState.timerHandle;
+
+		if(bStateClean) {
+			const auto timerCallback = [this]() -> bool {
+				OpenTooltip();
+				return false;
+			};
+			sharedState.timerHandle = Application::Get()->AddTimer(this, timerCallback, delayMs);
+			sharedState.portal = this;
+			return;
+		}
+	}
+
+	void OnMouseLeave() {
+		if(sharedState.timerHandle) {
+			Application::Get()->RemoveTimer(sharedState.timerHandle);
+			sharedState.timerHandle = {};
+		} else if(sharedState.widget) {
+			CloseTooltip();
+		}
+		sharedState.bDisabled = false;
+		sharedState.portal = nullptr;
+	}
+
+	void OpenTooltip() {
+		auto ctx           = Application::Get()->GetFrameState();
+		sharedState.widget = m_Builder(TooltipBuildContext{ctx.mousePosGlobal, this});
+		auto* layout       = LayoutWidget::FindNearest(sharedState.widget);
+		Assertf(layout, "Tooltip widget {} has no LayoutWidget child, so it won't be visible.", sharedState.widget->GetDebugID());
+
+		layout->SetOrigin(ctx.mousePosGlobal + float2(15));
+		layout->SetFloatLayout(true);
+		Application::Get()->Parent(sharedState.widget, Layer::Overlay);
+		sharedState.timerHandle = {};
+	}
+
+	void CloseTooltip() {
+		if(sharedState.widget) {
+			sharedState.widget->Destroy();
+			sharedState.widget = nullptr;
+		}
+	}
 
 private:
 	// We use static shared state because there's no point in 
 	//     having multipler tooltips visible at once
 	struct State {
-		TimerHandle timerHandle{};
-		Widget* 	widget = nullptr;
-		bool		bDisabled = false;
+		TooltipPortal*  portal{};
+		TimerHandle 	timerHandle{};
+		Widget* 		widget = nullptr;
+		bool			bDisabled = false;
 	};
 	static inline State sharedState{};
 

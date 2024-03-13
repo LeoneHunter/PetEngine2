@@ -246,6 +246,64 @@ public:
 
 
 /*
+* Helper adapter to store widget state between frames
+*/
+class WidgetList {
+public:
+
+	WidgetList() {
+		stack.reserve(10);
+	}
+
+	void Push(Widget* inItem) {
+		stack.push_back(inItem->GetWeak());
+	}
+
+	void ForEach(const std::function<void(Widget*)>& fn) {
+		for(auto& item: stack) {
+			fn(item.GetChecked());
+		}
+	}
+
+	void Remove(Widget* inItem) {
+		for(auto it = stack.begin(); it != stack.end(); ++it) {
+			if(*it == inItem) {
+				stack.erase(it);
+				break;
+			}
+		}
+	}
+
+	bool Contains(Widget* inItem) {
+		for(auto it = stack.begin(); it != stack.end(); ++it) {
+			if(*it == inItem) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	void Clear() { stack.clear(); }
+	
+	Widget* Top() {
+		return stack.empty() 
+			? nullptr 
+			: stack.front().GetChecked(); 
+	}
+
+	const Widget* Top() const {
+		return stack.empty() 
+			? nullptr 
+			: stack.front().GetChecked(); 
+	}
+
+private:
+	std::vector<WeakPtr<Widget>> stack;
+};
+
+
+
+/*
 * Overlay that is drawn over root window
 */
 class DebugOverlayWindow: public StatefulWidget {
@@ -290,8 +348,7 @@ public:
 
 		RebuildFonts();
 
-		m_DebugOverlay = new DebugOverlayWindow();
-		Parent(m_DebugOverlay, Layer::Overlay);
+		Parent(m_DebugOverlay = new DebugOverlayWindow(), Layer::Overlay);
 
 		g_OSWindow->SetOnCursorMoveCallback([](float x, float y) { g_Application->DispatchMouseMoveEvent({x, y}); });
 		g_OSWindow->SetOnMouseButtonCallback([](KeyCode inButton, bool bPressed) { g_Application->DispatchMouseButtonEvent(inButton, bPressed); });
@@ -301,17 +358,6 @@ public:
 		g_OSWindow->SetOnCharInputCallback([](wchar_t inCharacter) { g_Application->DispatchCharInputEvent(inCharacter); });
 
 		DispatchOSWindowResizeEvent(g_OSWindow->GetSize());
-	}
-
-	void DispatchMouseLeaveEvent(Widget* inPivot) {
-		if(m_LastHitStack.Empty()) return;
-		auto e = HoverEvent::LeaveEvent();
-
-		for(Widget* widget = m_LastHitStack.stack.back().widget.Get();
-					widget != inPivot;
-					widget = widget->GetParent()) {
-			widget->OnEvent(&e);
-		}
 	}
 
 	void DispatchMouseMoveEvent(Point inMousePosGlobal) {
@@ -326,7 +372,10 @@ public:
 		mouseMoveEvent.mouseButtonsPressedBitField = m_MouseButtonsPressedBitField;
 
 		if(mousePosGlobal == NOPOINT) {
-			DispatchMouseLeaveEvent(nullptr);
+			auto e = HoverEvent::LeaveEvent();
+			m_HoveredWidgets.ForEach([&](Widget* inWidget) {
+				inWidget->OnEvent(&e);
+			});
 			return;
 		} 
 		
@@ -369,58 +418,51 @@ public:
 			}
 		}
 		// The lowest widget in the old tree that's shared between stacks
-		Widget* pivot = nullptr;
-		auto& oldStack = m_LastHitStack.stack;
-		auto& newStack = hitStack.stack;
-		
-		// Calculate hit stack diff and dispatch MouseLeave and MouseEnter events
-		if(!oldStack.empty() && !newStack.empty()) {
-			for(auto oldStackIt = oldStack.begin(),
-					 newStackIt = newStack.begin();
-					 oldStackIt != oldStack.end() &&
-					 newStackIt != newStack.end();
-					 ++oldStackIt,
-					 ++newStackIt) {
-
-				if(newStackIt->widget != oldStackIt->widget) {
-					break;
-				} else {
-					pivot = newStackIt->widget.Get();
-				}
-			}
-		}
-		DispatchMouseLeaveEvent(pivot);
-		m_LastHitStack = hitStack;
-		m_HoveredWidget = nullptr;
+		WidgetList prevHovered = m_HoveredWidgets;
+		WidgetList newHovered;
 
 		// Dispatch mouse enter events
-		if(!newStack.empty()) {
-			auto enterEvent = HoverEvent::EnterEvent();
-
-			for(Widget* widget = newStack.back().widget.Get(); 
-						widget != pivot; 
-						widget = widget->GetParent()) {
-
-				if(widget->OnEvent(&enterEvent) && !enterEvent.bHandled) {
-					m_HoveredWidget = widget->GetWeak();
-					enterEvent.bHandled = true;
-				}
-			}
-		}
-
-		// Dispatch normal move
-		if(pivot) {
+		if(!hitStack.Empty()) {
 			auto e = HoverEvent::Normal();
+			bool bHandled = false;
 
-			for(Widget* widget = pivot; widget; widget = widget->GetParent()) {
-				if(widget->OnEvent(&e)) {
-					e.bHandled = true;
-					if(!m_HoveredWidget) {
-						m_HoveredWidget = widget->GetWeak();
-					}
-				}
+			for(Widget* widget = hitStack.TopWidget(); 
+				widget; 
+				widget = widget->GetParent()) {
+				
+				if(!bHandled || 
+				   (widget->IsA<MouseRegion>() && widget->Cast<MouseRegion>()->ShouldAlwaysReceiveHover())) {
+
+					if(prevHovered.Contains(widget)) {
+						e.bHoverEnter = false;
+
+						if(widget->OnEvent(&e)) {
+							prevHovered.Remove(widget);
+							newHovered.Push(widget);
+							bHandled = true;
+						}
+
+					} else {
+						e.bHoverEnter = true;
+
+						if(widget->OnEvent(&e)) {
+							newHovered.Push(widget);
+							bHandled = true;
+						}
+					}	
+				} 
 			}
 		}
+		// Dispatch leave events to the widgets left in the prevHovered list
+		// These items have not been transfered to the new list wich means they're no longer hovered
+		auto e = HoverEvent::LeaveEvent();
+
+		prevHovered.ForEach([&](Widget* inWidget) {
+			inWidget->OnEvent(&e);
+		});
+		
+		m_HoveredWidgets = newHovered;
+		m_LastHitStack = hitStack;
 	}
 
 	void DispatchMouseButtonEvent(KeyCode inButton, bool bPressed) {
@@ -436,7 +478,7 @@ public:
 		if(bPressed && m_MouseButtonHeldNum == 1) {
 			m_PressedMouseButton = (MouseButton)inButton;
 
-			if(m_HoveredWidget) {
+			if(m_HoveredWidgets.Top()) {
 				MouseButtonEvent event;
 				event.mousePosGlobal = m_MousePosGlobal;
 				event.mousePosLocal = m_MousePosGlobal;
@@ -624,15 +666,16 @@ public:
 	// Update cached widgets for mouse capture and hovering
 	void	ResetState() {
 		m_HoveredWindow = nullptr;
-		m_HoveredWidget = nullptr;
+		m_HoveredWidgets.Clear();
 		m_CapturingWidget = nullptr;
 		m_bResetState = true;
 	}
 
 	Point   GetMousePosLocal() const {
 		auto out = m_MousePosGlobal;
-		if(m_HoveredWidget) {
-			if(auto* parent = m_HoveredWidget->FindParentOfClass<LayoutWidget>()) {
+		auto hovered = m_HoveredWidgets.Top();
+		if(hovered) {
+			if(auto* parent = hovered->FindParentOfClass<LayoutWidget>()) {
 				if(auto* hitData = m_LastHitStack.Find(parent)) {
 					out = hitData->hitPosLocal;
 				}				
@@ -675,7 +718,7 @@ public:
 			sb.Line("Timers count: {}", m_Timers.Size());
 			sb.Line("Mouse pos global: {}", m_MousePosGlobal);
 			sb.Line("Hovered window: {}", m_HoveredWindow ? m_HoveredWindow->GetDebugID() : "");
-			sb.Line("Hovered widget: {}", m_HoveredWidget ? m_HoveredWidget->GetDebugID() : "");
+			sb.Line("Hovered widget: {}", m_HoveredWidgets.Top() ? m_HoveredWidgets.Top()->GetDebugID() : "");
 			sb.Line("Capturing mouse widget: {}", m_CapturingWidget ? m_CapturingWidget->GetDebugID() : "");
 			sb.Line("MousePosLocal: {}", GetMousePosLocal());
 			sb.Line();
@@ -883,7 +926,8 @@ private:
 
 	// Layout widgets that are hit by mouse cursor
 	HitStack				m_LastHitStack;
-	WeakPtr<Widget>			m_HoveredWidget;
+	// WeakPtr<Widget>			m_HoveredWidget;
+	WidgetList				m_HoveredWidgets;
 	WeakPtr<Widget>			m_CapturingWidget;
 	WeakPtr<Widget>			m_HoveredWindow;
 

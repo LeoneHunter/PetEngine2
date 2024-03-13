@@ -61,39 +61,57 @@ UI::Window::Window(const WindowConfig& inConfig)
 		inConfig.size,
 		true,
 		inConfig.style,
-		new Flexbox(FlexboxConfig{
-			.direction       = ContentDirection::Column,
-			.justifyContent  = JustifyContent::Center,
-			.alignment 		 = AlignContent::Center,
-			.expandMainAxis  = true,
-			.expandCrossAxis = true,
-			.children        = {
-                TooltipPortal::New(
-                    []() { return Tooltip::NewText("Lorem ipsum"); },
-                    Button::New(
-                        "Button",
-                        [this](ButtonEvent* e) {
-                            if(!e->bPressed) {
-                                LOGF("Hello from button {}", e->source->GetDebugID());
-                            }
-                        },
-                        Text::New("Lorem ipsum")
-					)
-				),
-				TooltipPortal::New(
-					[]() { return Tooltip::NewText("dolor sit amet"); },
-					Button::New(
-						"Button",
-						[this](ButtonEvent* e) {
-							if(!e->bPressed) {
-								LOGF("Hello from button {}", e->source->GetDebugID());
-							}
-						},
-						Text::New("dolor sit amet")
-					)
+		TooltipPortal::New(
+			[](const TooltipBuildContext& inCtx) { 
+				return Tooltip::NewText(std::format("Item ID: {}", inCtx.sourceWidget->FindChildOfClass<MouseRegion>()->GetDebugID())); 
+			},
+			MouseRegion::Build()
+				.HandleHoverAlways(true)
+				.OnMouseEnter([this]() {
+					FindChildOfClass<Container>()->SetBoxStyleName("Hovered");
+				})
+				.OnMouseLeave([this]() {
+					FindChildOfClass<Container>()->SetBoxStyleName("");
+				})
+				.Child(Flexbox::Build()
+					.DirectionColumn()
+					.JustifyContent(JustifyContent::Center)
+					.Alignment(AlignContent::Center)
+					.Expand()
+					.Children({
+						TooltipPortal::New(
+							[](const TooltipBuildContext& inCtx) { 
+								return Tooltip::NewText(std::format("Item ID: {}", inCtx.sourceWidget->FindChildOfClass<Button>()->GetDebugID())); 
+							},
+							Button::New(
+								"Button",
+								[this](ButtonEvent* e) {
+									if(!e->bPressed) {
+										LOGF("Hello from button {}", e->source->GetDebugID());
+									}
+								},
+								Text::New("Button 1")
+							)
+						),
+						TooltipPortal::New(
+							[](const TooltipBuildContext& inCtx) { 
+								return Tooltip::NewText(std::format("Item ID: {}", inCtx.sourceWidget->FindChildOfClass<Button>()->GetDebugID())); 
+							},
+							Button::New(
+								"Button",
+								[this](ButtonEvent* e) {
+									if(!e->bPressed) {
+										LOGF("Hello from button {}", e->source->GetDebugID());
+									}
+								},
+								Text::New("Button 2")
+							)
+						)
+					})
+					.New()
 				)
-            }
-		})
+				.New()
+		)
 	);
 	container->SetOrigin(inConfig.pos);
 	SetChild(container);
@@ -640,61 +658,6 @@ void UI::Flexbox::UpdateLayout() {
 
 
 
-/*-------------------------------------------------------------------------------------------------*/
-//										TOOLTIP
-/*-------------------------------------------------------------------------------------------------*/
-bool UI::TooltipPortal::OnEvent(IEvent* inEvent) {
-	constexpr unsigned delayMs = 1500;
-
-	if(auto* hoverEvent = inEvent->Cast<HoverEvent>()) {
-		if(hoverEvent->bHoverEnter) {
-
-			if(!sharedState.bDisabled) {
-				const auto timerCallback = [this]() -> bool {
-					sharedState.widget = m_Builder();
-					auto ctx  = Application::Get()->GetFrameState();
-					auto* layout = LayoutWidget::FindNearest(sharedState.widget); 
-					Assertf(layout, "Tooltip widget {} has no LayoutWidget child, so it won't be visible.", sharedState.widget->GetDebugID());
-
-					layout->SetOrigin(ctx.mousePosGlobal);
-					layout->SetFloatLayout(true);
-					Application::Get()->Parent(sharedState.widget, Layer::Overlay);
-					sharedState.timerHandle = {};
-					return false;
-				};
-				sharedState.timerHandle = Application::Get()->AddTimer(this, timerCallback, delayMs);
-			}
-		} else if(hoverEvent->bHoverLeave) {
-			if(sharedState.timerHandle) {
-				Application::Get()->RemoveTimer(sharedState.timerHandle);
-				sharedState.timerHandle = {};
-			} else if(sharedState.widget) {
-				CloseTooltip();
-			}
-			sharedState.bDisabled = false;
-		}
-		return true;
-	}
-
-	if(auto* mouseButtonEvent = inEvent->Cast<MouseButtonEvent>()) {
-		CloseTooltip();
-		if(sharedState.timerHandle) {
-			Application::Get()->RemoveTimer(sharedState.timerHandle);
-			sharedState.timerHandle = {};
-		}
-		sharedState.bDisabled = true;
-		return true;
-	}
-	return Super::OnEvent(inEvent);
-}
-
-void UI::TooltipPortal::CloseTooltip() {
-	if(sharedState.widget) {
-		sharedState.widget->Destroy();
-		sharedState.widget = nullptr;
-	}
-}
-
 
 
 // /*-------------------------------------------------------------------------------------------------*/
@@ -912,16 +875,16 @@ void UI::TooltipPortal::CloseTooltip() {
 // 			auto popup = GetParent<PopupWindow>()->OpenPopup(this);
 
 // 			if(popup) {
-// 				constexpr auto popupHorizontalOffsetPx = 5;
+// 				constexpr auto popupHorizontalfloat2Px = 5;
 // 				const auto rootWindowSize = Application::GetFrameState().WindowSize;
 // 				const auto childRect = FindChildOfClass<LayoutWidget>()->GetRectGlobal();
 // 				const auto popupSize = popup->GetSize();
 // 				Point popupPos;
 // 				popupPos.y = childRect.Top();
-// 				popupPos.x = childRect.Right() - popupHorizontalOffsetPx;
+// 				popupPos.x = childRect.Right() - popupHorizontalfloat2Px;
 
 // 				if(popupPos.x + popupSize.x >= rootWindowSize.x) {
-// 					popupPos.x = childRect.Left() - popupSize.x + popupHorizontalOffsetPx;
+// 					popupPos.x = childRect.Left() - popupSize.x + popupHorizontalfloat2Px;
 // 					popupPos.x = Math::Clamp(popupPos.x, 0.f);
 // 				}
 

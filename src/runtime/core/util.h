@@ -374,17 +374,19 @@ namespace util {
 			RC->IncWref();
 		}
 
-		WeakPtr(const WeakPtr& inOther) {
-			if(inOther.RC) {
-				Ptr = inOther.Ptr;
-				RC = inOther.RC;
+		WeakPtr(const WeakPtr& inRight) {
+			if(inRight.RC && inRight.RC->IsAlive()) {
+				Ptr = inRight.Ptr;
+				RC = inRight.RC;
 				RC->IncWref();
 			}
 		}
 
 		WeakPtr(WeakPtr&& inRight) {
-			Ptr = inRight.Ptr;
-			RC = inRight.RC;
+			if(inRight.RC && inRight.RC->IsAlive()) {
+				Ptr = inRight.Ptr;
+				RC = inRight.RC;
+			}
 			inRight.Ptr = nullptr;
 			inRight.RC = nullptr;
 		}
@@ -396,7 +398,7 @@ namespace util {
 		}
 
 		WeakPtr& operator=(const WeakPtr& inRight) {
-			if(inRight.RC) {
+			if(inRight.RC && inRight.RC->IsAlive()) {
 				Reset();
 				Ptr = inRight.Ptr;
 				RC = inRight.RC;
@@ -407,8 +409,10 @@ namespace util {
 
 		WeakPtr& operator=(WeakPtr&& inRight) noexcept {
 			Reset();
-			Ptr = inRight.Ptr;
-			RC = inRight.RC;
+			if(inRight.RC && inRight.RC->IsAlive()) {
+				Ptr = inRight.Ptr;
+				RC = inRight.RC;
+			}
 			inRight.Ptr = nullptr;
 			inRight.RC = nullptr;
 			return *this;
@@ -439,6 +443,9 @@ namespace util {
 
 		T* Get() { return Ptr; }
 		const T* Get() const { return Ptr; }
+
+		T* GetChecked() { return RC->IsAlive() ? Ptr : nullptr; }
+		const T* GetChecked() const { return RC->IsAlive() ? Ptr : nullptr; }
 
 	private:
 		RefCounter* RC  = nullptr;
