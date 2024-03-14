@@ -55,12 +55,6 @@ public:
 	virtual void PopClipRect() = 0;
 
 	/**
-	 * Adds transformation to all rendering commands
-	 */
-	virtual void PushTransform(float2 inVector) = 0;
-	virtual void PopTransform() = 0;
-
-	/**
 	 * Set font for subsequent DrawText() commands
 	 */
 	virtual void PushFont(const UI::Font* inFont, u8 inDefaultSize, bool bBold = false, bool bItalic = false) = 0;

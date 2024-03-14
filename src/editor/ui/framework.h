@@ -279,7 +279,7 @@ namespace UI {
 		virtual bool			Tick() = 0;
 		// Parents a widget to the root of the widget tree
 		// Widgets parented to the root behave like windows and can be reordered
-		virtual void			Parent(Widget* inWidget, Layer inLayer) = 0;
+		virtual void			Parent(Widget* inWidget, Layer inLayer = Layer::Float) = 0;
 		virtual void 			Orphan(Widget* inWidget) = 0;
 		virtual void			BringToFront(Widget* inWidget) = 0;
 
@@ -447,6 +447,9 @@ namespace UI {
 			}
 			return nullptr;
 		}
+		constexpr bool Contains(const LayoutWidget* inWidget) const {
+			return Find(inWidget) != nullptr;
+		}
 
 		constexpr auto begin() { return stack.rbegin(); }
 		constexpr auto end() { return stack.rend(); }
@@ -531,10 +534,8 @@ namespace UI {
 
 		EventCategory GetCategory() const override { return EventCategory::System; }
 
-		// Set to true when OnEvent() returns true
-		bool 		bHandled = false;
 		MouseButton	button = MouseButton::None;
-		bool		bButtonPressed = false;
+		bool		bPressed = false;
 		Point		mousePosGlobal;
 		Point		mousePosLocal;
 	};
@@ -542,19 +543,15 @@ namespace UI {
 
 
 
-	class Drawlist {
+	class Canvas {
 	public:
 
-		virtual ~Drawlist() = default;
-		virtual void PushBox(Rect inRect, const BoxStyle* inStyle) = 0;
-		virtual void PushBox(Rect inRect, Color inColor, bool bFilled = true) = 0;
+		virtual ~Canvas() = default;
+		virtual void DrawBox(Rect inRect, const BoxStyle* inStyle) = 0;
+		virtual void DrawRect(Rect inRect, Color inColor, bool bFilled = true) = 0;
 
-		virtual void PushText(Point inOrigin, const TextStyle* inStyle, std::string_view inTextView) = 0;
-		virtual void PushClipRect(Rect inClipRect) = 0;
-		virtual void PopClipRect() = 0;
-
-		virtual void PushTransform(float2 inTransform) = 0;
-		virtual void PopTransform() = 0;
+		virtual void DrawText(Point inOrigin, const TextStyle* inStyle, std::string_view inTextView) = 0;
+		virtual void ClipRect(Rect inClipRect) = 0;
 	};
 
 	class DrawEvent final: public IEvent {
@@ -564,8 +561,8 @@ namespace UI {
 		bool IsBroadcast() const override { return true; };
 		EventCategory GetCategory() const override { return EventCategory::System; }
 
-		Drawlist*	drawList = nullptr;
-		Theme*		theme = nullptr;
+		Canvas*	canvas = nullptr;
+		Theme*	theme = nullptr;
 	};
 
 
@@ -712,6 +709,7 @@ namespace UI {
 	public:
 
 		StringID			GetID() const { return m_ID; }
+		void				SetID(StringID inID) { m_ID = inID; }
 
 		Widget*				GetParent() { return m_Parent; }
 		const Widget*		GetParent() const { return m_Parent; }
@@ -747,7 +745,7 @@ namespace UI {
 
 		// Returns a debug identifier of this object
 		// [MyWidgetClassName: <4 bytes of adress> "MyObjectID"]
-		std::string			GetDebugID() {
+		std::string			GetDebugID() const {
 			if(GetID()) {
 				return std::format("[{}: {:x} \"{}\"]", GetClassName(), (uintptr_t)this & 0xffff, GetID());
 			} else {
@@ -936,7 +934,7 @@ namespace UI {
 			} 
 
 			if(inEvent->IsA<DrawEvent>()) {
-				Assertm(false, "Draw event not handled nor dispatched to children!");
+				//Assertm(false, "Draw event not handled nor dispatched to children!");
 				return true;
 			}
 			return false;
@@ -1010,6 +1008,9 @@ namespace UI {
 		void			SetOrigin(float inX, float inY) { m_Origin = {inX, inY}; }
 		void			SetOrigin(Axis inAxis, float inPos) { m_Origin[inAxis] = inPos; }
 
+		void 			Translate(float2 inOffset) { m_Origin += inOffset; }
+		void 			Translate(float inX, float inY) { m_Origin.x += inX; m_Origin.y += inY; }
+
 		void			SetSize(float2 inSize) { m_Size = inSize; }
 		void			SetSize(Axis inAxis, float inSize) { m_Size[(int)inAxis] = inSize; }
 		void			SetSize(float inX, float inY) { m_Size = {inX, inY}; }
@@ -1021,6 +1022,7 @@ namespace UI {
 		float			GetSize(Axis inAxis) const { return m_Size[inAxis]; }
 
 		Point			GetOrigin() const { return m_Origin; }
+		Point			GetTransform() const { return m_Origin; }
 
 		// Helper to calculate outer size of a widget
 		float2			GetOuterSize() {
@@ -1189,10 +1191,10 @@ namespace UI {
 				return false;
 			} 
 
-			if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
-				DispatchDrawToChildren(drawEvent);
-				return true;
-			}
+			// if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
+			// 	DispatchDrawToChildren(drawEvent);
+			// 	return true;
+			// }
 			return Super::OnEvent(inEvent);
 		}
 
@@ -1219,11 +1221,11 @@ namespace UI {
 		}
 
 		// Dispatches draw event to children adding global float2
-		void DispatchDrawToChildren(DrawEvent* inEvent, float2 inAdditionalOffset = {}) {
-			inEvent->drawList->PushTransform(Super::GetOrigin() + inAdditionalOffset);
-			DispatchToChildren(inEvent);
-			inEvent->drawList->PopTransform();
-		}
+		// void DispatchDrawToChildren(DrawEvent* inEvent, float2 inAdditionalOffset = {}) {
+		// 	inEvent->drawList->PushTransform(Super::GetOrigin() + inAdditionalOffset);
+		// 	DispatchToChildren(inEvent);
+		// 	inEvent->drawList->PopTransform();
+		// }
 
 		// Dispatches event to children adding paddings to constraints
 		void DispatchLayoutToChildren() {
@@ -1240,11 +1242,14 @@ namespace UI {
 			}
 		}
 
-		// Helper to update our size based on AxisMode
-		// @param bUpdateChildOnAdded if true, updates a newly added child
-		// @return true if our size was changed by the child
+		/**
+		 * Helper to update our size based on AxisMode
+		 * @param bUpdateChildOnAdded if true, updates a newly added child
+		 * @return true if our size was changed by the child
+		*/
 		bool HandleChildEvent(const ChildLayoutEvent* inEvent, bool bUpdateChildOnAdded = true) {
 			const auto axisMode = GetAxisMode();
+			const auto prevSize = GetSize();
 			const auto childAxisMode = inEvent->child->GetAxisMode();
 			const auto paddings = GetLayoutStyle() ? GetLayoutStyle()->paddings : Paddings{};
 			const auto paddingsSize = paddings.Size();
@@ -1256,40 +1261,37 @@ namespace UI {
 				bSizeChanged = true;
 
 			} else if(inEvent->subtype == ChildLayoutEvent::OnChanged) {
-
 				for(auto axis: Axes2D) {
-
 					if(inEvent->bAxisChanged[axis] && axisMode[axis] == AxisMode::Shrink) {
 						Assertf(childAxisMode[axis] == AxisMode::Shrink,
 								"Cannot shrink on a child with expand behavior. Parent and child behaviour should match if parent is shrinked."
-								"Child class and id: '{}' '{}', Parent class and id: '{}' '{}'", inEvent->child->GetClassName(), inEvent->child->GetID(), GetClassName(), GetID());
+								"Child {}, Parent {}", inEvent->child->GetDebugID(), GetDebugID());
 
 						SetSize(axis, inEvent->size[axis] + paddingsSize[axis]);
-						bSizeChanged = true;
+						bSizeChanged = prevSize[axis] != GetSize()[axis];
 					}
 				}
 
 			} else if(inEvent->subtype == ChildLayoutEvent::OnAdded) {
-				bool bUpdateChild = false;
-
 				for(auto axis: Axes2D) {
-
 					if(axisMode[axis] == AxisMode::Shrink) {
 						Assertf(childAxisMode[axis] == AxisMode::Shrink,
 								"Cannot shrink on a child with expand behavior. Parent and child behaviour should match if parent is shrinked. "
 								"Child: {}, Parent: {}", inEvent->child->GetDebugID(), GetDebugID());
 
 						SetSize(axis, inEvent->size[axis] + paddingsSize[axis]);
-						bSizeChanged = true;
+						bSizeChanged = prevSize[axis] != GetSize()[axis];
 					}
 				}
-
 				// Update child's position based on padding
 				if(bUpdateChildOnAdded) {
 					ParentLayoutEvent onParent;
 					onParent.constraints = Rect(paddings.TL(), GetSize() - paddingsSize);
 					inEvent->child->OnEvent(&onParent);
 				}
+			}
+			if(bSizeChanged){
+				LOGF("Widget {} has been updated on child event. New size: {}", GetDebugID(), GetSize());
 			}
 			return bSizeChanged;
 		}
@@ -1402,12 +1404,12 @@ namespace UI {
 				DispatchToChildren(inEvent);
 				return true;
 			} 
-			if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
-				drawEvent->drawList->PushTransform(GetOrigin());
-				DispatchToChildren(drawEvent);
-				drawEvent->drawList->PopTransform();
-				return true;
-			}
+			// if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
+			// 	drawEvent->drawList->PushTransform(GetOrigin());
+			// 	DispatchToChildren(drawEvent);
+			// 	drawEvent->drawList->PopTransform();
+			// 	return true;
+			// }
 			return Super::OnEvent(inEvent);
 		}
 
@@ -1432,12 +1434,14 @@ namespace UI {
 	using MouseLeaveEventCallback = std::function<void()>;
 	using MouseHoverEventCallback = std::function<void(const HoverEvent&)>;
 	using MouseButtonEventCallback = std::function<void(const MouseButtonEvent&)>;
+	using MouseDragEventCallback = std::function<void(const MouseDragEvent&)>;
 
 	struct MouseRegionConfig {
 		MouseEnterEventCallback  onMouseEnter;
 		MouseLeaveEventCallback  onMouseLeave;
 		MouseHoverEventCallback  onMouseHover;
 		MouseButtonEventCallback onMouseButton;
+		MouseDragEventCallback   onMouseDrag;
 		// Whether to handle events even if other MouseRegion widget 
 		//     has already handled the event
 		bool					 bHandleHoverAlways = false;
@@ -1456,8 +1460,9 @@ namespace UI {
 		static MouseRegionBuilder Build();
 
 		static MouseRegion* New(const MouseRegionConfig& inConfig, Widget* inChild) { 
-			Assertf(inConfig.onMouseLeave && (inConfig.onMouseHover || inConfig.onMouseEnter),
-					"OnMouseLeave and OnMouseEnter or OnMouseHover listeners should be set.");
+			if(inConfig.onMouseHover || inConfig.onMouseEnter) {
+				Assertf(inConfig.onMouseLeave, "OnMouseLeave callback should be set if OnMouseEnter or OnMouseHover is set");
+			}
 			auto* out = new MouseRegion(inConfig); 
 			out->SetChild(inChild);
 			return out;
@@ -1469,7 +1474,7 @@ namespace UI {
 				if(event->bHoverEnter) {
 					if(m_Config.onMouseEnter) {
 						m_Config.onMouseEnter();
-					} else {
+					} else if(m_Config.onMouseHover) {
 						m_Config.onMouseHover(*event);
 					}
 				} else if(event->bHoverLeave) {
@@ -1479,20 +1484,23 @@ namespace UI {
 				} else if(m_Config.onMouseHover) {
 					m_Config.onMouseHover(*event);
 				}
-				// We're hoverable if either of callbacks is set
 				return m_Config.onMouseEnter || m_Config.onMouseHover;
 			}
 
-			if(auto* event = inEvent->Cast<MouseButtonEvent>()) {
-				if(event->button == MouseButton::ButtonLeft && !event->bHandled) {
-					if(event->bButtonPressed) {
-
-					} else {
-
-					}
+			if(auto* e = inEvent->Cast<MouseDragEvent>()) {
+				if(m_Config.onMouseDrag) {
+					m_Config.onMouseDrag(*e);
 					return true;
 				}
-				return false;
+				return m_Config.onMouseDrag || m_Config.onMouseButton;
+			}
+
+			if(auto* event = inEvent->Cast<MouseButtonEvent>()) {
+				if(m_Config.onMouseButton) {
+					m_Config.onMouseButton(*event);
+					return true;
+				}
+				return m_Config.onMouseDrag || m_Config.onMouseButton;
 			}
 			return Super::OnEvent(inEvent);
 		}
@@ -1513,6 +1521,8 @@ namespace UI {
 	public:
 		MouseRegionBuilder() {}
 
+		MouseRegionBuilder& OnMouseButton(const MouseButtonEventCallback& c) { config.onMouseButton = c; return *this; }
+		MouseRegionBuilder& OnMouseDrag(const MouseDragEventCallback& c) { config.onMouseDrag = c; return *this; }
 		MouseRegionBuilder& OnMouseEnter(const MouseEnterEventCallback& c) { config.onMouseEnter = c; return *this; }
 		MouseRegionBuilder& OnMouseLeave(const MouseLeaveEventCallback& c) { config.onMouseLeave = c; return *this; }
 		MouseRegionBuilder& OnMouseHover(const MouseHoverEventCallback& c) { config.onMouseHover = c; return *this; }

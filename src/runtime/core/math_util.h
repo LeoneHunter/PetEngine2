@@ -418,6 +418,8 @@ struct Rect {
 	constexpr Vec4		ToFloat4() const { return {min.x, min.y, max.x, max.y}; }
 
 	constexpr void		Clear() { min = point_type{0.f}; max = point_type{0.f}; }
+	// If min == max the rect is technically empty
+	constexpr bool		Empty() { return min == max; }
 
 	// Helpers
 	constexpr Rect&		Translate(point_type inTranslation) {

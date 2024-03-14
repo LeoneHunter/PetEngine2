@@ -356,21 +356,23 @@ public:
 	template<class StyleType>
 	const StyleType* FindOrDefault(StringID inName = "") const {
 		const StyleType* out = nullptr;
+		// If we are the fallback style ignore name selector
+		const auto name = m_Name.Empty() ? m_Name : inName;
 
 		for(auto& style: m_Styles) {
-			if(style->IsA<StyleType>() && (inName == style->name || inName.Empty())) {
+			if(style->IsA<StyleType>() && (name == style->name || name.Empty())) {
 				out = style->Cast<StyleType>();
 				break;
 			}
 		}
 
 		if(!out && m_Parent) {
-			out = m_Parent->Find<StyleType>(inName);
+			out = m_Parent->Find<StyleType>(name);
 		}
 
 		if(!out) {
 			// Return fallback
-			LOGF("Style [{}:{}] not found. Using fallback style.", StyleType::GetStaticClassName(), inName);
+			LOGF("Style [{}:{}] not found. Using fallback style.", StyleType::GetStaticClassName(), name);
 			return m_Parent->FindOrDefault<StyleType>();
 		}
 		return out;

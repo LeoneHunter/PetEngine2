@@ -105,8 +105,8 @@ public:
 	}
 
 	void DrawLine(const float2& inStart, const float2& inEnd, ColorU32 inColor, float inThickness) final {
-		const auto p1 = Math::Round(inStart + m_CummulativeTransform);
-		const auto p2 = Math::Round(inEnd + m_CummulativeTransform);
+		const auto p1 = Math::Round(inStart);
+		const auto p2 = Math::Round(inEnd);
 		//const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w * m_Alpha);
 		
 		m_ImDrawList->AddLine(p1, p2, inColor.MultiplyAlpha(m_Alpha), inThickness);
@@ -139,8 +139,8 @@ public:
 			return DrawErrorRect(inRect.min, inRect.max);
 		}
 
-		const auto min = Math::Round(inRect.min + m_CummulativeTransform);
-		const auto max = Math::Round(inRect.max + m_CummulativeTransform);
+		const auto min = Math::Round(inRect.min);
+		const auto max = Math::Round(inRect.max);
 		//const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w * m_Alpha);
 
 		ImDrawListFlags cornerMask = 0;
@@ -172,8 +172,8 @@ public:
 			return DrawErrorRect(inMin, inMax);
 		}
 
-		const auto min = Math::Round(inMin + m_CummulativeTransform);
-		const auto max = Math::Round(inMax + m_CummulativeTransform);
+		const auto min = Math::Round(inMin);
+		const auto max = Math::Round(inMax);
 		//const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w * m_Alpha);
 
 		ImDrawListFlags cornerMask = 0;
@@ -208,36 +208,21 @@ public:
 		if (!inTextureHandle) {
 			return;
 		}
-
-		const auto min = Math::Round(inRect.min + m_CummulativeTransform);
-		const auto max = Math::Round(inRect.max + m_CummulativeTransform);
+		const auto min = Math::Round(inRect.min);
+		const auto max = Math::Round(inRect.max);
 
 		m_ImDrawList->AddImage(inTextureHandle, min, max, inUVMin, inUVMax, ImColor(inTintColor));
 	}
 
 	void PushClipRect(const Rect& inRect) final {
-		const auto min = Math::Round(inRect.min + m_CummulativeTransform);
-		const auto max = Math::Round(inRect.max + m_CummulativeTransform);
+		const auto min = Math::Round(inRect.min);
+		const auto max = Math::Round(inRect.max);
 		//DrawRect(inRect.min, inRect.max, Color("#f2277c"), 0.f, 1.f);
 		m_ImDrawList->PushClipRect(min, max, true);
 	}
 
 	void PopClipRect() final {
 		m_ImDrawList->PopClipRect();
-	}
-
-	void PushTransform(float2 inVector) final {
-		m_TransformStack.push(inVector);
-		m_CummulativeTransform += inVector;
-	}
-
-	void PopTransform() final {
-		assert(!m_TransformStack.empty() && "Cannot pop empty stack");
-
-		const auto lastVector = m_TransformStack.top();
-		m_CummulativeTransform -= lastVector;
-
-		m_TransformStack.pop();
 	}
 
 	void PushFont(const UI::Font* inFont, u8 inDefaultSize, bool bBold = false, bool bItalic = false) final {
@@ -299,7 +284,7 @@ private:
 
 	template<typename CHAR_T>
 	void DrawTextExt(const float2& inPos, ColorU32 inColor, const std::basic_string_view<CHAR_T>&inText, uint8 inFontSize, bool bBold, bool bItalic) {
-		const auto pos = Math::Round(inPos + m_CummulativeTransform);
+		const auto pos = Math::Round(inPos);
 		//const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w * m_Alpha);
 
 		if(inColor.IsTransparent() || inText.empty()) {
@@ -522,9 +507,6 @@ private:
 	std::unique_ptr<ImDrawList>				m_ImDrawList;
 
 	std::vector<ImDrawList*>				m_ImDrawLists;
-
-	std::stack<float2>						m_TransformStack;
-	float2									m_CummulativeTransform;
 	float									m_Alpha;
 
 	std::stack<const UI::Font::Face*>		m_FontFaceStack;

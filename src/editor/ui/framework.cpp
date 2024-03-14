@@ -23,7 +23,6 @@ class ApplicationImpl;
 
 constexpr u32	 g_TooltipDelayMs = 500;
 constexpr u8	 g_DefaultFontSize = 13;
-constexpr bool	 g_DrawCliprects = true;
 
 INativeWindow* g_OSWindow = nullptr;
 Renderer* g_Renderer = nullptr;
@@ -164,17 +163,20 @@ public:
 
 private:
 	Point		m_Cursor;
-	DrawList* m_DrawList;
+	DrawList*   m_DrawList;
 	Color		m_Color;
 	float		m_Indent;
 };
 
 
 
-class DrawlistImpl final: public Drawlist {
+class CanvasImpl final: public Canvas {
 public:
+	CanvasImpl(DrawList* inDrawList)
+		: drawList(inDrawList) {}
 
-	void PushBox(Rect inRect, const BoxStyle* inStyle) override {
+	void DrawBox(Rect inRect, const BoxStyle* inStyle) override {
+		inRect = Transform(inRect);
 		Rect backgroundRect;
 		Rect borderRect;
 
@@ -199,49 +201,90 @@ public:
 		if(inStyle->borders.Left || inStyle->borders.Right || inStyle->borders.Top || inStyle->borders.Bottom) {
 
 			if(backgroundColor.a != 1.f) {
-				RendererDrawList->DrawRect(borderRect, ColorU32(borderColor), inStyle->rounding, (DrawList::Corner)inStyle->roundingMask);
+				drawList->DrawRect(borderRect, ColorU32(borderColor), inStyle->rounding, (DrawList::Corner)inStyle->roundingMask);
 			} else {
-				RendererDrawList->DrawRectFilled(borderRect, ColorU32(borderColor), inStyle->rounding, (DrawList::Corner)inStyle->roundingMask);
+				drawList->DrawRectFilled(borderRect, ColorU32(borderColor), inStyle->rounding, (DrawList::Corner)inStyle->roundingMask);
 			}
 		}
 
-		RendererDrawList->DrawRectFilled(backgroundRect, ColorU32(backgroundColor), inStyle->rounding, (DrawList::Corner)inStyle->roundingMask);
+		drawList->DrawRectFilled(backgroundRect, ColorU32(backgroundColor), inStyle->rounding, (DrawList::Corner)inStyle->roundingMask);
 	}
 
-	void PushBox(Rect inRect, Color inColor, bool bFilled = true) override {
-
+	void DrawRect(Rect inRect, Color inColor, bool bFilled = true) override {
+		inRect = Transform(inRect);
 		if(bFilled) {
-			RendererDrawList->DrawRectFilled(inRect, ColorU32(inColor));
+			drawList->DrawRectFilled(inRect, ColorU32(inColor));
 		} else {
-			RendererDrawList->DrawRect(inRect, ColorU32(inColor));
+			drawList->DrawRect(inRect, ColorU32(inColor));
 		}
 	}
 
-	void PushText(Point inOrigin, const TextStyle* inStyle, std::string_view inTextView) override {
-		RendererDrawList->DrawText(inOrigin, inStyle->color, inTextView, inStyle->fontSize, inStyle->fontWeightBold, inStyle->fontStyleItalic);
+	void DrawText(Point inOrigin, const TextStyle* inStyle, std::string_view inTextView) override {
+		inOrigin = Transform(inOrigin);
+		drawList->DrawText(inOrigin, inStyle->color, inTextView, inStyle->fontSize, inStyle->fontWeightBold, inStyle->fontStyleItalic);
 	}
 
-	void PushClipRect(Rect inClipRect) override {
-		RendererDrawList->PushClipRect(inClipRect);
+	void ClipRect(Rect inClipRect) override {
+		if(!context.clipRect.Empty()) {
+			drawList->PopClipRect();
+		}	
+		inClipRect = Transform(inClipRect);
+		context.clipRect = inClipRect;
+		drawList->PushClipRect(inClipRect);
+	}
 
-		if(g_DrawCliprects) {
-			RendererDrawList->DrawRect(inClipRect.Expand(-1), colors::red);
+	void DrawClipRect(bool bFilled, Color inColor) {
+		if(!context.clipRect.Empty()) {
+			drawList->PopClipRect();
+
+			if(bFilled) {
+				drawList->DrawRectFilled(context.clipRect, inColor);
+			} else {
+				drawList->DrawRect(context.clipRect, inColor);
+			}
+			drawList->PushClipRect(context.clipRect);
 		}
 	}
 
-	void PopClipRect() override {
-		RendererDrawList->PopClipRect();
+	void PushTransform(float2 inTransform) {
+		context.transform = inTransform;
 	}
 
-	void PushTransform(float2 inTransform) override {
-		RendererDrawList->PushTransform(inTransform);
+	void SaveContext() {
+		contextStack.push_back(context);
+		cummulativeTransform += context.transform;
+		context.transform = {};
+		context.clipRect = {};
 	}
 
-	void PopTransform() override {
-		RendererDrawList->PopTransform();
+	void RestoreContext() {
+		Assert(!contextStack.empty());
+		cummulativeTransform -= contextStack.back().transform;
+
+		if(!contextStack.back().clipRect.Empty()) {
+			drawList->PopClipRect();
+		}
+		contextStack.pop_back();
 	}
 
-	RendererDrawlist* RendererDrawList = nullptr;
+	Point Transform(Point inPoint) {
+		return inPoint + cummulativeTransform + context.transform;
+	}
+
+	Rect Transform(Rect inRect) {
+		return Rect(inRect).Translate(cummulativeTransform + context.transform);
+	}
+
+private:
+	RendererDrawlist* 	 drawList = nullptr;
+
+	struct Context {
+		Point transform;
+		Rect  clipRect;
+	};
+	Context              context;
+	std::vector<Context> contextStack;
+	float2               cummulativeTransform;
 };
 
 
@@ -265,7 +308,7 @@ public:
 		}
 	}
 
-	void Remove(Widget* inItem) {
+	constexpr void Remove(Widget* inItem) {
 		for(auto it = stack.begin(); it != stack.end(); ++it) {
 			if(*it == inItem) {
 				stack.erase(it);
@@ -274,7 +317,7 @@ public:
 		}
 	}
 
-	bool Contains(Widget* inItem) {
+	constexpr bool Contains(Widget* inItem) {
 		for(auto it = stack.begin(); it != stack.end(); ++it) {
 			if(*it == inItem) {
 				return true;
@@ -283,8 +326,9 @@ public:
 		return false;
 	}
 
-	void Clear() { stack.clear(); }
-	
+	constexpr void Clear() { stack.clear(); }
+	constexpr bool Empty() const { return stack.empty(); }	
+
 	Widget* Top() {
 		return stack.empty() 
 			? nullptr 
@@ -295,6 +339,18 @@ public:
 		return stack.empty() 
 			? nullptr 
 			: stack.front().GetChecked(); 
+	}
+
+	std::string Print() const {
+		std::string out;
+		util::StringBuilder sb(&out);
+		sb.PushIndent();
+		sb.Line();
+
+		for(auto& w: stack) {
+			sb.Line(w->GetDebugID());
+		}
+		return out;
 	}
 
 private:
@@ -310,9 +366,9 @@ class DebugOverlayWindow: public StatefulWidget {
 public:
 
 	DebugOverlayWindow() {
+		SetID(names::DebugOverlayWindowID);
 		SetChild(Container::New(
-			SizeMode::ShrinkWrap,
-			true,
+			ContainerFlags::ClipVisibility,
 			names::DebugOverlayWindowID,
 			Text::New("")));
 		FindChildOfClass<LayoutWidget>()->SetOrigin(5, 5);
@@ -379,19 +435,21 @@ public:
 			return;
 		} 
 		
-		if(m_CapturingWidget) {
-			const auto mouseDeltaFromInitial = mousePosGlobal - m_MousePosOnCaptureGlobal;
-			// Convert global to local using hit test data
-			const auto* parentHitData = m_LastHitStack.Find(m_CapturingWidget->FindParentOfClass<LayoutWidget>());
-			const auto  mousePosLocal = parentHitData
-				? parentHitData->hitPosLocal + mouseDeltaFromInitial
-				: mousePosGlobal;
+		if(!m_CapturingWidgets.Empty()) {
+			m_CapturingWidgets.ForEach([&](Widget* w) {
+				const auto mouseDeltaFromInitial = mousePosGlobal - m_MousePosOnCaptureGlobal;
+				// Convert global to local using hit test data
+				const auto* parentHitData = m_LastHitStack.Find(w->FindParentOfClass<LayoutWidget>());
+				const auto  mousePosLocal = parentHitData
+					? parentHitData->hitPosLocal + mouseDeltaFromInitial
+					: mousePosGlobal;
 
-			MouseDragEvent dragEvent;
-			dragEvent.mousePosOnCaptureLocal = mousePosLocal - mouseDeltaFromInitial;
-			dragEvent.mousePosLocal = mousePosLocal;
-			dragEvent.mouseDelta = mouseDelta;
-			m_CapturingWidget->OnEvent(&dragEvent);
+				MouseDragEvent dragEvent;
+				dragEvent.mousePosOnCaptureLocal = mousePosLocal - mouseDeltaFromInitial;
+				dragEvent.mousePosLocal          = mousePosLocal;
+				dragEvent.mouseDelta             = mouseDelta;
+				w->OnEvent(&dragEvent);
+			});
 			return;
 		}
 
@@ -478,55 +536,57 @@ public:
 		if(bPressed && m_MouseButtonHeldNum == 1) {
 			m_PressedMouseButton = (MouseButton)inButton;
 
-			if(m_HoveredWidgets.Top()) {
-				MouseButtonEvent event;
-				event.mousePosGlobal = m_MousePosGlobal;
+			MouseButtonEvent event;
+			event.mousePosGlobal = m_MousePosGlobal;
+			event.mousePosLocal = m_MousePosGlobal;
+			event.bPressed = bPressed;
+			event.button = (MouseButton)inButton;
+
+			for(auto it = m_LastHitStack.begin(); it != m_LastHitStack.end(); ++it) {
+				auto& [layoutWidget, pos] = *it;
+				// In case widget has been deleted between events
+				if(!layoutWidget) continue;
 				event.mousePosLocal = m_MousePosGlobal;
-				event.bButtonPressed = bPressed;
-				event.button = (MouseButton)inButton;
 
-				for(auto it = m_LastHitStack.begin(); it != m_LastHitStack.end(); ++it) {
-					auto& [layoutWidget, pos] = *it;
-					// In case widget has been deleted between events
-					if(!layoutWidget) continue;
-					event.mousePosLocal = m_MousePosGlobal;
+				if(auto parentIt = it + 1; parentIt != m_LastHitStack.end()) {
+					event.mousePosLocal = parentIt->hitPosLocal;
+				}
+				// Move up until another LayoutWidget is found
+				// So any widget placed between LayoutWidgets has a chance to handle this event
+				// TODO we should be careful not to delete the widget that handles the event on button press
+				Widget* widget = layoutWidget.Get();
+				bool bHandled = false;
 
-					if(auto parentIt = it + 1; parentIt != m_LastHitStack.end()) {
-						event.mousePosLocal = parentIt->hitPosLocal;
-					}
-					// Move up until another LayoutWidget is found
-					// So any widget placed between LayoutWidgets has a chance to handle this event
-					// TODO we should be careful not to delete the widget that handles the event on button press
-					Widget* widget = layoutWidget.Get();
-
-					do {
+				do {
+					if(!bHandled || (widget->IsA<MouseRegion>() && widget->Cast<MouseRegion>()->ShouldAlwaysReceiveButton())) {
 						LOGF("Button event {} dispatched to {}", event.GetDebugID(), widget->GetDebugID());
 						LOGF("Local mouse pos: {}", event.mousePosLocal);
-						const auto bHandled = widget->OnEvent(&event);
-						// A widget could be deleted in the OnEvent call
-						if(!event.bHandled && bHandled && layoutWidget) {
-							LOGF("Event handled by {}", widget->GetDebugID());
-							event.bHandled = true;
-							m_CapturingWidget = widget->GetWeak();
-							m_MousePosOnCaptureGlobal = m_MousePosGlobal;
+
+						if(widget->OnEvent(&event)) {
+							m_CapturingWidgets.Push(widget);
+							
+							if(!bHandled) {
+								bHandled = true;
+								m_MousePosOnCaptureGlobal = m_MousePosGlobal;
+							}
 						}
-						widget = widget->GetParent();
-					} while(widget && !widget->IsA<LayoutWidget>());
-				}
+					}
+					widget = widget->GetParent();
+				} while(widget && !widget->IsA<LayoutWidget>());
 			}
 			return;
 		}
 
-		if(m_CapturingWidget && !bPressed && (MouseButton)inButton == m_PressedMouseButton) {
+		if(!m_CapturingWidgets.Empty() && !bPressed && (MouseButton)inButton == m_PressedMouseButton) {
 			MouseButtonEvent mouseButtonEvent;
-			mouseButtonEvent.bButtonPressed = bPressed;
+			mouseButtonEvent.bPressed = bPressed;
 			mouseButtonEvent.button = (MouseButton)inButton;
 			mouseButtonEvent.mousePosGlobal = m_MousePosGlobal;
 
-			for(Widget* widget = m_CapturingWidget.Get(); widget; widget = widget->GetParent()) {
-				widget->OnEvent(&mouseButtonEvent);
-			}
-			m_CapturingWidget = nullptr;
+			m_CapturingWidgets.ForEach([&](Widget* w) {
+				w->OnEvent(&mouseButtonEvent);
+			});
+			m_CapturingWidgets.Clear();
 			m_MousePosOnCaptureGlobal = NOPOINT;
 			m_PressedMouseButton = MouseButton::None;
 		}
@@ -551,10 +611,23 @@ public:
 				auto* window = windowIt->widget.get();
 				LogWidgetTree(window);
 			}
-
-		} else if(inButton == KeyCode::KEY_D && bPressed) {
+			return;
+		} 
+		
+		if(inButton == KeyCode::KEY_D && bPressed) {
 			m_bDrawDebugInfo = !m_bDrawDebugInfo;
 			LayoutWidget::FindNearest(m_DebugOverlay)->SetVisibility(m_bDrawDebugInfo);
+			return;
+		}
+
+		if(inButton == KeyCode::KEY_L && bPressed) {
+			m_bDrawDebugLayout = !m_bDrawDebugLayout;
+			return;
+		}
+		
+		if(inButton == KeyCode::KEY_C && bPressed) {
+			m_bDrawDebugClipRects = !m_bDrawDebugClipRects;
+			return;
 		}
 	}
 
@@ -667,7 +740,7 @@ public:
 	void	ResetState() {
 		m_HoveredWindow = nullptr;
 		m_HoveredWidgets.Clear();
-		m_CapturingWidget = nullptr;
+		m_CapturingWidgets.Clear();
 		m_bResetState = true;
 	}
 
@@ -682,6 +755,44 @@ public:
 			}
 		}
 		return out;
+	}
+	
+	// We will iterate a subtree manually and handle nesting and visibility
+	// Possibly opens a possibility to cache draw commands
+	// Also we will handle clip rects nesting
+	void	DrawWindow(Widget* inWindow, DrawList* inRendererDrawlist, Theme* inTheme) {
+		CanvasImpl canvas(inRendererDrawlist);
+
+		DrawEvent drawEvent;
+		drawEvent.canvas = &canvas;
+		drawEvent.theme = inTheme;
+
+		std::function<VisitResult(Widget*)> drawFunc;
+		// Draw children recursively using DFS
+		drawFunc = [&](Widget* inWidget) {
+			inWidget->OnEvent(&drawEvent);
+
+			if(m_bDrawDebugClipRects) {
+				canvas.DrawClipRect(false, colors::red);
+			}
+			if(auto* layout = inWidget->Cast<LayoutWidget>()) {
+				if(m_bDrawDebugLayout){
+					if(m_LastHitStack.TopWidget() == layout) {
+						canvas.DrawRect(layout->GetRect().Expand(-1), colors::green.MultiplyAlpha(0.3f), true);
+					} else {
+						canvas.DrawRect(layout->GetRect().Expand(-1), colors::green, false);
+					}
+				}
+				canvas.PushTransform(layout->GetTransform());
+				canvas.SaveContext();
+				inWidget->VisitChildren(drawFunc, false);
+				canvas.RestoreContext();
+			} else {
+				inWidget->VisitChildren(drawFunc, false);
+			}
+			return visitResultContinue;
+		};
+		drawFunc(inWindow);
 	}
 
 public:
@@ -719,7 +830,7 @@ public:
 			sb.Line("Mouse pos global: {}", m_MousePosGlobal);
 			sb.Line("Hovered window: {}", m_HoveredWindow ? m_HoveredWindow->GetDebugID() : "");
 			sb.Line("Hovered widget: {}", m_HoveredWidgets.Top() ? m_HoveredWidgets.Top()->GetDebugID() : "");
-			sb.Line("Capturing mouse widget: {}", m_CapturingWidget ? m_CapturingWidget->GetDebugID() : "");
+			sb.Line("Capturing mouse widgets: {}", !m_CapturingWidgets.Empty() ? m_CapturingWidgets.Print() : "");
 			sb.Line("MousePosLocal: {}", GetMousePosLocal());
 			sb.Line();
 
@@ -738,15 +849,15 @@ public:
 		{
 			OPTICK_EVENT("Drawing UI");
 
-			DrawlistImpl drawList;
-			drawList.RendererDrawList = frameDrawList;
-			DrawEvent drawEvent;
-			drawEvent.drawList = &drawList;
-			drawEvent.theme = m_Theme.get();
+			// DrawlistImpl canvas;
+			// canvas.RendererDrawList = frameDrawList;
+			// DrawEvent drawEvent;
+			// drawEvent.canvas = &canvas;
+			// drawEvent.theme = m_Theme.get();
 
 			for(auto& [window, layer] : m_WidgetStack) {
 				if(LayoutWidget::FindNearest(window.get())->IsVisible()) {
-					window->OnEvent(&drawEvent);
+					DrawWindow(window.get(), frameDrawList, m_Theme.get());
 				}
 			}
 		}
@@ -773,7 +884,20 @@ public:
 	void Orphan(Widget* inWidget, WidgetSlot) override { Orphan(inWidget); }
 
 	void BringToFront(Widget* inWidget) override {
+		using Iterator = decltype(m_WidgetStack)::iterator;
+		auto found = false;
 		// Bring the child just below the overlay layer		
+		for(auto it = m_WidgetStack.begin(); it != m_WidgetStack.end(); ++it) {
+			if(!found && it->widget.get() == inWidget) {
+				found = true;
+			} 
+			if (found) {
+				auto nextItem = ++Iterator(it);
+				if(nextItem != m_WidgetStack.end() && nextItem->layer != Layer::Overlay) {
+					std::swap(it->widget, nextItem->widget);
+				}
+			}			
+		}
 	}
 
 	void Parent(Widget* inWidget, Layer inLayer) override {
@@ -906,9 +1030,7 @@ private:
 
 	u64						m_FrameNum = 0;
 	float					m_LastFrameTimeMs = 0;
-
-	// Draw hitstack and mouse pos
-	bool					m_bDrawDebugInfo = true;
+	
 	// Whether the native window is minimized
 	bool					m_bMinimized = false;
 	bool					m_bResetState = false;
@@ -928,10 +1050,14 @@ private:
 	HitStack				m_LastHitStack;
 	// WeakPtr<Widget>			m_HoveredWidget;
 	WidgetList				m_HoveredWidgets;
-	WeakPtr<Widget>			m_CapturingWidget;
+	WidgetList				m_CapturingWidgets;
 	WeakPtr<Widget>			m_HoveredWindow;
-
+	
+	// Draw hitstack and mouse pos
+	bool					m_bDrawDebugInfo = true;
 	DebugOverlayWindow* 	m_DebugOverlay = nullptr;
+	bool					m_bDrawDebugLayout = true;
+	bool					m_bDrawDebugClipRects = true;
 
 	// Stack of windows, bottom are background windows and top are overlay windows
 	// Other windows in the middle

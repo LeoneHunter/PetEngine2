@@ -42,7 +42,7 @@ bool UI::Text::OnEvent(IEvent* inEvent) {
 	}
 
 	if(auto* event = inEvent->Cast<DrawEvent>()) {
-		event->drawList->PushText(GetOrigin(), m_Style->Find<TextStyle>(), m_Text);
+		event->canvas->DrawText(GetOrigin(), m_Style->Find<TextStyle>(), m_Text);
 		return true;
 	}
 	return Super::OnEvent(inEvent);
@@ -57,16 +57,51 @@ UI::Window::Window(const WindowConfig& inConfig)
 	: Super(inConfig.id)
 	, m_Style(Application::Get()->GetTheme()->Find(inConfig.style)) {
 
-	auto* container = Container::NewFixed(
+	auto* titleBar = MouseRegion::Build()
+		.HandleButtonAlways(true)
+		.OnMouseDrag([this](const MouseDragEvent& e) {
+			FindChildOfClass<Container>()->Translate(e.mouseDelta);
+		})
+		.Child(Container::New(
+			ContainerFlags::HorizontalExpand | ContainerFlags::ClipVisibility,
+			"TitleBar",
+			Flexbox::Build()
+				.DirectionRow()
+				.ID("TitleBarFlexbox")
+				.Style("TitleBar")
+				.JustifyContent(JustifyContent::SpaceBetween)
+				.AlignCenter()
+				.Children({
+					Text::New("Window title"),
+					Button::New("CloseButton", {}, Text::New("X"))
+				})
+				.New()))	
+		.New();	
+
+	auto* content = Flexbox::Build()
+		.ID("ContentArea")
+		.DirectionColumn()
+		.JustifyContent(JustifyContent::Start)
+		.AlignStart()
+		.Expand()
+		.New();
+	
+	auto* root = Container::NewFixed(
+		ContainerFlags::ClipVisibility,
 		inConfig.size,
-		true,
 		inConfig.style,
 		TooltipPortal::New(
-			[](const TooltipBuildContext& inCtx) { 
-				return Tooltip::NewText(std::format("Item ID: {}", inCtx.sourceWidget->FindChildOfClass<MouseRegion>()->GetDebugID())); 
+			[](const TooltipBuildContext& ctx) { 
+				return Tooltip::NewText(std::format("Item ID: {}", ctx.sourceWidget->FindChildOfClass<MouseRegion>()->GetDebugID())); 
 			},
 			MouseRegion::Build()
 				.HandleHoverAlways(true)
+				.HandleButtonAlways(true)
+				.OnMouseButton([this](const MouseButtonEvent& e) {
+					if(e.bPressed) {
+						Application::Get()->BringToFront(this);
+					}
+				})
 				.OnMouseEnter([this]() {
 					FindChildOfClass<Container>()->SetBoxStyleName("Hovered");
 				})
@@ -75,46 +110,24 @@ UI::Window::Window(const WindowConfig& inConfig)
 				})
 				.Child(Flexbox::Build()
 					.DirectionColumn()
-					.JustifyContent(JustifyContent::Center)
+					.JustifyContent(JustifyContent::Start)
 					.Alignment(AlignContent::Center)
 					.Expand()
 					.Children({
-						TooltipPortal::New(
-							[](const TooltipBuildContext& inCtx) { 
-								return Tooltip::NewText(std::format("Item ID: {}", inCtx.sourceWidget->FindChildOfClass<Button>()->GetDebugID())); 
-							},
-							Button::New(
-								"Button",
-								[this](ButtonEvent* e) {
-									if(!e->bPressed) {
-										LOGF("Hello from button {}", e->source->GetDebugID());
-									}
-								},
-								Text::New("Button 1")
-							)
-						),
-						TooltipPortal::New(
-							[](const TooltipBuildContext& inCtx) { 
-								return Tooltip::NewText(std::format("Item ID: {}", inCtx.sourceWidget->FindChildOfClass<Button>()->GetDebugID())); 
-							},
-							Button::New(
-								"Button",
-								[this](ButtonEvent* e) {
-									if(!e->bPressed) {
-										LOGF("Hello from button {}", e->source->GetDebugID());
-									}
-								},
-								Text::New("Button 2")
-							)
-						)
+						titleBar,
+						content
 					})
 					.New()
 				)
 				.New()
 		)
 	);
-	container->SetOrigin(inConfig.pos);
-	SetChild(container);
+	root->SetOrigin(inConfig.pos);
+	SetChild(root);
+
+	for(auto* child: inConfig.children) {
+		content->AddChild(child);
+	}
 }
 
 // Point UI::Window::TransformLocalToGlobal(Point inPosition) const {
@@ -168,7 +181,7 @@ bool UI::Window::OnEvent(IEvent* inEvent) {
 /*-------------------------------------------------------------------------------------------------*/
 UI::Flexbox::Flexbox(const FlexboxConfig& inConfig)
 	: Super(Application::Get()->GetTheme()->Find(inConfig.style)->FindOrDefault<LayoutStyle>(),
-			axisModeExpand,
+			axisModeShrink,
 			inConfig.id)
 	, m_Direction(inConfig.direction)
 	, m_JustifyContent(inConfig.justifyContent)
@@ -178,9 +191,6 @@ UI::Flexbox::Flexbox(const FlexboxConfig& inConfig)
 	const auto mainAxis = m_Direction == ContentDirection::Row ? Axis::X : Axis::Y;
 	SetAxisMode(mainAxis, inConfig.expandMainAxis ? AxisMode::Expand : AxisMode::Shrink);
 	SetAxisMode(InvertAxis(mainAxis), inConfig.expandCrossAxis ? AxisMode::Expand : AxisMode::Shrink);
-
-	for(auto child: inConfig.children) 
-		AddChild(child);
 }
 
 bool UI::Flexbox::OnEvent(IEvent* inEvent) {
@@ -221,11 +231,6 @@ struct TempData {
 *	Optimize for per axis changes
 */
 void UI::Flexbox::UpdateLayout() {
-	// We cannot update children until parented
-	// Because our size depends on parent constraints
-	auto parent = GetParent();
-	if(!parent) return;
-
 	// Calculate fixed sizes on the main axis
 	// Sum up all fixed size and calculate extra
 	// Calculate flexible size on the main axis
@@ -233,17 +238,14 @@ void UI::Flexbox::UpdateLayout() {
 	// Calculate flexible sizes
 	// Calculate positions
 	// Align on the cross axis
+	const auto axisMode = GetAxisMode();
 	const bool bDirectionRow = m_Direction == ContentDirection::Row;
 	const auto mainAxisIndex = bDirectionRow ? Axis::X : Axis::Y;
 	const auto crossAxisIndex = bDirectionRow ? Axis::Y : Axis::X;
-
 	const auto paddings = GetLayoutStyle() ? GetLayoutStyle()->paddings : Paddings{};
 	const auto innerSize = GetSize() - paddings.Size();
 	const auto innerMainAxisSize = innerSize[mainAxisIndex];
 	const auto innerCrossAxisSize = innerSize[crossAxisIndex];
-
-	const auto axisMode = GetAxisMode();
-
 	// These options require extra space left on the main axis to work so we need to find it
 	bool bJustifyContent = m_JustifyContent != JustifyContent::Start;
 
@@ -285,7 +287,6 @@ void UI::Flexbox::UpdateLayout() {
 				staticChildrenSizeMainAxis += temp.MainAxisSize;
 			}
 		}
-
 		// Cross axis
 		const auto childAxisMode = child->GetAxisMode()[crossAxisIndex];
 
@@ -301,7 +302,6 @@ void UI::Flexbox::UpdateLayout() {
 	// Check for overflow
 	/// TODO use min size from theme here
 	if(axisMode[mainAxisIndex] == AxisMode::Expand && mainAxisFlexibleSpace <= 0.f) {
-
 		if(m_OverflowPolicy == OverflowPolicy::Wrap) {
 			// Check if can expand in cross axis and put children there
 		} else if(m_OverflowPolicy == OverflowPolicy::ShrinkWrap) {
@@ -329,7 +329,6 @@ void UI::Flexbox::UpdateLayout() {
 	float justifyContentMargin = 0.f;
 
 	if(bJustifyContent && axisMode[mainAxisIndex] == AxisMode::Expand) {
-
 		switch(m_JustifyContent) {
 			case JustifyContent::End:
 			{
@@ -361,7 +360,6 @@ void UI::Flexbox::UpdateLayout() {
 			}
 		}
 	}
-
 	// Lay out children
 	auto mainAxisCursor = (float)paddings.TL()[mainAxisIndex];
 
@@ -374,6 +372,12 @@ void UI::Flexbox::UpdateLayout() {
 		auto& temp = tempBuffer[i];
 		auto& child = visibleChildren[i];
 		temp.MainAxisPos = mainAxisCursor;
+
+		if(m_Alignment == AlignContent::End) {
+			temp.CrossAxisPos = maxChildSizeCrossAxis - temp.CrossAxisSize;
+		} else if(m_Alignment == AlignContent::Center) {
+			temp.CrossAxisPos = 0.5f * (maxChildSizeCrossAxis - temp.CrossAxisSize);
+		}
 
 		float2 childPos;
 		childPos[mainAxisIndex] = temp.MainAxisPos;
@@ -402,24 +406,16 @@ void UI::Flexbox::UpdateLayout() {
 		if(bJustifyContent && m_JustifyContent == JustifyContent::SpaceBetween || m_JustifyContent == JustifyContent::SpaceAround) {
 			mainAxisCursor += justifyContentMargin;
 		}
-
-		if(m_Alignment == AlignContent::End) {
-			temp.CrossAxisPos = maxChildSizeCrossAxis - temp.CrossAxisSize;
-
-		} else if(m_Alignment == AlignContent::Center) {
-			temp.CrossAxisPos = 0.5f * (maxChildSizeCrossAxis - temp.CrossAxisSize);
-		}
 	}
 	const auto totalMainAxisContentSize = mainAxisCursor;
 
 	if(axisMode[crossAxisIndex] == AxisMode::Shrink) {
 		SetSize(crossAxisIndex, maxChildSizeCrossAxis);
 	}
-
 	if(axisMode[mainAxisIndex] == AxisMode::Shrink || m_OverflowPolicy == OverflowPolicy::ShrinkWrap && totalMainAxisContentSize > innerMainAxisSize) {
 		SetSize(mainAxisIndex, totalMainAxisContentSize);
 	}
-	LOGF("Flexbox {} layout has been updated.", GetDebugID());
+	LOGF("Flexbox {} layout has been updated. Flexbox size: {}", GetDebugID(), GetSize());
 }
 
 

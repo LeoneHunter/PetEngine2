@@ -141,16 +141,15 @@ private:
 	}
 
 private:
+#ifdef NAME_ID_DEBUG
+	const char* m_DebugString;
+#endif
 	// Index to lower case version of the string.
 	// Used for comparisons
 	index_type m_CompareIndex;
 	// Index to initial case sensitive string
 	// Used for string displaying
 	index_type m_DisplayIndex;
-
-#ifdef NAME_ID_DEBUG
-	const char* m_DebugString;
-#endif
 };
 
 
