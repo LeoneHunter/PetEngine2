@@ -352,11 +352,11 @@ public:
 		for(auto i = 0; i != WorkerThreadNum; ++i) {
 			m_WorkerThreads.emplace_back(MasterFiberProc, std::format("Worker {}", i));
 		}
-		LOGF("Dispatcher has created {} fibers on {} threads.", k_FibersNum, WorkerThreadNum);
+		LOGF(Verbose, "Dispatcher has created {} fibers on {} threads.", k_FibersNum, WorkerThreadNum);
 	}
 
 	~Dispatcher() {
-		LOGF("Dispatcher destructor has been called.");
+		LOGF(Verbose, "Dispatcher destructor has been called.");
 		m_Exit.store(true, std::memory_order::relaxed);
 		AwakenAll();
 
@@ -655,7 +655,7 @@ void MasterFiberProc(std::string_view inThreadDebugName) {
 	ThreadContext context;
 	context.MasterFiber = Windows::ConvertThreadToFiber(nullptr);
 	Assert(context.MasterFiber != NULL && "Cannot create master fiber");
-	LOGF("Thread '{}' has started.", threadDebugName);	
+	LOGF(Verbose, "Thread '{}' has started.", threadDebugName);	
 
 	Fiber* fiber = nullptr;
 
@@ -693,7 +693,7 @@ void MasterFiberProc(std::string_view inThreadDebugName) {
 		if(!fiber) {
 			fiber = g_Context->GetFreeFiber();
 			Assert(fiber);
-			//LOGF("Thread '{}' took a fiber '{}'.", inThreadDebugName, fiber->FiberIndex);
+			//LOGF(Verbose, "Thread '{}' took a fiber '{}'.", inThreadDebugName, fiber->FiberIndex);
 		}
 
 		// Process fiber return codes
@@ -701,7 +701,7 @@ void MasterFiberProc(std::string_view inThreadDebugName) {
 			fiber->SwitchTo(&context);
 
 			if(context.SwitchCode == FiberSwitchCode::JobComplete) {
-				LOGF("Thread '{}' has completed a job '{}'.", inThreadDebugName, context.Job->m_DebugName);
+				LOGF(Verbose, "Thread '{}' has completed a job '{}'.", inThreadDebugName, context.Job->m_DebugName);
 				g_Context->OnJobComplete(context.Job);
 				context.Job = nullptr;
 				break;
@@ -722,7 +722,7 @@ void MasterFiberProc(std::string_view inThreadDebugName) {
 			context.ClearSwitchData();
 		}
 	}
-	LOGF("Thread '{}' exits.", inThreadDebugName);
+	LOGF(Verbose, "Thread '{}' exits.", inThreadDebugName);
 }
 
 // Worker Fiber
@@ -741,7 +741,7 @@ void JobSystem::Init() {
 }
 
 void JobSystem::Shutdown() {
-	LOGF("job system destructor has been called.");
+	LOGF(Verbose, "job system destructor has been called.");
 	if(g_Context) {
 		delete g_Context;
 		g_Context = nullptr;

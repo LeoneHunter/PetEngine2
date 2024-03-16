@@ -1,7 +1,6 @@
 #pragma once
 #include <random>
 #include <format>
-#include <cmath>
 #include <array>
 
 #include "types.h"

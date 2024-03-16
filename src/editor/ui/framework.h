@@ -1237,7 +1237,7 @@ namespace UI {
 			layoutEvent.constraints = Rect(layoutInfo->paddings.TL(), GetSize() - layoutInfo->paddings.Size());
 
 			if(auto* layoutWidget = FindChildOfClass<LayoutWidget>()) {
-				LOGF("Widget {} dispatched parent layout event to child {}", GetDebugID(), layoutWidget->GetDebugID());
+				LOGF(Verbose, "Widget {} dispatched parent layout event to child {}", GetDebugID(), layoutWidget->GetDebugID());
 				layoutWidget->OnEvent(&layoutEvent);
 			}
 		}
@@ -1291,7 +1291,7 @@ namespace UI {
 				}
 			}
 			if(bSizeChanged){
-				LOGF("Widget {} has been updated on child event. New size: {}", GetDebugID(), GetSize());
+				LOGF(Verbose, "Widget {} has been updated on child event. New size: {}", GetDebugID(), GetSize());
 			}
 			return bSizeChanged;
 		}
@@ -1519,7 +1519,6 @@ namespace UI {
 
 	class MouseRegionBuilder {
 	public:
-		MouseRegionBuilder() {}
 
 		MouseRegionBuilder& OnMouseButton(const MouseButtonEventCallback& c) { config.onMouseButton = c; return *this; }
 		MouseRegionBuilder& OnMouseDrag(const MouseDragEventCallback& c) { config.onMouseDrag = c; return *this; }
@@ -1543,7 +1542,7 @@ namespace UI {
 
 inline void UI::SingleChildWidget::OnParented(Widget* inParent) {
 	Super::OnParented(inParent);
-	LOGF("A widget {} has been parented to {}", GetDebugID(), inParent->GetDebugID());
+	LOGF(Verbose, "A widget {} has been parented to {}", GetDebugID(), inParent->GetDebugID());
 	if(!inParent->IsA<LayoutWidget>()) return;
 	auto* layoutChild = FindChildOfClass<LayoutWidget>();
 	// If a layout widget with wrappers is parented

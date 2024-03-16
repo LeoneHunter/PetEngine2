@@ -372,7 +372,7 @@ public:
 
 		if(!out) {
 			// Return fallback
-			LOGF("Style [{}:{}] not found. Using fallback style.", StyleType::GetStaticClassName(), name);
+			LOGF(Verbose, "Style [{}:{}] not found. Using fallback style.", StyleType::GetStaticClassName(), name);
 			return m_Parent->FindOrDefault<StyleType>();
 		}
 		return out;
@@ -497,7 +497,7 @@ public:
 		auto it = m_Styles.find(inStyleClass);
 
 		if(it == m_Styles.end()) {
-			LOGF("Style with the name {} not found. Using fallback style.", inStyleClass);
+			LOGF(Verbose, "Style with the name {} not found. Using fallback style.", inStyleClass);
 			return m_Fallback;
 		}
 		return it != m_Styles.end() ? &it->second : nullptr;

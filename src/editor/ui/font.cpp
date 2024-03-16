@@ -279,7 +279,7 @@ public:
 		if(fs::exists(filepath)) {
 			m_Flags |= Flags::BoldAvailable;
 		} else {
-			LOGF("Info: Bold style for the font {} is not available.", fontName);
+			LOGF(Verbose, "Info: Bold style for the font {} is not available.", fontName);
 		}
 
 		// italic
@@ -290,7 +290,7 @@ public:
 		if(fs::exists(filepath)) {
 			m_Flags |= Flags::ItalicAvailable;
 		} else {
-			LOGF("Info: Italic style for the font {} is not available.", fontName);
+			LOGF(Verbose, "Info: Italic style for the font {} is not available.", fontName);
 		}
 
 		// both
@@ -301,7 +301,7 @@ public:
 		if(fs::exists(filepath)) {
 			m_Flags |= Flags::BoldItalicAvailable;
 		} else {
-			LOGF("Info: Bold Italic style for the font {} is not available.", fontName);
+			LOGF(Verbose, "Info: Bold Italic style for the font {} is not available.", fontName);
 		}
 	}
 
@@ -342,7 +342,7 @@ public:
 				if(m_Flags & Flags::BoldItalicAvailable) {
 					nameSuffix = "BI";
 				} else {
-					LOGF("Error: Cannot rasterize the font {} with the Bold Italic style!\nFalling back to the normal font.", fontName);
+					LOGF(Verbose, "Error: Cannot rasterize the font {} with the Bold Italic style!\nFalling back to the normal font.", fontName);
 					bStyleAvailable = false;
 				}
 
@@ -350,7 +350,7 @@ public:
 				if(m_Flags & Flags::BoldAvailable) {
 					nameSuffix = "B";
 				} else {
-					LOGF("Error: Cannot rasterize the font {} with the Bold Italic style!\nFalling back to the normal font.", fontName);
+					LOGF(Verbose, "Error: Cannot rasterize the font {} with the Bold Italic style!\nFalling back to the normal font.", fontName);
 					bStyleAvailable = false;
 				}
 
@@ -358,7 +358,7 @@ public:
 				if(m_Flags & Flags::ItalicAvailable) {
 					nameSuffix = "I";
 				} else {
-					LOGF("Error: Cannot rasterize the font {} with the Bold Italic style!\nFalling back to the normal font.", fontName);
+					LOGF(Verbose, "Error: Cannot rasterize the font {} with the Bold Italic style!\nFalling back to the normal font.", fontName);
 					bStyleAvailable = false;
 				}
 			}
@@ -379,7 +379,7 @@ public:
 			}
 
 			if(!fs::exists(filepath)) {
-				LOGF("Error: Cannot load font '{}'. File not found!", filepath);
+				LOGF(Verbose, "Error: Cannot load font '{}'. File not found!", filepath);
 				return false;
 			}
 

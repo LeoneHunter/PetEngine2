@@ -559,8 +559,8 @@ public:
 
 				do {
 					if(!bHandled || (widget->IsA<MouseRegion>() && widget->Cast<MouseRegion>()->ShouldAlwaysReceiveButton())) {
-						LOGF("Button event {} dispatched to {}", event.GetDebugID(), widget->GetDebugID());
-						LOGF("Local mouse pos: {}", event.mousePosLocal);
+						LOGF(Verbose, "Button event {} dispatched to {}", event.GetDebugID(), widget->GetDebugID());
+						LOGF(Verbose, "Local mouse pos: {}", event.mousePosLocal);
 
 						if(widget->OnEvent(&event)) {
 							m_CapturingWidgets.Push(widget);
@@ -694,7 +694,7 @@ public:
 			return true;
 		};
 		archive.VisitRecursively(visitor);
-		LOGF("Widget tree: \n{}", ss.str());
+		LOGF(Verbose, "Widget tree: \n{}", ss.str());
 	}
 
 	// Rebuild font of the theme if needed
@@ -937,7 +937,7 @@ public:
 		// 		auto  popup = popupEvent->Spawner->OnSpawn(m_MousePosGlobal, g_OSWindow->GetSize());
 		// 		auto* ptr = popup.get();
 		// 		popup->OnParented(this);
-		// 		LOGF("Opened the popup {}", popup->GetDebugIDString());
+		// 		LOGF(Verbose, "Opened the popup {}", popup->GetDebugIDString());
 
 		// 		for(auto it = m_WindowStack.begin(); it != m_WindowStack.end(); ++it) {
 		// 			auto* window = it->get();
@@ -959,7 +959,7 @@ public:
 		// 		for(auto it = m_WindowStack.begin(); it != m_WindowStack.end(); ++it) {
 
 		// 			if(it->get() == popupEvent->Popup) {
-		// 				LOGF("Closed the popup {}", popupEvent->Popup->GetDebugIDString());
+		// 				LOGF(Verbose, "Closed the popup {}", popupEvent->Popup->GetDebugIDString());
 		// 				m_WindowStack.erase(it);
 		// 				ResetState();
 		// 				break;
@@ -972,7 +972,7 @@ public:
 		// 		for(auto it = m_WindowStack.begin(); it != m_WindowStack.end(); ++it) {
 
 		// 			if(it->get()->IsA<PopupWindow>()) {
-		// 				LOGF("Closed the popup {}", it->get()->GetDebugIDString());
+		// 				LOGF(Verbose, "Closed the popup {}", it->get()->GetDebugIDString());
 		// 				m_WindowStack.erase(it);
 		// 				ResetState();
 		// 			}

@@ -99,7 +99,7 @@ void TestWindow() {
 						"Button",
 						[](ButtonEvent* e) {
 							if(!e->bPressed) {
-								LOGF("Hello from button {}", e->source->GetDebugID());
+								LOGF(Verbose, "Hello from button {}", e->source->GetDebugID());
 							}
 						},
 						Text::New("Button 1")
@@ -113,7 +113,7 @@ void TestWindow() {
 						"Button",
 						[](ButtonEvent* e) {
 							if(!e->bPressed) {
-								LOGF("Hello from button {}", e->source->GetDebugID());
+								LOGF(Verbose, "Hello from button {}", e->source->GetDebugID());
 							}
 						},
 						Text::New("Button 2 Long text")
@@ -138,7 +138,7 @@ void TestWindow() {
 						"Button",
 						[](ButtonEvent* e) {
 							if(!e->bPressed) {
-								LOGF("Hello from button {}", e->source->GetDebugID());
+								LOGF(Verbose, "Hello from button {}", e->source->GetDebugID());
 							}
 						},
 						Text::New("Button 3")
@@ -152,7 +152,7 @@ void TestWindow() {
 						"Button",
 						[](ButtonEvent* e) {
 							if(!e->bPressed) {
-								LOGF("Hello from button {}", e->source->GetDebugID());
+								LOGF(Verbose, "Hello from button {}", e->source->GetDebugID());
 							}
 						},
 						Text::New("Button 4 Long text")
@@ -166,6 +166,9 @@ void TestWindow() {
 int main(int argc, char* argv[]) {
 
 	const auto commandLine = std::vector<std::string>(argv, argv + argc);
+	auto logDir = std::filesystem::path(commandLine[0]).parent_path();
+	logging::Init(logDir.string());
+	logging::SetLevel(logging::Level::All);
 
 	using namespace UI;
 

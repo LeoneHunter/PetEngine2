@@ -391,7 +391,7 @@ void UI::Flexbox::UpdateLayout() {
 		layoutEvent.parent = this;
 		layoutEvent.constraints = Rect(childPos, childSize);
 
-		LOGF("Flexbox {} dispatched layout event to child {}. Constraints [left: {}, right: {}, top: {}, bottom: {}]", 
+		LOGF(Verbose, "Flexbox {} dispatched layout event to child {}. Constraints [left: {}, right: {}, top: {}, bottom: {}]", 
 			GetDebugID(), 
 			child->GetDebugID(),
 			layoutEvent.constraints.Left(),
@@ -415,7 +415,7 @@ void UI::Flexbox::UpdateLayout() {
 	if(axisMode[mainAxisIndex] == AxisMode::Shrink || m_OverflowPolicy == OverflowPolicy::ShrinkWrap && totalMainAxisContentSize > innerMainAxisSize) {
 		SetSize(mainAxisIndex, totalMainAxisContentSize);
 	}
-	LOGF("Flexbox {} layout has been updated. Flexbox size: {}", GetDebugID(), GetSize());
+	LOGF(Verbose, "Flexbox {} layout has been updated. Flexbox size: {}", GetDebugID(), GetSize());
 }
 
 
