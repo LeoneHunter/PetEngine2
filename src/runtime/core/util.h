@@ -444,8 +444,8 @@ namespace util {
 		T* Get() { return Ptr; }
 		const T* Get() const { return Ptr; }
 
-		T* GetChecked() { return RC->IsAlive() ? Ptr : nullptr; }
-		const T* GetChecked() const { return RC->IsAlive() ? Ptr : nullptr; }
+		T* GetChecked() { return RC ? RC->IsAlive() ? Ptr : nullptr : nullptr; }
+		const T* GetChecked() const { return RC ? RC->IsAlive() ? Ptr : nullptr : nullptr; }
 
 	private:
 		RefCounter* RC  = nullptr;

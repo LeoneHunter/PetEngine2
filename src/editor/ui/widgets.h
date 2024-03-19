@@ -11,34 +11,42 @@ class Flexbox;
 class Widget;
 class PopupSpawner;
 class Application;
+class PopupWindow;
+struct PopupOpenContext;
+
+// Called by the Application to create a PopupWindow
+using PopupBuilderFunc = std::function<PopupWindow*(const PopupOpenContext&)>;
 
 // Common state enums
 // Used by button like widgets
 struct State {
-	static inline StringID Normal{"Normal"};
-	static inline StringID Hovered{"Hovered"};
-	static inline StringID Pressed{"Pressed"};
-};
+	static State Normal;
+	static State Hovered;
+	static State Pressed;
 
+	constexpr operator StringID() { return str; }
+
+private:
+	constexpr State(StringID str): str(str) {}
+	StringID str;
+};
+inline State State::Normal{"Normal"};
+inline State State::Hovered{"Hovered"};
+inline State State::Pressed{"Pressed"};
 
 
 /*
  * Displays not editable text
  */
-class Text: public LayoutWidget {
-	WIDGET_CLASS(Text, LayoutWidget)
+class TextBox: public LayoutWidget {
+	WIDGET_CLASS(TextBox, LayoutWidget)
 public:
 	static const inline StringID defaultStyleName{"Text"};
 
-	static Text* New(const std::string& inText, StringID inStyle = defaultStyleName) {
-		return new Text(inText, inStyle);
-	}
+	TextBox(const std::string& inText, StringID inStyle = defaultStyleName);
 
 	void SetText(const std::string& inText);
 	bool OnEvent(IEvent* inEvent) override;
-
-protected:
-	Text(const std::string& inText, StringID inStyle);
 
 private:
 	const StyleClass* m_Style;
@@ -47,14 +55,7 @@ private:
 
 
 
-enum class ContainerFlags {
-	None             = 0,
-	SizeFixed        = 0x1,
-	HorizontalExpand = 0x2,
-	VerticalExpand   = 0x4,
-	ClipVisibility   = 0x8,
-};
-DEFINE_ENUM_FLAGS_OPERATORS(ContainerFlags)
+class ContainerBuilder;
 
 /*
  * A layout widget that contains a single child
@@ -63,20 +64,8 @@ DEFINE_ENUM_FLAGS_OPERATORS(ContainerFlags)
 class Container: public SingleChildLayoutWidget {
 	WIDGET_CLASS(Container, SingleChildLayoutWidget)
 public:
-	static Container* New(ContainerFlags inFlags,
-						  StringID 		 inStyleName,
-						  Widget*  		 inChild) {
-		auto* out = new Container(inFlags, inStyleName);
-		out->SetChild(inChild);
-		return out;
-	}
 
-	static Container* NewFixed(ContainerFlags inFlags, float2 inSize, StringID inStyleName, Widget* inChild) {
-		auto out = new Container(inFlags |= ContainerFlags::SizeFixed, inStyleName);
-		out->SetSize(inSize);
-		out->SetChild(inChild);
-		return out;
-	}
+	static ContainerBuilder Build();
 
 	bool OnEvent(IEvent* inEvent) override {
 		if(auto* layoutEvent = inEvent->Cast<ParentLayoutEvent>()) {
@@ -95,12 +84,8 @@ public:
 
 		if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
 			drawEvent->canvas->DrawBox(GetRect(), m_Style->FindOrDefault<BoxStyle>(m_BoxStyleName));
-			if(m_Flags & ContainerFlags::ClipVisibility)
+			if(m_bClip) 
 				drawEvent->canvas->ClipRect(GetRect());
-
-			// DispatchDrawToChildren(drawEvent);
-			// if(m_Flags & ContainerFlags::ClipVisibility)
-			// 	drawEvent->drawList->PopClipRect();
 			return true;
 		}
 		return Super::OnEvent(inEvent);
@@ -111,37 +96,77 @@ public:
 		m_BoxStyleName = inName;
 	}
 
-private:
-	Container(ContainerFlags inFlags, StringID inStyleName)
-		: Super(inStyleName, axisModeShrink)
-		, m_Flags(inFlags)
-		, m_Style(Application::Get()->GetTheme()->Find(inStyleName)) {
-
-		auto axisMode = axisModeShrink;
-		if(inFlags & ContainerFlags::SizeFixed) {
-			SetFloatLayout(true);
-			axisMode = axisModeExpand;
-		} else {
-			if(inFlags & ContainerFlags::HorizontalExpand) {
-				axisMode.x = AxisMode::Expand;
-			}
-			if(inFlags & ContainerFlags::VerticalExpand) {
-				axisMode.y = AxisMode::Expand;
-			}
-		}
-		SetAxisMode(axisMode);
-	}
+protected:
+	Container(StringID inStyleName)
+		: Super(inStyleName, axisModeShrink) 
+	{}
+	friend class ContainerBuilder;
 
 private:
-	ContainerFlags	  m_Flags;
-	// Cached style from current Theme
+	bool              m_bClip = false;
 	const StyleClass* m_Style;
 	StringID          m_BoxStyleName;
 };
 
+class ContainerBuilder {
+public:
+
+	auto& ID(const std::string& inID) { id = inID; return *this; }
+	auto& SizeFixed(float2 inSize) { bSizeFixed = true; axisMode = axisModeFixed; size = inSize; return *this; }	
+	auto& SizeMode(AxisMode inMode) { axisMode = inMode; return *this;  }
+	auto& Size(float2 inSize) { size = inSize; return *this; }
+	auto& SizeExpanded() { axisMode = axisModeExpand; bSizeFixed = false; return *this; }	
+	auto& PositionFloat(Point inPos) { pos = inPos; bPosFloat = true; return *this; }
+	auto& BoxStyle(StringID inStyleName) { boxStyleName = inStyleName; return *this; }
+	auto& StyleClass(StringID inStyleName) { styleClass = inStyleName; return *this; }
+	auto& ClipContent(bool bClip) { bClipContent = bClip; return *this; }
+	auto& Child(Widget* inChild) { child = inChild; return *this; }
+
+	Container* New() {
+		auto* out = new Container(styleClass);
+		out->SetID(id);
+		out->SetSize(size);
+
+		if(bSizeFixed) {
+			out->SetAxisMode(axisModeFixed);
+		} else {
+			out->SetAxisMode(axisMode);
+		}
+		if(bPosFloat) {
+			out->SetFloatLayout(true);
+			out->SetOrigin(pos);
+		} 
+		out->m_Style = Application::Get()->GetTheme()->Find(styleClass);
+		if(child)
+			out->SetChild(child);
+		return out;
+	}
+
+private:
+	u8       bSizeFixed : 1   = false;
+	u8       bPosFloat : 1    = false;
+	u8       bClipContent : 1 = false;
+	float2   size;
+	Point    pos;
+	AxisMode axisMode = axisModeShrink;
+	StringID styleClass;
+	StringID boxStyleName;
+	StringID id;
+	Widget*  child;
+};
+
+inline ContainerBuilder Container::Build() { return {}; }
+
+
+
+
+
+
+
 
 
 class Button;
+class ButtonBuilder;
 
 class ButtonEvent: public IEvent {
 	EVENT_CLASS(ButtonEvent, IEvent);
@@ -162,14 +187,11 @@ using ButtonEventFunc = std::function<void(ButtonEvent*)>;
 /*
  * Simple clickable button with flat style
  */
-class Button: public StatefulWidget {
-	WIDGET_CLASS(Button, StatefulWidget)
+class Button: public Controller {
+	WIDGET_CLASS(Button, Controller)
 public:
-	static Button* New(StringID inStyleName, const ButtonEventFunc& inEventCallback, Widget* inChild) {
-		auto* btn = new Button(inEventCallback);
-		btn->SetChild(Container::New(ContainerFlags::None, inStyleName, inChild));
-		return btn;
-	}
+
+	static ButtonBuilder Build();
 
 	bool OnEvent(IEvent* inEvent) override {
 		if(auto* event = inEvent->Cast<HoverEvent>()) {
@@ -215,64 +237,72 @@ public:
 
 	void DebugSerialize(PropertyArchive& inArchive) override {
 		Super::DebugSerialize(inArchive);
-		inArchive.PushProperty("ButtonState", *m_State);
+		inArchive.PushProperty("ButtonState", *(StringID)m_State);
 	}
 
 protected:
 	Button(const ButtonEventFunc& inEventCallback)
 		: m_State(State::Normal)
-		, m_EventCallback(inEventCallback) {}
+		, m_EventCallback(inEventCallback) 
+	{}
+	friend class ButtonBuilder;
 
 private:
-	StringID        m_State;
+	State           m_State;
 	ButtonEventFunc m_EventCallback;
 };
+
+class ButtonBuilder {
+public:
+
+	auto& SizeFixed(float2 inSize) { container.SizeFixed(inSize); return *this; }	
+	auto& SizeExpanded(bool bHorizontal = true, bool bVertical = true) { container.SizeExpanded(); return *this; }	
+	auto& SizeMode(AxisMode inMode) { container.SizeMode(inMode); return *this;  }
+	auto& StyleClass(StringID inStyleName) { styleClass = inStyleName; return *this; }
+	auto& ClipContent(bool bClip) { container.ClipContent(bClip); return *this; }
+	auto& Text(const std::string& inText) { text = inText; return *this; }
+	auto& Tooltip(const std::string& inText) { tooltipText = inText; return *this; }
+	auto& Child(Widget* inChild) { child = inChild; return *this; }
+
+	Button* New(); 
+
+private:
+	ButtonEventFunc  callback;
+	ContainerBuilder container;
+	std::string      text;
+	std::string 	 tooltipText;
+	StringID         styleClass = "Button";
+	Widget* 		 child = nullptr;
+};
+
+inline ButtonBuilder Button::Build() { return {}; }
+
+
+
+
+
+
 
 
 
 class WindowBuilder;
-
-enum class WindowFlags {
-	None        = 0,
-	AlwaysOnTop = 0x1,
-	Overlay     = 0x2,
-	Background  = 0x4,
-	ShrinkToFit = 0x8,
-	Popup       = 0x10,
-};
-DEFINE_ENUM_FLAGS_OPERATORS(WindowFlags)
-
-struct WindowConfig {
-	static const inline StringID defaultStyleName = "Window";
-
-	std::string          id;
-	StringID             style = defaultStyleName;
-	WindowFlags          flags = WindowFlags::None;
-	Point                pos;
-	float2               size;
-	std::vector<Widget*> children;
-};
-
 /*
  * A container that could be used as a root widget
  * E.g. a background root widget resized to the underlying os window
  * Can be customized to add resizing borders, title bar, menu bar (header), status bar (footer), close button
  */
-class Window: public StatefulWidget {
-	WIDGET_CLASS(Window, StatefulWidget)
+class Window: public Controller {
+	WIDGET_CLASS(Window, Controller)
 public:
 	static WindowBuilder Build();
-	static Window*       New(const WindowConfig& inConfig) { return new Window(inConfig); }
 
-	bool OnEvent(IEvent* inEvent) override;
-	bool HasAnyWindowFlags(WindowFlags inFlags) const { return m_Flags & inFlags; }
+	void Translate(float2 inOffset) {
+		FindChildOfClass<LayoutWidget>()->Translate(inOffset);
+	}
 
-protected:
-	Window(const WindowConfig& inConfig);
-
-private:
-	const StyleClass* m_Style;
-	WindowFlags       m_Flags;
+	void Focus() {
+		Application::Get()->BringToFront(this);
+	}
 };
 
 /*
@@ -280,27 +310,35 @@ private:
  */
 class WindowBuilder {
 public:
-	WindowBuilder() {}
 
-	WindowBuilder& DefaultFloat() { return *this; }
-	WindowBuilder& ID(const std::string& inID) { config.id = inID; return *this; }
-	WindowBuilder& Style(const std::string& inStyle) { config.style = inStyle; return *this; }
-	WindowBuilder& Position(Point inPos) { config.pos = inPos; return *this; }
-	WindowBuilder& Position(float inX, float inY) { config.pos = {inX, inY}; return *this; }
-	WindowBuilder& Size(float2 inSize) { config.size = inSize; return *this; }
-	WindowBuilder& Size(float inX, float inY) { config.size = {inX, inY}; return *this; }
-	WindowBuilder& Children(std::initializer_list<Widget*> inChildren) { 
-		config.children.insert(config.children.end(), inChildren.begin(), inChildren.end()); 
+	auto& DefaultFloat() { return *this; }
+	auto& ID(const std::string& inID) { id = inID; return *this; }
+	auto& Style(const std::string& inStyle) { style = inStyle; return *this; }
+	auto& Position(Point inPos) { pos = inPos; return *this; }
+	auto& Position(float inX, float inY) { pos = {inX, inY}; return *this; }
+	auto& Size(float2 inSize) { size = inSize; return *this; }
+	auto& Size(float inX, float inY) { size = {inX, inY}; return *this; }
+	auto& Title(const std::string& inText) { titleText = inText; return *this; }
+	auto& Popup(const PopupBuilderFunc& inBuilder) { popupBuilder = inBuilder; return *this; }
+
+	auto& Children(std::vector<Widget*>&& inChildren) { 
+		children.insert(children.end(), inChildren.begin(), inChildren.end()); 
 		return *this; 
 	}
-	Window* 	   New() { return Window::New(config); }
+
+	Window* New();
 
 private:
-	WindowConfig config;
+	std::string                  id;
+	StringID                     style = "FloatWindow";
+	Point                        pos;
+	float2                       size = {100, 100};
+	std::string					 titleText = "Window";
+	PopupBuilderFunc			 popupBuilder;
+	mutable std::vector<Widget*> children;
 };
 
-inline WindowBuilder Window::Build() { return WindowBuilder(); }
-
+inline WindowBuilder Window::Build() { return {}; }
 
 
 // /*-------------------------------------------------------------------------------------------------*/
@@ -401,7 +439,7 @@ class Flexbox: public MultiChildLayoutWidget {
 public:
 	static FlexboxBuilder Build();
 
-	static Flexbox* New(const FlexboxConfig& inConfig, const std::vector<Widget*>& inChildren) { 
+	static Flexbox* New(const FlexboxConfig& inConfig, std::vector<Widget*>&& inChildren) { 
 		auto* out = new Flexbox(inConfig); 
 		for(auto* child: inChildren) { out->AddChild(child); }
 		return out;
@@ -447,18 +485,18 @@ struct FlexboxBuilder {
 	FlexboxBuilder& AlignEnd() { config.alignment = AlignContent::End; return *this; }
 	// What to do when children don't fit into container
 	FlexboxBuilder& OverflowPolicy(OverflowPolicy inPolicy) { config.overflowPolicy = inPolicy; return *this; }
-	FlexboxBuilder& ExpandMainAxis(bool bExpand) { config.expandMainAxis = bExpand; return *this; }
-	FlexboxBuilder& ExpandCrossAxis(bool bExpand) { config.expandCrossAxis = bExpand; return *this; }
+	FlexboxBuilder& ExpandMainAxis(bool bExpand = true) { config.expandMainAxis = bExpand; return *this; }
+	FlexboxBuilder& ExpandCrossAxis(bool bExpand = true) { config.expandCrossAxis = bExpand; return *this; }
 	FlexboxBuilder& Expand() { config.expandCrossAxis = true; config.expandMainAxis  = true; return *this; }
 
-	FlexboxBuilder& Children(std::initializer_list<Widget*> inChildren) { children.insert(children.end(), inChildren.begin(), inChildren.end()); return *this; }
+	FlexboxBuilder& Children(std::vector<Widget*>&& inChildren) { children.insert(children.end(), inChildren.begin(), inChildren.end()); return *this; }
 
 	// Finalizes creation
-	Flexbox* 		New() { return Flexbox::New(config, children); }
+	Flexbox* 		New() { return Flexbox::New(config, std::move(children)); }
 
 private:
 	FlexboxConfig config;
-	std::vector<Widget*> children;
+	mutable std::vector<Widget*> children;
 };
 inline FlexboxBuilder Flexbox::Build() { return {}; }
 
@@ -541,13 +579,24 @@ using TooltipBuilderFunc = std::function<Widget*(const TooltipBuildContext&)>;
 /*
  * Builds a simple text tooltip
  */
-class Tooltip {
-public:
-	static Widget* NewText(const std::string& inText) {
-		return Container::New(ContainerFlags::ClipVisibility, "Tooltip", Text::New(inText));
-	}
-};
+struct TextTooltipBuilder {
+	TextTooltipBuilder& Text(const std::string& inText) { text = inText; return *this; }
+	TextTooltipBuilder& ClipText(bool bClip) { bClipText = bClip; return *this; }
+	TextTooltipBuilder& StyleClass(StringID inStyleName) { styleClass = inStyleName; return *this; }
 
+	Widget* New() {
+		return ContainerBuilder()
+			.StyleClass(styleClass)
+			.ClipContent(bClipText)
+			.Child(new UI::TextBox(text))
+			.New();
+	}
+
+private:
+	StringID    styleClass = "Tooltip";
+	std::string text;
+	bool        bClipText = false;
+};
 
 /*
  * Opens a tooltip when hovered
@@ -555,11 +604,17 @@ public:
 class TooltipPortal: public MouseRegion {
 	WIDGET_CLASS(TooltipPortal, MouseRegion)
 public:
-	static TooltipPortal* New(const TooltipBuilderFunc& inBuilder, Widget* inChild) {
-		auto* out      = new TooltipPortal();
-		out->m_Builder = inBuilder;
-		out->SetChild(inChild);
-		return out;
+
+	TooltipPortal(const TooltipBuilderFunc& inBuilder, Widget* inChild)
+		: MouseRegion(MouseRegionConfig{
+			.onMouseLeave = [this]() { OnMouseLeave(); },
+			.onMouseHover = [this](const auto& e) { OnMouseHover(e); }, 
+			.onMouseButton = [this](const auto& e) { OnMouseButton(e); },
+			.bHandleHoverAlways = true,
+			.bHandleButtonAlways = true}
+		)
+		, m_Builder(inBuilder) {
+		SetChild(inChild);
 	}
 
 	void DebugSerialize(PropertyArchive& ar) override {
@@ -568,17 +623,6 @@ public:
 		ar.PushProperty("Tooltip", sharedState.widget ? sharedState.widget->GetDebugID() : "nullptr");
 		ar.PushProperty("bDisabled", sharedState.bDisabled);
 	}
-
-protected:
-	TooltipPortal()
-		: MouseRegion(MouseRegionConfig{
-			.onMouseLeave = [this]() { OnMouseLeave(); },
-			.onMouseHover = [this](const auto& e) { OnMouseHover(e); }, 
-			.onMouseButton = [this](const auto& e) { OnMouseButton(e); },
-			.bHandleHoverAlways = true,
-			.bHandleButtonAlways = true}
-		) 
-	{}
 
 private:
 	void OnMouseButton(const MouseButtonEvent& inEvent) {
@@ -631,7 +675,7 @@ private:
 	}
 
 	void OpenTooltip() {
-		auto ctx           = Application::Get()->GetFrameState();
+		auto ctx           = Application::Get()->GetState();
 		sharedState.widget = m_Builder(TooltipBuildContext{ctx.mousePosGlobal, this});
 		auto* layout       = LayoutWidget::FindNearest(sharedState.widget);
 		Assertf(layout, "Tooltip widget {} has no LayoutWidget child, so it won't be visible.", sharedState.widget->GetDebugID());
@@ -665,18 +709,17 @@ private:
 
 
 
-// /*-------------------------------------------------------------------------------------------------*/
-// //										POPUP
-// /*-------------------------------------------------------------------------------------------------*/
-// 	class PopupWindow;
-// 	class PopupSpawner;
-// 	struct PopupBuilder;
 
-// 	struct PopupSpawnContext {
-// 		Point			MousePosGlobal;
-// 		float2			ViewportSize;
-// 		PopupSpawner*	Spawner;
-// 	};
+/*-------------------------------------------------------------------------------------------------*/
+//										POPUP
+/*-------------------------------------------------------------------------------------------------*/
+class PopupWindow;
+class PopupPortal;
+class PopupBuilder;
+
+struct PopupOpenContext {
+	Point mousePosGlobal;
+};
 
 
 /*
@@ -684,49 +727,51 @@ private:
 * be closed by the spawner
 * Children should be wrapped in a PopupItem in order to send notifications to this window
 */
-// class PopupWindow: public StatefulWidget {
-// 	WIDGET_CLASS(PopupWindow, StatefulWidget)
-// public:
+class PopupWindow: public Controller {
+	WIDGET_CLASS(PopupWindow, Controller)
+public:
 
-// 	PopupWindow(const PopupBuilder& inBuilder);
-// 	~PopupWindow();
-// 	bool OnEvent(IEvent* inEvent) override;
+	bool OnEvent(IEvent* inEvent) {
 
-// 	// Called by a child spawner when a child widget is hovered
-// 	void					OnItemHovered();
-// 	void					OnItemPressed();
-// 	// Creates a popup and parents it to itself
-// 	WeakPtr<PopupWindow>	OpenPopup(PopupSpawner* inSpawner);
+		if(auto* mouseButtonEvent = inEvent->Cast<MouseButtonEvent>()) {
+			// Close if clicked outside the window
+			if(!FindChildOfClass<LayoutWidget>()->GetRect().Contains(mouseButtonEvent->mousePosGlobal)) {
+				if(m_NextPopup) {
+					m_NextPopup->Destroy();
+				}
+				Destroy();
+				return true;
+			}
+			return false;
+		}
 
-// 	void SetSpawner(PopupSpawner* inSpawner) { m_Spawner = inSpawner; }
+		// if(auto* hoverEvent = inEvent->Cast<HoverEvent>()) {
 
-// private:
-// 	PopupSpawner*					m_Spawner;
-// 	std::unique_ptr<PopupWindow>	m_NextPopup;
-// 	// A widget that spawned the next popup
-// 	// Should be our child
-// 	PopupSpawner*					m_NextPopupSpawner;
-// };
+		// 	if(m_NextPopup && m_NextPopup->OnEvent(inEvent)) {
+		// 		return false;
+		// 	}
+		// 	auto bHandledByChildren = DispatchToChildren(inEvent);
 
-// struct PopupBuilder: public WidgetBuilder<PopupBuilder> {
+		// 	if(!bHandledByChildren && !GetParent<PopupWindow>()) {
+		// 		return true;
+		// 	}
+		// 	return bHandledByChildren;
+		// }
 
-// 	PopupBuilder& Position(Point inPos) { m_Pos = inPos; return *this; }
-// 	PopupBuilder& Position(float inX, float inY) { m_Pos = {inX, inY}; return *this; }
-// 	PopupBuilder& Size(float2 inSize) { m_Size = inSize; return *this; }
-// 	PopupBuilder& Size(float inX, float inY) { m_Size = {inX, inY}; return *this; }
-// 	std::unique_ptr<PopupWindow> Create() { return std::make_unique<UI::PopupWindow>(*this); }
+		return Super::OnEvent(inEvent);
+	}
 
-// public:
-// 	PopupBuilder() { StyleClass("PopupWindow"); }
+	PopupWindow(PopupWindow* inPrevPopup, Point inPos, float2 inSize, std::vector<Widget*>&& inChildren);
 
-// public:
-// 	Point		  m_Pos;
-// 	float2		  m_Size;
-// };
+	template<typename ...T> 
+	PopupWindow(PopupWindow* inPrevPopup, Point inPos, float2 inSize, T*... inChildren) 
+		: PopupWindow(inPrevPopup, inPos, inSize, std::vector<Widget*>({inChildren...})) 
+	{}
 
-
-// Called by the Application to create a PopupWindow
-using PopupBuilderFunc = std::function<Widget*()>;
+private:
+	PopupWindow* m_PrevPopup;
+	WeakPtr<PopupWindow> m_NextPopup;
+};
 
 /*
  * Creates a user defined popup when clicked or hovered
@@ -748,17 +793,18 @@ public:
 
 public:
 
-	PopupPortal(const PopupBuilderFunc&	inBuilder)
+	PopupPortal(const PopupBuilderFunc&	inBuilder, Widget* inChild)
 		: MouseRegion(MouseRegionConfig{
 			.onMouseButton = [this](const auto& e) { OnMouseButton(e); },
 			.bHandleHoverAlways = true,
-			.bHandleButtonAlways = true}
-		) 
+		}) 
 		, m_Builder(inBuilder)
-	{}
+	{
+		SetChild(inChild);
+	}
 	
 	void OnMouseButton(const MouseButtonEvent& inEvent) {
-		if(!inEvent.bPressed) {
+		if(inEvent.button == MouseButton::ButtonRight && !inEvent.bPressed) {
 			OpenPopup();
 		}
 	}
@@ -766,9 +812,10 @@ public:
 	// Can be called by the user to create a popup
 	void OpenPopup() {
 		if(!m_Popup) {
-			auto* out = m_Builder();
+			const auto mousePos = Application::Get()->GetState().mousePosGlobal;
+			auto* out = m_Builder(PopupOpenContext{.mousePosGlobal = mousePos});
 			m_Popup = out->GetWeak();
-			Application::Get()->Parent(out, Layer::Popup);
+			Application::Get()->Parent(out);
 		}
 	}
 
@@ -779,142 +826,49 @@ public:
 		}
 	}
 
-	bool			IsOpened() const { return !m_Popup; }
-	WeakPtr<Widget>	GetPopupWeakPtr() { return m_Popup; }
+	bool                 IsOpened() const { return !m_Popup; }
+	WeakPtr<PopupWindow> GetPopupWeakPtr() { return m_Popup; }
 
 private:
-	WeakPtr<Widget>  m_Popup;
-	PopupBuilderFunc m_Builder;
+	WeakPtr<PopupWindow> m_Popup;
+	PopupBuilderFunc     m_Builder;
 };
 
 
-// 	/*
-// 	* When clicked closes parent popup
-// 	* Can be used to place custom widgets into a popup window
-// 	*/
-// 	class PopupMenuItem: public Wrapper {
-// 		WIDGET_CLASS(PopupMenuItem, Wrapper)
-// 	public:
+class PopupMenuItemBuilder {
+public:
+	
+	auto& Text(const std::string& inText) { text = inText; return *this; }
+	auto& Shortcut(const std::string& inText) { shortcut = inText; return *this; }
+	auto& OnPressed(const ButtonEventFunc& inCallback) { onPressed = inCallback; return *this; }
 
-// 		PopupMenuItem() = default;
-// 		bool OnEvent(IEvent* inEvent) override {
+	// auto* New() {
+	// 	return Button::Build()
+	// 		.SizeMode({AxisMode::Expand, AxisMode::Shrink}) 
+	// 		.StyleClass("MenuButton")
+	// 		.Child(
+	// 			Flexbox::Build()
+	// 				.DirectionRow()
+	// 				.ChildFlexible(
+	// 					TextBox::Build()
+	// 						.AlignLeft()
+	// 						.Text(text)
+	// 						.New(), 
+	// 					7)
+	// 				.ChildFlexible(
+	// 					TextBox::Build()
+	// 						.AlignRight()
+	// 						.Text(shortcut)
+	// 						.New(), 
+	// 					3)
+	// 		)
+	// 		.New();
+	// }
 
-// 			if(auto* hoverEvent = inEvent->Cast<HoverEvent>()) {
-// 				const auto bHandledByChild = Super::OnEvent(inEvent);
-
-// 				if(bHandledByChild) {
-// 					GetParent<PopupWindow>()->OnItemHovered();
-// 				}
-// 				return bHandledByChild;
-// 			}
-
-// 			if(auto* event = inEvent->Cast<MouseButtonEvent>()) {
-// 				const auto bHandledByChild = Super::OnEvent(inEvent);
-
-// 				if(bHandledByChild && !event->bButtonPressed) {
-// 					GetParent<PopupWindow>()->OnItemPressed();
-// 				}
-// 				return bHandledByChild;
-// 			}
-// 			return Super::OnEvent(inEvent);
-// 		}
-
-// 	};
-
-// 	struct ContextMenuBuilder;
-
-// 	/*
-// 	* A popup with buttons and icons
-// 	*/
-// 	class ContextMenu: public PopupWindow {
-// 		WIDGET_CLASS(ContextMenu, PopupWindow)
-// 	public:
-
-// 		ContextMenu(const ContextMenuBuilder& inBuilder);
-// 		void Parent(Widget* inWidget, WidgetSlot inSlot = defaultWidgetSlot) override;
-
-// 	private:
-// 		Flexbox* m_Container;
-// 	};
-
-// 	/*
-// 	* A button that's added to the ContextMenu
-// 	*/
-// 	class ContextMenuItem: public PopupMenuItem {
-// 		WIDGET_CLASS(ContextMenuItem, PopupMenuItem)
-// 	public:
-
-// 		ContextMenuItem(const std::string& inText, ContextMenu* inParent);
-// 		bool OnEvent(IEvent* inEvent) override;
-// 	};
-
-// 	/*
-// 	* A button that opens a submenu
-// 	*/
-// 	class SubMenuItem: public PopupSpawner {
-// 		WIDGET_CLASS(SubMenuItem, PopupSpawner)
-// 	public:
-
-// 		SubMenuItem(const std::string& inText, const PopupSpawnFunc& inSpawner, ContextMenu* inParent);
-// 		bool OnEvent(IEvent* inEvent) override;
-// 	};
-
-
-// 	struct ContextMenuBuilder: public WidgetBuilder<ContextMenuBuilder> {
-// 		Point m_Pos;
-// 		mutable	std::list<std::unique_ptr<Wrapper>> m_Children;
-
-// 		ContextMenuBuilder& Position(Point inPos) { m_Pos = inPos; return *this; }
-// 		ContextMenuBuilder& Position(float inX, float inY) { m_Pos = {inX, inY}; return *this; }
-// 		ContextMenuBuilder& MenuItem(const std::string& inText) { m_Children.emplace_back(new ContextMenuItem(inText, nullptr)); return *this; }
-
-// 		ContextMenuBuilder& SubMenu(const std::string& inText, const PopupSpawnFunc& inSpawner) {
-// 			m_Children.emplace_back(new SubMenuItem(inText, inSpawner, nullptr)); return *this;
-// 		}
-
-// 		std::unique_ptr<ContextMenu> Create() { return std::make_unique<ContextMenu>(*this); };
-
-// 		ContextMenuBuilder() { StyleClass("ContextMenu"); }
-// 	};
-
-
-
-// 	/*
-// 	* A drawable rectangular box
-// 	*/
-// 	class Frame: public SingleChildContainer{
-// 		WIDGET_CLASS(Frame, SingleChildContainer)
-// 	public:
-
-// 		Frame() {
-// 			SetAxisMode(AxisModeShrink);
-// 		}
-
-// 		bool OnEvent(IEvent* inEvent) override {
-
-// 			if(auto* event = inEvent->Cast<ChildLayoutEvent>()) {
-// 				HandleChildEvent(event);
-// 				NotifyParentOnSizeChanged();
-// 				return true;
-// 			}
-
-// 			if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
-
-// 				if(m_Style) {
-// 					drawEvent->DrawList->PushBox(GetRect(), m_Style->Find<BoxStyle>());
-// 				}
-// 				DispatchDrawToChildren(drawEvent);
-// 				return true;
-// 			}
-// 			return Super::OnEvent(inEvent);
-// 		}
-
-// 		void SetStyle(const std::string& inStyleName) {
-// 			m_Style = Application::Get()->GetTheme()->Find(inStyleName);
-// 		}
-
-// 	private:
-// 		const StyleClass* m_Style = nullptr;
-// 	};
+private:
+	ButtonEventFunc onPressed;
+	std::string text;
+	std::string shortcut;
+};
 
 }  // namespace UI

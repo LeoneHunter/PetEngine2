@@ -31,6 +31,12 @@ public:
 	template<StringData T>
 	StringID(const T& inStringData): StringID(inStringData.data()) {}
 
+	constexpr StringID(const StringID& other) = default;
+	constexpr StringID(StringID&& other) = default;
+
+	constexpr StringID& operator=(const StringID& other) = default;
+	constexpr StringID& operator=(StringID&& other) = default;
+
 	const std::string&		String() const;
 
 	bool					Empty() const { return m_CompareIndex == 0; }

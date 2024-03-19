@@ -53,6 +53,18 @@
 		return out;\
 	}
 
+#define DEFINE_ENUMFLAGS_TOSTRING_7(type, deflt, enum1, enum2, enum3, enum4, enum5, enum6)\
+	constexpr std::string ToString(type inEnum) {\
+		std::string out;\
+		DEFINE_ENUMFLAGS_ENTRY(type, enum1)\
+		DEFINE_ENUMFLAGS_ENTRY(type, enum2)\
+		DEFINE_ENUMFLAGS_ENTRY(type, enum3)\
+		DEFINE_ENUMFLAGS_ENTRY(type, enum4)\
+		DEFINE_ENUMFLAGS_ENTRY(type, enum5)\
+		DEFINE_ENUMFLAGS_ENTRY(type, enum6)\
+		if(out.empty()) out = #deflt;\
+		return out;\
+	}
 
 
 

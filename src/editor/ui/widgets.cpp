@@ -2,18 +2,56 @@
 #include "runtime/system/renderer/ui_renderer.h"
 #include "ui.h"
 
+namespace UI {
+
+PopupWindow::PopupWindow(PopupWindow* inPrevPopup, Point inPos, float2 inSize, std::vector<Widget*>&& inChildren)
+	: m_PrevPopup(inPrevPopup) {
+
+	auto* inner = Container::Build()
+		.PositionFloat(inPos)
+		.SizeMode({AxisMode::Fixed, AxisMode::Shrink})
+		.Size(inSize)
+		.ID("MainContainer")
+		.StyleClass("Popup")
+		.Child(Flexbox::Build()
+			.DirectionColumn()
+			.JustifyContent(JustifyContent::Start)
+			.Alignment(AlignContent::Center)
+			.ExpandCrossAxis(true)
+			.ExpandMainAxis(false)
+			.Children(std::move(inChildren))
+			.New())
+		.New();
+
+	// Container with the size of the screen to capture all mouse events
+	auto* root = MouseRegion::Build()
+		.OnMouseButton([this](const MouseButtonEvent& e) {
+			// Close stack
+			this->Destroy();
+		})
+		.Child(Container::Build()
+			.ID("ScreenContainer")
+			.StyleClass("Transparent")
+			.SizeExpanded()
+			.Child(inner)
+			.New()
+		)
+		.New();
+		
+	SetChild(root);
+}
 
 /*-------------------------------------------------------------------------------------------------*/
 //										TEXT
 /*-------------------------------------------------------------------------------------------------*/
-UI::Text::Text(const std::string& inText, StringID inStyle)
+UI::TextBox::TextBox(const std::string& inText, StringID inStyle)
 	: m_Style(Application::Get()->GetTheme()->Find(inStyle))
 	, m_Text(inText) {
 	const auto size = m_Style->Find<TextStyle>()->CalculateTextSize(m_Text);
 	SetSize(size);
 }
 
-void UI::Text::SetText(const std::string& inText) {
+void UI::TextBox::SetText(const std::string& inText) {
 	m_Text = inText;
 	float2 size;
 
@@ -29,7 +67,7 @@ void UI::Text::SetText(const std::string& inText) {
 	DispatchLayoutToParent();
 }
 
-bool UI::Text::OnEvent(IEvent* inEvent) {
+bool UI::TextBox::OnEvent(IEvent* inEvent) {
 	if(auto* event = inEvent->Cast<HoverEvent>()) {
 		// Ignore, we cannot be hovered
 		return false;
@@ -48,97 +86,91 @@ bool UI::Text::OnEvent(IEvent* inEvent) {
 	return Super::OnEvent(inEvent);
 }
 
+Button* ButtonBuilder::New() {
+	Button* btn = new Button(callback);
+	Widget* child = this->child 
+		? this->child 
+		: container.StyleClass(styleClass).Child(new UI::TextBox(text)).New();
+
+	if(!tooltipText.empty()) {
+		child = new TooltipPortal(
+			[text = tooltipText](const TooltipBuildContext& inCtx) { 
+				return TextTooltipBuilder()
+					.Text(text)
+					.New();
+			},
+			child
+		);
+	}
+	btn->SetChild(child);
+	return btn;
+}
 
 
-/*-------------------------------------------------------------------------------------------------*/
-//										WINDOW
-/*-------------------------------------------------------------------------------------------------*/
-UI::Window::Window(const WindowConfig& inConfig)
-	: Super(inConfig.id)
-	, m_Style(Application::Get()->GetTheme()->Find(inConfig.style)) {
+Window* WindowBuilder::New() { 
+	auto* root = new Window();
 
 	auto* titleBar = MouseRegion::Build()
 		.HandleButtonAlways(true)
-		.OnMouseDrag([this](const MouseDragEvent& e) {
-			FindChildOfClass<Container>()->Translate(e.mouseDelta);
+		.OnMouseDrag([root](const MouseDragEvent& e) {
+			root->Translate(e.mouseDelta);
 		})
-		.Child(Container::New(
-			ContainerFlags::HorizontalExpand | ContainerFlags::ClipVisibility,
-			"TitleBar",
-			Flexbox::Build()
+		.Child(Container::Build()
+			.SizeMode({AxisMode::Expand, AxisMode::Shrink})
+			.StyleClass("Titlebar")
+			.Child(Flexbox::Build()
 				.DirectionRow()
 				.ID("TitleBarFlexbox")
 				.Style("TitleBar")
 				.JustifyContent(JustifyContent::SpaceBetween)
 				.AlignCenter()
 				.Children({
-					Text::New("Window title"),
-					Button::New("CloseButton", {}, Text::New("X"))
+					new TextBox(titleText),
+					Button::Build().StyleClass("CloseButton").Text("X").New()
 				})
-				.New()))	
-		.New();	
-
-	auto* content = Flexbox::Build()
-		.ID("ContentArea")
-		.DirectionColumn()
-		.JustifyContent(JustifyContent::Start)
-		.AlignStart()
-		.Expand()
+				.New())	
+			.New())
 		.New();
-	
-	auto* root = Container::NewFixed(
-		ContainerFlags::ClipVisibility,
-		inConfig.size,
-		inConfig.style,
-		TooltipPortal::New(
-			[](const TooltipBuildContext& ctx) { 
-				return Tooltip::NewText(std::format("Item ID: {}", ctx.sourceWidget->FindChildOfClass<MouseRegion>()->GetDebugID())); 
-			},
-			MouseRegion::Build()
-				.HandleHoverAlways(true)
-				.HandleButtonAlways(true)
-				.OnMouseButton([this](const MouseButtonEvent& e) {
-					if(e.bPressed) {
-						Application::Get()->BringToFront(this);
-					}
-				})
-				.OnMouseEnter([this]() {
-					FindChildOfClass<Container>()->SetBoxStyleName("Hovered");
-				})
-				.OnMouseLeave([this]() {
-					FindChildOfClass<Container>()->SetBoxStyleName("");
-				})
-				.Child(Flexbox::Build()
-					.DirectionColumn()
-					.JustifyContent(JustifyContent::Start)
-					.Alignment(AlignContent::Center)
-					.Expand()
-					.Children({
-						titleBar,
-						content
-					})
-					.New()
-				)
-				.New()
-		)
-	);
-	root->SetOrigin(inConfig.pos);
-	SetChild(root);
 
-	for(auto* child: inConfig.children) {
-		content->AddChild(child);
+	Widget* content = Flexbox::Build()
+			.ID("ContentArea")
+			.DirectionColumn()
+			.JustifyContent(JustifyContent::Start)
+			.AlignStart()
+			.Expand()
+			.Children(std::move(children))
+			.New();
+
+	if(popupBuilder) {
+		content = new PopupPortal(popupBuilder, content);
 	}
+
+	root->SetChild(Container::Build()
+		.ClipContent(true)
+		.SizeFixed(size)
+		.StyleClass(style)
+		.PositionFloat(pos)
+		.Child(MouseRegion::Build()
+			.HandleHoverAlways(true)
+			.HandleButtonAlways(true)
+			.OnMouseButton([root](const MouseButtonEvent& e) {
+				if(e.bPressed) root->Focus();
+			})
+			.Child(Flexbox::Build()
+				.DirectionColumn()
+				.JustifyContent(JustifyContent::Start)
+				.Alignment(AlignContent::Center)
+				.Expand()
+				.Children({
+					titleBar,
+					content
+				})
+				.New())
+			.New())
+		.New()
+	);
+	return root;
 }
-
-// Point UI::Window::TransformLocalToGlobal(Point inPosition) const {
-// 	return inPosition + GetOrigin();
-// }
-
-bool UI::Window::OnEvent(IEvent* inEvent) {
-	return Super::OnEvent(inEvent);
-}
-
-
 
 // /*-------------------------------------------------------------------------------------------------*/
 // //										CENTERED
@@ -260,7 +292,7 @@ void UI::Flexbox::UpdateLayout() {
 	float maxChildSizeCrossAxis = 0.f;
 	float totalFlexFactor = 0;
 	// Widgets which size doesn't depend on our size
-	float staticChildrenSizeMainAxis = 0;
+	float fixedChildrenSizeMainAxis = 0;
 
 	// Find available space after fixed size widgets
 	for(auto i = 0; i < visibleChildren.size(); ++i) {
@@ -277,27 +309,28 @@ void UI::Flexbox::UpdateLayout() {
 			const auto childAxisMode = child->GetAxisMode()[mainAxisIndex];
 
 			if(childAxisMode == AxisMode::Expand) {
-				Assertf(axisMode[mainAxisIndex] == AxisMode::Expand,
+				Assertf(axisMode[mainAxisIndex] != AxisMode::Shrink,
 						"Flexbox main axis set to AxisMode::Shrink, but an expanded child is found");
 				temp.MainAxisSize = -1.f;
 				totalFlexFactor += temp.MainAxisSize;
-
 			} else {
 				temp.MainAxisSize = child->GetOuterSize()[mainAxisIndex];
-				staticChildrenSizeMainAxis += temp.MainAxisSize;
+				fixedChildrenSizeMainAxis += temp.MainAxisSize;
 			}
 		}
 		// Cross axis
 		const auto childAxisMode = child->GetAxisMode()[crossAxisIndex];
 
 		if(childAxisMode == AxisMode::Expand) {
+			Assertf(axisMode[crossAxisIndex] != AxisMode::Shrink,
+						"Flexbox main axis set to AxisMode::Shrink, but an expanded child is found");
 			temp.CrossAxisSize = innerCrossAxisSize;
 		} else {
 			temp.CrossAxisSize = child->GetOuterSize()[crossAxisIndex];
 		}
 		maxChildSizeCrossAxis = Math::Max(temp.CrossAxisSize, maxChildSizeCrossAxis);
 	}
-	float mainAxisFlexibleSpace = Math::Clamp(innerMainAxisSize - staticChildrenSizeMainAxis, 0.f);
+	float mainAxisFlexibleSpace = Math::Clamp(innerMainAxisSize - fixedChildrenSizeMainAxis, 0.f);
 
 	// Check for overflow
 	/// TODO use min size from theme here
@@ -738,7 +771,7 @@ void UI::Flexbox::UpdateLayout() {
 // 	if(auto* popupEvent = inEvent->Cast<PopupEvent>()) {
 
 // 		if(popupEvent->Type == PopupEvent::Type::Open) {
-// 			const auto ctx = Application::GetFrameState();
+// 			const auto ctx = Application::GetState();
 // 			m_NextPopup = popupEvent->Spawner->OnSpawn(ctx.MousePosGlobal, ctx.WindowSize);
 // 			m_NextPopup->OnParented(this);
 // 			m_NextPopupSpawner = popupEvent->Spawner;
@@ -798,7 +831,7 @@ void UI::Flexbox::UpdateLayout() {
 // }
 
 // UI::WeakPtr<UI::PopupWindow> UI::PopupWindow::OpenPopup(PopupSpawner* inSpawner) {
-// 	const auto ctx = Application::GetFrameState();
+// 	const auto ctx = Application::GetState();
 // 	m_NextPopup = inSpawner->OnSpawn(ctx.MousePosGlobal, ctx.WindowSize);
 // 	m_NextPopup->OnParented(this);
 // 	m_NextPopupSpawner = inSpawner;
@@ -872,7 +905,7 @@ void UI::Flexbox::UpdateLayout() {
 
 // 			if(popup) {
 // 				constexpr auto popupHorizontalfloat2Px = 5;
-// 				const auto rootWindowSize = Application::GetFrameState().WindowSize;
+// 				const auto rootWindowSize = Application::GetState().WindowSize;
 // 				const auto childRect = FindChildOfClass<LayoutWidget>()->GetRectGlobal();
 // 				const auto popupSize = popup->GetSize();
 // 				Point popupPos;
@@ -894,3 +927,4 @@ void UI::Flexbox::UpdateLayout() {
 // 	}
 // 	return Super::OnEvent(inEvent);
 // }
+}

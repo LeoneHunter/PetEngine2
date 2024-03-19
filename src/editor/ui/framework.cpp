@@ -176,6 +176,7 @@ public:
 		: drawList(inDrawList) {}
 
 	void DrawBox(Rect inRect, const BoxStyle* inStyle) override {
+		if(inStyle->opacity == 0.f) return;
 		inRect = Transform(inRect);
 		Rect backgroundRect;
 		Rect borderRect;
@@ -304,7 +305,8 @@ public:
 
 	void ForEach(const std::function<void(Widget*)>& fn) {
 		for(auto& item: stack) {
-			fn(item.GetChecked());
+			if(!item) continue;
+			fn(item.Get());
 		}
 	}
 
@@ -348,6 +350,7 @@ public:
 		sb.Line();
 
 		for(auto& w: stack) {
+			if(!w) continue;
 			sb.Line(w->GetDebugID());
 		}
 		return out;
@@ -362,20 +365,21 @@ private:
 /*
 * Overlay that is drawn over root window
 */
-class DebugOverlayWindow: public StatefulWidget {
+class DebugOverlayWindow: public Controller {
 public:
 
 	DebugOverlayWindow() {
 		SetID(names::DebugOverlayWindowID);
-		SetChild(Container::New(
-			ContainerFlags::ClipVisibility,
-			names::DebugOverlayWindowID,
-			Text::New("")));
+		SetChild(Container::Build()
+			.ClipContent(true)
+			.StyleClass(names::DebugOverlayWindowID)
+			.Child(new TextBox(""))
+			.New());
 		FindChildOfClass<LayoutWidget>()->SetOrigin(5, 5);
 	}
 
 	void SetText(const std::string& inText) {
-		FindChildOfClass<Text>()->SetText(inText);
+		FindChildOfClass<TextBox>()->SetText(inText);
 	}
 
 };
@@ -459,11 +463,18 @@ public:
 		auto&			hitStack = hitTest.hitStack;
 		hitTest.hitPosGlobal = mousePosGlobal;
 		m_HoveredWindow = nullptr;
+		bool bHasPopups = false;
 
 		for(auto it = --m_WidgetStack.end(); it != --m_WidgetStack.begin(); --it) {
 			auto& [widget, layer] = *it;
 
-			if(layer == Layer::Overlay) continue;
+			if(layer == Layer::Overlay) {
+				continue;
+			} else if(layer == Layer::Popup) { 
+				bHasPopups = true; 
+			} else if(bHasPopups) {
+				continue;
+			}
 			auto bHovered = false;
 
 			if(auto* layoutWidget = LayoutWidget::FindNearest(widget.get())) {
@@ -475,7 +486,6 @@ public:
 				break;
 			}
 		}
-		// The lowest widget in the old tree that's shared between stacks
 		WidgetList prevHovered = m_HoveredWidgets;
 		WidgetList newHovered;
 
@@ -487,28 +497,24 @@ public:
 			for(Widget* widget = hitStack.TopWidget(); 
 				widget; 
 				widget = widget->GetParent()) {
-				
-				if(!bHandled || 
-				   (widget->IsA<MouseRegion>() && widget->Cast<MouseRegion>()->ShouldAlwaysReceiveHover())) {
 
-					if(prevHovered.Contains(widget)) {
-						e.bHoverEnter = false;
+				const auto bMouseRegion = widget->IsA<MouseRegion>(); 
+				const auto bAlways = bMouseRegion && widget->Cast<MouseRegion>()->ShouldAlwaysReceiveHover();
 
-						if(widget->OnEvent(&e)) {
-							prevHovered.Remove(widget);
-							newHovered.Push(widget);
-							bHandled = true;
-						}
+				if(bHandled && !bAlways)
+					continue;
+				const bool bPrevHovered = prevHovered.Contains(widget);
+				e.bHoverEnter = !bPrevHovered;
 
-					} else {
-						e.bHoverEnter = true;
+				if(widget->OnEvent(&e)) {
+					newHovered.Push(widget);
 
-						if(widget->OnEvent(&e)) {
-							newHovered.Push(widget);
-							bHandled = true;
-						}
-					}	
-				} 
+					if(bPrevHovered)
+						prevHovered.Remove(widget);
+
+					if(!bHandled && !bAlways)
+						bHandled = true;
+				}
 			}
 		}
 		// Dispatch leave events to the widgets left in the prevHovered list
@@ -523,16 +529,24 @@ public:
 		m_LastHitStack = hitStack;
 	}
 
+	Point GetLocalPosForWidget(Widget* inWidget) {
+		auto out = m_MousePosGlobal;
+		
+		if(auto* layoutParent = inWidget->FindParentOfClass<LayoutWidget>()) {
+			if(auto* hitData = m_LastHitStack.Find(layoutParent)) {
+				out = hitData->hitPosLocal;
+			}
+		}
+		return out;
+	}
+
 	void DispatchMouseButtonEvent(KeyCode inButton, bool bPressed) {
 
 		bPressed ? ++m_MouseButtonHeldNum : --m_MouseButtonHeldNum;
 		bPressed ? m_MouseButtonsPressedBitField |= (MouseButtonMask)inButton
 			: m_MouseButtonsPressedBitField &= ~(MouseButtonMask)inButton;
 
-		auto Propagate = [this](Widget* startWidget) {
-		};
-
-  		 // When pressed first time from default
+  		// When pressed first time from default
 		if(bPressed && m_MouseButtonHeldNum == 1) {
 			m_PressedMouseButton = (MouseButton)inButton;
 
@@ -541,6 +555,7 @@ public:
 			event.mousePosLocal = m_MousePosGlobal;
 			event.bPressed = bPressed;
 			event.button = (MouseButton)inButton;
+			bool bHandled = false;
 
 			for(auto it = m_LastHitStack.begin(); it != m_LastHitStack.end(); ++it) {
 				auto& [layoutWidget, pos] = *it;
@@ -551,40 +566,45 @@ public:
 				if(auto parentIt = it + 1; parentIt != m_LastHitStack.end()) {
 					event.mousePosLocal = parentIt->hitPosLocal;
 				}
-				// Move up until another LayoutWidget is found
-				// So any widget placed between LayoutWidgets has a chance to handle this event
-				// TODO we should be careful not to delete the widget that handles the event on button press
-				Widget* widget = layoutWidget.Get();
-				bool bHandled = false;
+				auto widget = layoutWidget->GetWeakAs<Widget>();
 
 				do {
-					if(!bHandled || (widget->IsA<MouseRegion>() && widget->Cast<MouseRegion>()->ShouldAlwaysReceiveButton())) {
+					// Mouse regions have an option to always receive events, so they cannot block them from propagating
+					const auto bMouseRegion = widget->IsA<MouseRegion>(); 
+					const auto bAlways = bMouseRegion && widget->Cast<MouseRegion>()->ShouldAlwaysReceiveHover();
+
+					if(!bHandled || bAlways) {
 						LOGF(Verbose, "Button event {} dispatched to {}", event.GetDebugID(), widget->GetDebugID());
 						LOGF(Verbose, "Local mouse pos: {}", event.mousePosLocal);
 
 						if(widget->OnEvent(&event)) {
-							m_CapturingWidgets.Push(widget);
+							// Widget could be deleted on this event
+							if(!widget) break;
+							m_CapturingWidgets.Push(widget.Get());
 							
-							if(!bHandled) {
+							if(!bHandled && !bAlways) {
 								bHandled = true;
 								m_MousePosOnCaptureGlobal = m_MousePosGlobal;
 							}
 						}
 					}
-					widget = widget->GetParent();
+					widget = widget->GetParent()->GetWeakAs<Widget>();
 				} while(widget && !widget->IsA<LayoutWidget>());
 			}
 			return;
 		}
 
 		if(!m_CapturingWidgets.Empty() && !bPressed && (MouseButton)inButton == m_PressedMouseButton) {
-			MouseButtonEvent mouseButtonEvent;
-			mouseButtonEvent.bPressed = bPressed;
-			mouseButtonEvent.button = (MouseButton)inButton;
-			mouseButtonEvent.mousePosGlobal = m_MousePosGlobal;
+			MouseButtonEvent e;
+			e.bPressed = bPressed;
+			e.button = (MouseButton)inButton;
+			e.mousePosGlobal = m_MousePosGlobal;
+			e.mousePosLocal = m_MousePosGlobal;
 
 			m_CapturingWidgets.ForEach([&](Widget* w) {
-				w->OnEvent(&mouseButtonEvent);
+				if(!w) return;
+				e.mousePosLocal = GetLocalPosForWidget(w);
+				w->OnEvent(&e);
 			});
 			m_CapturingWidgets.Clear();
 			m_MousePosOnCaptureGlobal = NOPOINT;
@@ -743,19 +763,6 @@ public:
 		m_CapturingWidgets.Clear();
 		m_bResetState = true;
 	}
-
-	Point   GetMousePosLocal() const {
-		auto out = m_MousePosGlobal;
-		auto hovered = m_HoveredWidgets.Top();
-		if(hovered) {
-			if(auto* parent = hovered->FindParentOfClass<LayoutWidget>()) {
-				if(auto* hitData = m_LastHitStack.Find(parent)) {
-					out = hitData->hitPosLocal;
-				}				
-			}
-		}
-		return out;
-	}
 	
 	// We will iterate a subtree manually and handle nesting and visibility
 	// Possibly opens a possibility to cache draw commands
@@ -827,11 +834,11 @@ public:
 			sb.Line("Frame time: {:5.2f}ms", m_LastFrameTimeMs);
 			sb.Line("Opened window count: {}", m_WidgetStack.size());
 			sb.Line("Timers count: {}", m_Timers.Size());
-			sb.Line("Mouse pos global: {}", m_MousePosGlobal);
 			sb.Line("Hovered window: {}", m_HoveredWindow ? m_HoveredWindow->GetDebugID() : "");
-			sb.Line("Hovered widget: {}", m_HoveredWidgets.Top() ? m_HoveredWidgets.Top()->GetDebugID() : "");
+			sb.Line("Hovered widget: {}", !m_HoveredWidgets.Empty() ? m_HoveredWidgets.Print() : "");
+			sb.Line("Mouse pos local: {}", m_HoveredWidgets.Top() ? GetLocalPosForWidget(m_HoveredWidgets.Top()) : m_MousePosGlobal);
+			sb.Line("Mouse pos global: {}", m_MousePosGlobal);
 			sb.Line("Capturing mouse widgets: {}", !m_CapturingWidgets.Empty() ? m_CapturingWidgets.Print() : "");
-			sb.Line("MousePosLocal: {}", GetMousePosLocal());
 			sb.Line();
 
 			if(m_HoveredWindow) {
@@ -839,7 +846,7 @@ public:
 				sb.PushIndent();
 				PrintHitStack(sb);
 			}
-			m_DebugOverlay->FindChildOfClass<Text>()->SetText(str);
+			m_DebugOverlay->FindChildOfClass<TextBox>()->SetText(str);
 		}
 
 		// Draw views
@@ -927,60 +934,8 @@ public:
 		}
 	}
 
-	bool	OnEvent(IEvent* inEvent) final {
-
-		
-
-		// if(auto* popupEvent = inEvent->Cast<PopupEvent>()) {
-
-		// 	if(popupEvent->Type == PopupEvent::Type::Open) {
-		// 		auto  popup = popupEvent->Spawner->OnSpawn(m_MousePosGlobal, g_OSWindow->GetSize());
-		// 		auto* ptr = popup.get();
-		// 		popup->OnParented(this);
-		// 		LOGF(Verbose, "Opened the popup {}", popup->GetDebugIDString());
-
-		// 		for(auto it = m_WindowStack.begin(); it != m_WindowStack.end(); ++it) {
-		// 			auto* window = it->get();
-
-		// 			if(window->HasAnyWindowFlags(WindowFlags::Overlay)) {
-		// 				m_WindowStack.insert(it, std::move(popup));
-		// 				break;
-		// 			}
-		// 		}
-		// 		ParentLayoutEvent layoutEvent;
-		// 		layoutEvent.Constraints = Rect(g_OSWindow->GetSize());
-		// 		ptr->OnEvent(&layoutEvent);
-		// 		// Because we open a new window on top of other windows, update hovering state			
-		// 		DispatchMouseMoveEvent(m_MousePosGlobal);
-		// 		return true;
-		// 	}
-
-		// 	if(popupEvent->Type == PopupEvent::Type::Close) {
-		// 		for(auto it = m_WindowStack.begin(); it != m_WindowStack.end(); ++it) {
-
-		// 			if(it->get() == popupEvent->Popup) {
-		// 				LOGF(Verbose, "Closed the popup {}", popupEvent->Popup->GetDebugIDString());
-		// 				m_WindowStack.erase(it);
-		// 				ResetState();
-		// 				break;
-		// 			}
-		// 		}
-		// 		return true;
-		// 	}
-
-		// 	if(popupEvent->Type == PopupEvent::Type::CloseAll) {
-		// 		for(auto it = m_WindowStack.begin(); it != m_WindowStack.end(); ++it) {
-
-		// 			if(it->get()->IsA<PopupWindow>()) {
-		// 				LOGF(Verbose, "Closed the popup {}", it->get()->GetDebugIDString());
-		// 				m_WindowStack.erase(it);
-		// 				ResetState();
-		// 			}
-		// 		}
-		// 		return true;
-		// 	}			
-		// }
-		return true;
+	bool OnEvent(IEvent* e) {
+		return false;
 	}
 
 	void	Shutdown() final {}
@@ -1054,10 +1009,10 @@ private:
 	WeakPtr<Widget>			m_HoveredWindow;
 	
 	// Draw hitstack and mouse pos
-	bool					m_bDrawDebugInfo = true;
 	DebugOverlayWindow* 	m_DebugOverlay = nullptr;
-	bool					m_bDrawDebugLayout = true;
-	bool					m_bDrawDebugClipRects = true;
+	bool					m_bDrawDebugInfo = true;
+	bool					m_bDrawDebugLayout = false;
+	bool					m_bDrawDebugClipRects = false;
 
 	// Stack of windows, bottom are background windows and top are overlay windows
 	// Other windows in the middle
@@ -1088,7 +1043,7 @@ UI::Application* UI::Application::Get() {
 	return g_Application;
 }
 
-UI::FrameState UI::Application::GetFrameState() {
+UI::FrameState UI::Application::GetState() {
 	return g_Application->GetFrameStateImpl();
 }
 
