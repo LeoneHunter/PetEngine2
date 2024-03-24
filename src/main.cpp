@@ -11,6 +11,10 @@ UI::Application* g_Application = nullptr;
 void SetDarkTheme() {
 	auto* theme = new UI::Theme();
 	{
+		auto& s = theme->Add("Text");
+		s.Add<TextStyle>().Color("#dddddd");
+	}
+	{
 		auto& s = theme->Add("TitleBar");
 		s.Add<LayoutStyle>().Margins(0).Paddings(5);
 		s.Add<BoxStyle>().FillColor("#404040").Rounding(6);
@@ -48,6 +52,11 @@ void SetDarkTheme() {
 		s.Add<LayoutStyle>().Margins(0).Paddings(0);
 		s.Add<BoxStyle>().FillColor("#ffffff").Rounding(0).Borders(0).Opacity(0.f);
 	}
+	{
+		auto& s = theme->Add("OutlineRed");
+		s.Add<LayoutStyle>().Margins(0).Paddings(0);
+		s.Add<BoxStyle>().BorderColor("#ff0000").Rounding(0).Borders(1);
+	}
 	theme->Add("Flexbox").Add<LayoutStyle>().Margins(0).Paddings(0);
 	g_Application->SetTheme(theme);
 }
@@ -78,95 +87,44 @@ void TestFlexbox() {
 	// );
 }
 
-void TestContainer() {
-	// g_Application->Parent(
-	// 	Container::NewFixed(
-	// 		ContainerFlags::ClipVisibility,
-	// 		float2(200, 200),
-	// 		"TitleBar",
-	// 		Button::New("CloseButton", {}, Text::New("X"))
-	// 	)
-	// );
+void TestFlexible() {
+	g_Application->Parent(
+		Flexbox::Build()
+			.DirectionRow()
+			.ID("FlexboxTest")
+			.Style("")
+			.Children({
+				new Flexible(5, new Aligned(Alignment::Center, Alignment::Start, Button::Build().Text("Button 1").New())),
+				new Flexible(5, new Aligned(Alignment::Center, Alignment::Start, Button::Build().Text("Button 2").New())),
+				Button::Build().Text("Button 3").New()
+			})
+			.New());
 }
 
 void TestWindow() {
-	// g_Application->Parent(
-	// 	WindowBuilder()
-	// 		.ID("Window 1")
-	// 		.Style("FloatWindow")
-	// 		.Size(400, 400)
-	// 		.Position(300, 300)
-	// 		.Children({
-	// 			TooltipPortal::New(
-	// 				[](const TooltipBuildContext& inCtx) { 
-	// 					return Tooltip::NewText(std::format("Item ID: {}", inCtx.sourceWidget->FindChildOfClass<Button>()->GetDebugID())); 
-	// 				},
-	// 				Button::New(
-	// 					"Button",
-	// 					[](ButtonEvent* e) {
-	// 						if(!e->bPressed) {
-	// 							LOGF(Verbose, "Hello from button {}", e->source->GetDebugID());
-	// 						}
-	// 					},
-	// 					Text::New("Button 1")
-	// 				)
-	// 			),
-	// 			TooltipPortal::New(
-	// 				[](const TooltipBuildContext& inCtx) { 
-	// 					return Tooltip::NewText(std::format("Item ID: {}", inCtx.sourceWidget->FindChildOfClass<Button>()->GetDebugID())); 
-	// 				},
-	// 				Button::New(
-	// 					"Button",
-	// 					[](ButtonEvent* e) {
-	// 						if(!e->bPressed) {
-	// 							LOGF(Verbose, "Hello from button {}", e->source->GetDebugID());
-	// 						}
-	// 					},
-	// 					Text::New("Button 2 Long text")
-	// 				)
-	// 			)
-	// 		})
-	// 		.New(),
-	// Layer::Float);
-	
-	// g_Application->Parent(
-	// 	Window::Build()
-	// 		.ID("Window 2")
-	// 		.Style("FloatWindow")
-	// 		.Size(400, 400)
-	// 		.Position(800, 300)
-	// 		.Children({
-	// 			TooltipPortal::New(
-	// 				[](const TooltipBuildContext& inCtx) { 
-	// 					return Tooltip::NewText(std::format("Item ID: {}", inCtx.sourceWidget->FindChildOfClass<Button>()->GetDebugID())); 
-	// 				},
-	// 				Button::New(
-	// 					"Button",
-	// 					[](ButtonEvent* e) {
-	// 						if(!e->bPressed) {
-	// 							LOGF(Verbose, "Hello from button {}", e->source->GetDebugID());
-	// 						}
-	// 					},
-	// 					Text::New("Button 3")
-	// 				)
-	// 			),
-	// 			TooltipPortal::New(
-	// 				[](const TooltipBuildContext& inCtx) { 
-	// 					return Tooltip::NewText(std::format("Item ID: {}", inCtx.sourceWidget->FindChildOfClass<Button>()->GetDebugID())); 
-	// 				},
-	// 				Button::New(
-	// 					"Button",
-	// 					[](ButtonEvent* e) {
-	// 						if(!e->bPressed) {
-	// 							LOGF(Verbose, "Hello from button {}", e->source->GetDebugID());
-	// 						}
-	// 					},
-	// 					Text::New("Button 4 Long text")
-	// 				)
-	// 			)
-	// 		})
-	// 		.New(),
-	// Layer::Float);
+	g_Application->Parent(
+		Window::Build()
+			.ID("Window 1")
+			.Position(300, 300)
+			.Size(400, 400)
+			.Style("FloatWindow")
+			.Title("Window 1")
+			.Popup([](const PopupOpenContext& ctx) {
+				return new PopupWindow(nullptr, ctx.mousePosGlobal, float2(300, 0), 
+					Button::Build().Text("My Button").SizeMode({AxisMode::Expand, AxisMode::Shrink}).New(),
+					Button::Build().Text("My Button").SizeMode({AxisMode::Expand, AxisMode::Shrink}).New(),
+					PopupMenuItemBuilder().Text("Submenu 1").Shortcut(">").New(),
+					PopupMenuItemBuilder().Text("Menu item 1").Shortcut("Ctrl N").New());
+			})
+			.Children({
+				Button::Build()
+					.Text("My Button 1")
+					.Tooltip("This is the button tooltip")
+					.New()
+			})
+			.New(),
+		Layer::Float
+	);
 }
 
 int main(int argc, char* argv[]) {
@@ -183,29 +141,8 @@ int main(int argc, char* argv[]) {
 	SetDarkTheme();
 	//TestFlexbox();
 	//TestContainer();
+	//TestFlexible();
 	TestWindow();
-	
-	g_Application->Parent(
-		Window::Build()
-			.ID("Window 1")
-			.Position(300, 300)
-			.Size(400, 400)
-			.Style("FloatWindow")
-			.Title("Window 1")
-			.Popup([](const PopupOpenContext& ctx) {
-				return new PopupWindow(nullptr, ctx.mousePosGlobal, float2(300, 0), 
-					Button::Build().Text("My Button").SizeMode({AxisMode::Expand, AxisMode::Shrink}).New(),
-					Button::Build().Text("My Button").SizeMode({AxisMode::Expand, AxisMode::Shrink}).New());
-			})
-			.Children({
-				Button::Build()
-					.Text("My Button 1")
-					.Tooltip("This is the button tooltip")
-					.New()
-			})
-			.New(),
-		Layer::Float
-	);
 
 	while(g_Application->Tick());
 }

@@ -357,30 +357,32 @@ inline WindowBuilder Window::Build() { return {}; }
 // 	};
 
 
-// /*-------------------------------------------------------------------------------------------------*/
-// //										FLEXIBLE
-// /*-------------------------------------------------------------------------------------------------*/
+/*-------------------------------------------------------------------------------------------------*/
+//										FLEXIBLE
+/*-------------------------------------------------------------------------------------------------*/
+/*
+* Simple wrapper that provides flexFactor for parent Flexbox
+* Ignored by other widgets
+*/
+class Flexible: public SingleChildWidget {
+	DEFINE_CLASS_META(Flexible, SingleChildWidget)
+public:
+	Flexible(float inFlexFactor, Widget* inWidget) 
+		: Super("")
+		, m_FlexFactor(inFlexFactor) {
+		SetChild(inWidget);
+	}
 
-// 	/*
-// 	* TODO
-// 	*	Handle size update
-// 	*/
-// 	/*class Flexible: public SingleChildContainer {
-// 		DEFINE_CLASS_META(Flexible, SingleChildContainer)
-// 	public:
+	void DebugSerialize(PropertyArchive& inArchive) override {
+		Super::DebugSerialize(inArchive);
+		inArchive.PushProperty("FlexFactor", m_FlexFactor);
+	}
 
-// 		Flexible(Widget* inParent, float inFlexFactor, const std::string& inID = {});
+	float GetFlexFactor() const { return m_FlexFactor; }
 
-// 		void  DebugSerialize(Debug::PropertyArchive& inArchive) override {
-// 			Super::DebugSerialize(inArchive);
-// 			inArchive.PushProperty("FlexFactor", m_FlexFactor);
-// 		}
-
-// 		float GetFlexFactor() const { return m_FlexFactor; }
-
-// 	private:
-// 		float m_FlexFactor;
-// 	};*/
+private:
+	float m_FlexFactor;
+};
 
 
 
@@ -401,11 +403,6 @@ enum class JustifyContent {
 	SpaceAround
 };
 
-enum class AlignContent {
-	Start,
-	End,
-	Center
-};
 
 enum class OverflowPolicy {
 	Clip,        // Just clip without scrolling
@@ -423,7 +420,7 @@ struct FlexboxConfig {
 	StringID             style           = defaultStyleName;
 	UI::ContentDirection direction       = ContentDirection::Row;
 	UI::JustifyContent   justifyContent  = JustifyContent::Start;
-	UI::AlignContent     alignment       = AlignContent::Start;
+	UI::Alignment        alignment       = Alignment::Start;
 	UI::OverflowPolicy   overflowPolicy  = OverflowPolicy::Clip;
 	bool                 expandMainAxis  = true;
 	bool                 expandCrossAxis = false;
@@ -459,13 +456,12 @@ protected:
 private:
 	ContentDirection m_Direction;
 	JustifyContent   m_JustifyContent;
-	AlignContent     m_Alignment;
+	Alignment        m_Alignment;
 	OverflowPolicy   m_OverflowPolicy;
 };
 
 DEFINE_ENUM_TOSTRING_2(ContentDirection, Column, Row)
 DEFINE_ENUM_TOSTRING_5(JustifyContent, Start, End, Center, SpaceBetween, SpaceAround)
-DEFINE_ENUM_TOSTRING_3(AlignContent, Start, End, Center)
 DEFINE_ENUM_TOSTRING_2(OverflowPolicy, Clip, Wrap)
 
 
@@ -479,10 +475,10 @@ struct FlexboxBuilder {
 	// Distribution of children on the main axis
 	FlexboxBuilder& JustifyContent(UI::JustifyContent inJustify) { config.justifyContent = inJustify; return *this; }
 	// Alignment on the cross axis
-	FlexboxBuilder& Alignment(AlignContent inAlignment) { config.alignment = inAlignment; return *this; }
-	FlexboxBuilder& AlignCenter() { config.alignment = AlignContent::Center; return *this; }
-	FlexboxBuilder& AlignStart() { config.alignment = AlignContent::Start; return *this; }
-	FlexboxBuilder& AlignEnd() { config.alignment = AlignContent::End; return *this; }
+	FlexboxBuilder& Alignment(UI::Alignment inAlignment) { config.alignment = inAlignment; return *this; }
+	FlexboxBuilder& AlignCenter() { config.alignment = Alignment::Center; return *this; }
+	FlexboxBuilder& AlignStart() { config.alignment = Alignment::Start; return *this; }
+	FlexboxBuilder& AlignEnd() { config.alignment = Alignment::End; return *this; }
 	// What to do when children don't fit into container
 	FlexboxBuilder& OverflowPolicy(OverflowPolicy inPolicy) { config.overflowPolicy = inPolicy; return *this; }
 	FlexboxBuilder& ExpandMainAxis(bool bExpand = true) { config.expandMainAxis = bExpand; return *this; }
@@ -499,6 +495,100 @@ private:
 	mutable std::vector<Widget*> children;
 };
 inline FlexboxBuilder Flexbox::Build() { return {}; }
+
+
+
+
+
+
+/*
+* Aligns a child inside the parent if parent is bigger that child
+*/
+class Aligned: public SingleChildLayoutWidget {
+	WIDGET_CLASS(Aligned, SingleChildLayoutWidget)
+public:
+
+	Aligned(Alignment inHorizontal, Alignment inVertical, Widget* inWidget) 
+		: Super("", axisModeExpand) 
+		, m_Horizontal(inHorizontal)
+		, m_Vertical(inVertical) {
+		SetChild(inWidget);
+		SetAxisMode(axisModeFixed);
+	}
+
+	bool OnEvent(IEvent* inEvent) override {
+		
+		if(auto* layoutEvent = inEvent->Cast<ParentLayoutEvent>()) {
+			auto parentAxisMode = layoutEvent->parent->GetAxisMode();
+
+			for(auto axis: Axes2D) {
+				if(parentAxisMode[axis] == AxisMode::Expand) {
+					SetSize(axis, layoutEvent->constraints.Size()[axis]);
+				}
+			}			
+			SetOrigin(layoutEvent->constraints.TL());
+
+			if(auto* child = Super::FindChildOfClass<LayoutWidget>()) {
+				DispatchLayoutToChildren();
+				Align(child);
+			}
+			return true;
+		}
+
+		if(auto* childEvent = inEvent->Cast<ChildLayoutEvent>()) {
+			auto* parent = FindParentOfClass<LayoutWidget>();
+			auto childOuterSize = childEvent->child->GetOuterSize();
+			
+			if(!parent) {
+				SetSize(childOuterSize);
+				return true;
+			}
+			auto parentAxisMode = parent->GetAxisMode();
+			auto childAxisMode = childEvent->child->GetAxisMode();
+
+			for(auto axis: Axes2D) {
+				if(parentAxisMode[axis] == AxisMode::Shrink) {
+					SetSize(axis, childOuterSize[axis]);
+				}
+			}
+			Align(childEvent->child);
+			DispatchLayoutToParent();
+			return true;
+		}
+		return Super::OnEvent(inEvent);
+	}
+
+private:
+
+	void Align(LayoutWidget* inChild) {
+		const auto innerSize      = GetInnerSize();
+		const auto childMargins   = inChild->GetLayoutStyle()->margins;
+		const auto childOuterSize = inChild->GetSize() + childMargins.Size();
+		Point      childPos;
+
+		for(auto axis: Axes2D) {
+			auto alignment = axis == Axis::Y ? m_Vertical : m_Horizontal;
+
+			if(alignment == Alignment::Center) {
+				childPos[axis] = (innerSize[axis] - childOuterSize[axis]) * 0.5f;
+			} else if(alignment == Alignment::End) {
+				childPos[axis] = innerSize[axis] - childOuterSize[axis];
+			}
+		}
+		inChild->SetOrigin(childPos + childMargins.TL());
+	}
+
+private:
+	Alignment m_Horizontal;
+	Alignment m_Vertical;
+};
+
+
+
+
+
+
+
 
 // /*-------------------------------------------------------------------------------------------------*/
 // //										GUIDELINE
@@ -842,33 +932,69 @@ public:
 	auto& Shortcut(const std::string& inText) { shortcut = inText; return *this; }
 	auto& OnPressed(const ButtonEventFunc& inCallback) { onPressed = inCallback; return *this; }
 
-	// auto* New() {
-	// 	return Button::Build()
-	// 		.SizeMode({AxisMode::Expand, AxisMode::Shrink}) 
-	// 		.StyleClass("MenuButton")
-	// 		.Child(
-	// 			Flexbox::Build()
-	// 				.DirectionRow()
-	// 				.ChildFlexible(
-	// 					TextBox::Build()
-	// 						.AlignLeft()
-	// 						.Text(text)
-	// 						.New(), 
-	// 					7)
-	// 				.ChildFlexible(
-	// 					TextBox::Build()
-	// 						.AlignRight()
-	// 						.Text(shortcut)
-	// 						.New(), 
-	// 					3)
-	// 		)
-	// 		.New();
-	// }
+	auto* New() {
+		return MouseRegion::Build()
+			.OnMouseEnter([]() {
+				// FindChildOfClass<Container>()->SetBoxStyleName(State::Hovered);
+			})
+			.OnMouseLeave([]() {
+				//FindChildOfClass<Container>()->SetBoxStyleName(State::Normal);
+			})
+			.OnMouseButton([](const MouseButtonEvent& e) {
+
+			})
+			.Child(Container::Build()
+				.StyleClass("Button") 
+				.BoxStyle("Normal")
+				.SizeMode({AxisMode::Expand, AxisMode::Shrink})
+				.Child(Flexbox::Build()
+					.DirectionRow()
+					.Children({
+						new Flexible(7, 
+							new Aligned(Alignment::Start, Alignment::Start, 
+								new TextBox(text)
+							)
+						),
+						new Flexible(3, 
+							new Aligned(Alignment::End, Alignment::Start, 
+								new TextBox(shortcut)
+							)
+						)
+					})
+					.New()
+				)
+				.New()
+			)
+			.New();
+
+
+		// return Button::Build()
+		// 	.SizeMode({AxisMode::Expand, AxisMode::Shrink}) 
+		// 	.StyleClass("Button")
+		// 	.Child(
+		// 		Flexbox::Build()
+		// 			.DirectionRow()
+		// 			.Children({
+		// 				new Flexible(7, 
+		// 					new Aligned(Alignment::Start, Alignment::Start, 
+		// 						new TextBox(text)
+		// 					)
+		// 				),
+		// 				new Flexible(3, 
+		// 					new Aligned(Alignment::End, Alignment::Start, 
+		// 						new TextBox(shortcut)
+		// 					)
+		// 				)
+		// 			})
+		// 			.New()
+		// 	)
+		// 	.New();
+	}
 
 private:
 	ButtonEventFunc onPressed;
-	std::string text;
-	std::string shortcut;
+	std::string     text;
+	std::string     shortcut;
 };
 
 }  // namespace UI

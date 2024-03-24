@@ -127,7 +127,7 @@ public:
 
 		if constexpr(std::is_integral_v<T>) {
 			m_CursorObject->PushProperty(inName, std::format("{}", inProperty));
-		} else if constexpr(std::is_same<T, bool>) {
+		} else if constexpr(std::is_same_v<T, bool>) {
 			m_CursorObject->PushProperty(inName, inProperty ? "True" : "False");
 		} else {
 			m_CursorObject->PushProperty(inName, std::format("{:.2f}", inProperty));
@@ -182,6 +182,14 @@ namespace UI {
 
 	// Represent invalid point. I.e. null object for poins
 	constexpr auto NOPOINT = Point(std::numeric_limits<float>::max());
+
+	// Used by Flexbox and Aligned widgets
+	enum class Alignment {
+		Start,
+		End,
+		Center
+	};
+	DEFINE_ENUM_TOSTRING_3(Alignment, Start, End, Center)
 
 	enum class EventCategory {
 		Debug, 		// DebugLog
@@ -688,8 +696,9 @@ namespace UI {
 			if(auto* event = inEvent->Cast<DebugLogEvent>()) {
 				event->archive->PushObject(GetClassName().data(), this, GetParent());
 				DebugSerialize(*event->archive);
+				return true;
 			}
-			return true;
+			return false;
 		};
 
 		virtual void		DebugSerialize(PropertyArchive& inArchive) {}
@@ -1010,11 +1019,18 @@ namespace UI {
 		Point GetOrigin() const { return m_Origin; }
 		Point GetTransform() const { return m_Origin; }
 
-		// Helper to calculate outer size of a widget
+		// Size + Margins
 		float2 GetOuterSize() {
 			const auto size = GetSize();
 			const auto margins = GetLayoutStyle() ? GetLayoutStyle()->margins : Margins{};
 			return {size.x + margins.Left + margins.Right, size.y + margins.Top + margins.Bottom};
+		}
+
+		// Size - Paddings
+		float2 GetInnerSize() {
+			const auto size = GetSize();
+			const auto paddings = GetLayoutStyle() ? GetLayoutStyle()->paddings : Paddings{};
+			return {size.x - paddings.Left - paddings.Right, size.y - paddings.Top - paddings.Bottom};
 		}
 
 		void SetLayoutStyle(const LayoutStyle* inStyle) { m_LayoutStyle = inStyle; }
@@ -1351,8 +1367,7 @@ namespace UI {
 			}
 		}
 
-		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = true) final {
-
+		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = false) final {
 			for(auto& child : m_Children) {
 				const auto result = inVisitor(child.get());
 				if(!result.bContinue) return visitResultExit;
@@ -1363,6 +1378,10 @@ namespace UI {
 				}
 			}
 			return visitResultContinue;
+		}
+
+		VisitResult VisitChildrenRecursively(const WidgetVisitor& inVisitor) {
+			return VisitChildren(inVisitor, true);
 		}
 
 		bool OnEvent(IEvent* inEvent) override {

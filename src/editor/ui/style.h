@@ -24,8 +24,8 @@ constexpr auto blue  = Color::FromHex("#3951C4");
 }  // namespace colors
 
 constexpr std::string_view kStyleClassStateSeparator = ":";
-constexpr auto             kDefaultMargins           = 5;
-constexpr auto             kDefaultPaddings          = 5;
+constexpr auto             kDefaultMargins           = 0;
+constexpr auto             kDefaultPaddings          = 0;
 constexpr auto             kDefaultFontSize          = 13;
 
 // Flags for selecting sides of a rect

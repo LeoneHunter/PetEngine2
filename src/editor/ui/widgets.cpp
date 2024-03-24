@@ -16,7 +16,7 @@ PopupWindow::PopupWindow(PopupWindow* inPrevPopup, Point inPos, float2 inSize, s
 		.Child(Flexbox::Build()
 			.DirectionColumn()
 			.JustifyContent(JustifyContent::Start)
-			.Alignment(AlignContent::Center)
+			.Alignment(Alignment::Center)
 			.ExpandCrossAxis(true)
 			.ExpandMainAxis(false)
 			.Children(std::move(inChildren))
@@ -45,10 +45,12 @@ PopupWindow::PopupWindow(PopupWindow* inPrevPopup, Point inPos, float2 inSize, s
 //										TEXT
 /*-------------------------------------------------------------------------------------------------*/
 UI::TextBox::TextBox(const std::string& inText, StringID inStyle)
-	: m_Style(Application::Get()->GetTheme()->Find(inStyle))
+	: Super(Application::Get()->GetTheme()->Find(inStyle)->Find<LayoutStyle>()) 
+	, m_Style(Application::Get()->GetTheme()->Find(inStyle))
 	, m_Text(inText) {
 	const auto size = m_Style->Find<TextStyle>()->CalculateTextSize(m_Text);
 	SetSize(size);
+	SetAxisMode(axisModeFixed);
 }
 
 void UI::TextBox::SetText(const std::string& inText) {
@@ -88,9 +90,10 @@ bool UI::TextBox::OnEvent(IEvent* inEvent) {
 
 Button* ButtonBuilder::New() {
 	Button* btn = new Button(callback);
-	Widget* child = this->child 
-		? this->child 
-		: container.StyleClass(styleClass).Child(new UI::TextBox(text)).New();
+	Widget* child = container
+		.StyleClass(styleClass)
+		.Child(this->child ? this->child : new UI::TextBox(text))
+		.New();
 
 	if(!tooltipText.empty()) {
 		child = new TooltipPortal(
@@ -159,7 +162,7 @@ Window* WindowBuilder::New() {
 			.Child(Flexbox::Build()
 				.DirectionColumn()
 				.JustifyContent(JustifyContent::Start)
-				.Alignment(AlignContent::Center)
+				.Alignment(Alignment::Center)
 				.Expand()
 				.Children({
 					titleBar,
@@ -249,11 +252,12 @@ void UI::Flexbox::DebugSerialize(PropertyArchive& ar) {
 }
 
 struct TempData {
-	float CrossAxisPos = 0;
-	float MainAxisPos = 0;
-	float CrossAxisSize = 0;
+	LayoutWidget* child         = nullptr;
+	float         CrossAxisPos  = 0;
+	float         MainAxisPos   = 0;
+	float         CrossAxisSize = 0;
 	// Negative for flexible, positive for fixed
-	float MainAxisSize = 0;
+	float 		  MainAxisSize  = 0;
 };
 
 /*
@@ -280,12 +284,7 @@ void UI::Flexbox::UpdateLayout() {
 	const auto innerCrossAxisSize = innerSize[crossAxisIndex];
 	// These options require extra space left on the main axis to work so we need to find it
 	bool bJustifyContent = m_JustifyContent != JustifyContent::Start;
-
-	std::vector<LayoutWidget*> visibleChildren;
-	GetVisibleChildren(&visibleChildren);
-
-	std::vector<TempData> tempBuffer;
-	tempBuffer.resize(visibleChildren.size());
+	std::vector<TempData> childrenData;
 
 	// Size of the biggest widget on the cross axis
 	// Our size and sizes of expaned widgets should be this
@@ -294,42 +293,64 @@ void UI::Flexbox::UpdateLayout() {
 	// Widgets which size doesn't depend on our size
 	float fixedChildrenSizeMainAxis = 0;
 
-	// Find available space after fixed size widgets
-	for(auto i = 0; i < visibleChildren.size(); ++i) {
-		auto* child = visibleChildren[i];
-		auto& temp = tempBuffer[i];
+	VisitChildren([&](Widget* child) {
+		auto flexFactor = 0.f;
+		auto* layoutChild = LayoutWidget::FindNearest(child);
+		
+		if(!layoutChild || !layoutChild->IsVisible()) {
+			return visitResultContinue;
+		}
+		// Check if layout is wrapped in a Flexible
+		layoutChild->VisitParent([&](Widget* parent) {
+			if(parent == this) {
+				return visitResultExit;
+			}
+			if(auto* flexible = parent->Cast<Flexible>()) {
+				flexFactor = flexible->GetFlexFactor();
+				return visitResultExit;
+			}
+			return visitResultContinue;
+		});
+		auto& temp = childrenData.emplace_back();
+		temp.child = layoutChild;
 
 		// Main axis
-		/*if(auto* flexible = child->As<Flexible>()) {
-			Assertf(axisMode[mainAxisIndex] == AxisMode::Expand, "Flexbox main axis set to AxisMode::Shrink, but an expanded child is found");
-			temp.MainAxisSize = -flexible->GetFlexFactor();
+		if(flexFactor > 0.f) {
+			temp.MainAxisSize = -flexFactor;
 			totalFlexFactor += temp.MainAxisSize;
+			flexFactor = 0.f;
 
-		} else*/ {
-			const auto childAxisMode = child->GetAxisMode()[mainAxisIndex];
+		} else {
+			const auto childAxisMode = layoutChild->GetAxisMode()[mainAxisIndex];
 
 			if(childAxisMode == AxisMode::Expand) {
 				Assertf(axisMode[mainAxisIndex] != AxisMode::Shrink,
-						"Flexbox main axis set to AxisMode::Shrink, but an expanded child is found");
+					"{} main axis set to AxisMode::Shrink, but the child {} has axis set to AxisMode::Expand.",
+					GetDebugID(),
+					layoutChild->GetDebugID());
 				temp.MainAxisSize = -1.f;
 				totalFlexFactor += temp.MainAxisSize;
 			} else {
-				temp.MainAxisSize = child->GetOuterSize()[mainAxisIndex];
+				temp.MainAxisSize = layoutChild->GetOuterSize()[mainAxisIndex];
 				fixedChildrenSizeMainAxis += temp.MainAxisSize;
 			}
 		}
 		// Cross axis
-		const auto childAxisMode = child->GetAxisMode()[crossAxisIndex];
+		const auto childAxisMode = layoutChild->GetAxisMode()[crossAxisIndex];
 
 		if(childAxisMode == AxisMode::Expand) {
 			Assertf(axisMode[crossAxisIndex] != AxisMode::Shrink,
-						"Flexbox main axis set to AxisMode::Shrink, but an expanded child is found");
+					"{} main axis set to AxisMode::Shrink, but the child {} has axis set to AxisMode::Expand.",
+					GetDebugID(),
+					layoutChild->GetDebugID());
 			temp.CrossAxisSize = innerCrossAxisSize;
 		} else {
-			temp.CrossAxisSize = child->GetOuterSize()[crossAxisIndex];
+			temp.CrossAxisSize = layoutChild->GetOuterSize()[crossAxisIndex];
 		}
 		maxChildSizeCrossAxis = Math::Max(temp.CrossAxisSize, maxChildSizeCrossAxis);
-	}
+
+		return visitResultContinue;
+	});
 	float mainAxisFlexibleSpace = Math::Clamp(innerMainAxisSize - fixedChildrenSizeMainAxis, 0.f);
 
 	// Check for overflow
@@ -346,13 +367,11 @@ void UI::Flexbox::UpdateLayout() {
 	if(totalFlexFactor < 0.f) {
 		bJustifyContent = false;
 
-		for(auto i = 0; i < visibleChildren.size(); ++i) {
-			auto& temp = tempBuffer[i];
-
-			if(temp.MainAxisSize < 0.f) {
-				temp.MainAxisSize = mainAxisFlexibleSpace * temp.MainAxisSize / totalFlexFactor;
+		for(auto& childData: childrenData) {
+			if(childData.MainAxisSize < 0.f) {
+				childData.MainAxisSize = mainAxisFlexibleSpace * childData.MainAxisSize / totalFlexFactor;
 				/// TODO Child size shouldn't be less then Child.GetMinSize()
-				temp.MainAxisSize = Math::Clamp(temp.MainAxisSize, 0.f);
+				childData.MainAxisSize = Math::Clamp(childData.MainAxisSize, 0.f);
 			}
 		}
 	}
@@ -375,19 +394,19 @@ void UI::Flexbox::UpdateLayout() {
 			}
 			case JustifyContent::SpaceBetween:
 			{
-				if(tempBuffer.size() == 1) {
+				if(childrenData.size() == 1) {
 					justifyContentMargin = mainAxisFlexibleSpace * 0.5f;
 				} else {
-					justifyContentMargin = mainAxisFlexibleSpace / (tempBuffer.size() - 1);
+					justifyContentMargin = mainAxisFlexibleSpace / (childrenData.size() - 1);
 				}
 				break;
 			}
 			case JustifyContent::SpaceAround:
 			{
-				if(tempBuffer.size() == 1) {
+				if(childrenData.size() == 1) {
 					justifyContentMargin = mainAxisFlexibleSpace * 0.5f;
 				} else {
-					justifyContentMargin = mainAxisFlexibleSpace / (tempBuffer.size() + 1);
+					justifyContentMargin = mainAxisFlexibleSpace / (childrenData.size() + 1);
 				}
 				break;
 			}
@@ -401,24 +420,22 @@ void UI::Flexbox::UpdateLayout() {
 		mainAxisCursor = justifyContentMargin;
 	}
 
-	for(auto i = 0; i != tempBuffer.size(); ++i) {
-		auto& temp = tempBuffer[i];
-		auto& child = visibleChildren[i];
-		temp.MainAxisPos = mainAxisCursor;
+	for(auto& childData: childrenData) {
+		childData.MainAxisPos = mainAxisCursor;
 
-		if(m_Alignment == AlignContent::End) {
-			temp.CrossAxisPos = maxChildSizeCrossAxis - temp.CrossAxisSize;
-		} else if(m_Alignment == AlignContent::Center) {
-			temp.CrossAxisPos = 0.5f * (maxChildSizeCrossAxis - temp.CrossAxisSize);
+		if(m_Alignment == Alignment::End) {
+			childData.CrossAxisPos = maxChildSizeCrossAxis - childData.CrossAxisSize;
+		} else if(m_Alignment == Alignment::Center) {
+			childData.CrossAxisPos = 0.5f * (maxChildSizeCrossAxis - childData.CrossAxisSize);
 		}
 
 		float2 childPos;
-		childPos[mainAxisIndex] = temp.MainAxisPos;
-		childPos[crossAxisIndex] = temp.CrossAxisPos;
+		childPos[mainAxisIndex] = childData.MainAxisPos;
+		childPos[crossAxisIndex] = childData.CrossAxisPos;
 
 		float2 childSize;
-		childSize[mainAxisIndex] = temp.MainAxisSize;
-		childSize[crossAxisIndex] = temp.CrossAxisSize;
+		childSize[mainAxisIndex] = childData.MainAxisSize;
+		childSize[crossAxisIndex] = childData.CrossAxisSize;
 
 		ParentLayoutEvent layoutEvent;
 		layoutEvent.parent = this;
@@ -426,15 +443,15 @@ void UI::Flexbox::UpdateLayout() {
 
 		LOGF(Verbose, "Flexbox {} dispatched layout event to child {}. Constraints [left: {}, right: {}, top: {}, bottom: {}]", 
 			GetDebugID(), 
-			child->GetDebugID(),
+			childData.child->GetDebugID(),
 			layoutEvent.constraints.Left(),
 			layoutEvent.constraints.Right(),
 			layoutEvent.constraints.Top(),
 			layoutEvent.constraints.Bottom());
 
-		child->OnEvent(&layoutEvent);
+		childData.child->OnEvent(&layoutEvent);
 
-		mainAxisCursor += child->GetOuterSize()[mainAxisIndex];
+		mainAxisCursor += layoutEvent.constraints.Size()[mainAxisIndex];
 
 		if(bJustifyContent && m_JustifyContent == JustifyContent::SpaceBetween || m_JustifyContent == JustifyContent::SpaceAround) {
 			mainAxisCursor += justifyContentMargin;
