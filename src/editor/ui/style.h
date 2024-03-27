@@ -92,6 +92,11 @@ public:
 		return *this;
 	}
 
+	BoxStyle& FillColor(Color inColor) {
+		backgroundColor = inColor;
+		return *this;
+	}
+
 	BoxStyle& BorderColor(std::string_view inHex) {
 		borderColor = ColorU32::FromHex(inHex);
 		return *this;
@@ -340,7 +345,7 @@ public:
 
 		for(auto& style: m_Styles) {
 			if(style->IsA<StyleType>() && (inName == style->name || inName.Empty())) {
-				out = style->Cast<StyleType>();
+				out = style->As<StyleType>();
 				break;
 			}
 		}
@@ -361,7 +366,7 @@ public:
 
 		for(auto& style: m_Styles) {
 			if(style->IsA<StyleType>() && (name == style->name || name.Empty())) {
-				out = style->Cast<StyleType>();
+				out = style->As<StyleType>();
 				break;
 			}
 		}
@@ -463,7 +468,7 @@ public:
 		// Load fonts
 		for(auto& [selector, styleClass]: m_Styles) {
 			for(auto& style: styleClass.m_Styles) {
-				if(auto* textStyle = style->Cast<TextStyle>()) {
+				if(auto* textStyle = style->As<TextStyle>()) {
 
 					if(textStyle->font) {
 						if(textStyle->font->NeedsRebuild()) {

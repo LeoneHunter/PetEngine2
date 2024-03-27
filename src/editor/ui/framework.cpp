@@ -31,7 +31,7 @@ ApplicationImpl* g_Application = nullptr;
 
 namespace names {
 	constexpr auto RootBackgroundWindowID = "RootBackgroundWindow";
-	constexpr auto DebugOverlayWindowID = "DebugOverlayWindow";
+	constexpr auto debugOverlayWindowID = "DebugOverlayWindow";
 }
 
 
@@ -365,23 +365,25 @@ private:
 /*
 * Overlay that is drawn over root window
 */
-class DebugOverlayWindow: public Controller {
+class DebugOverlayWindow: public WidgetState {
 public:
 
-	DebugOverlayWindow() {
-		SetID(names::DebugOverlayWindowID);
-		SetChild(Container::Build()
+	std::unique_ptr<Widget> Build() {
+		return Container::Build()
+			.ID(names::debugOverlayWindowID)
+			.StyleClass(names::debugOverlayWindowID)
 			.ClipContent(true)
-			.StyleClass(names::DebugOverlayWindowID)
-			.Child(new TextBox(""))
-			.New());
-		FindChildOfClass<LayoutWidget>()->SetOrigin(5, 5);
+			.PositionFloat({5, 5})
+			.Child(TextBox::New(text))
+			.New();
 	}
 
 	void SetText(const std::string& inText) {
-		FindChildOfClass<TextBox>()->SetText(inText);
+		text = inText;
+		MarkNeedsRebuild();
 	}
 
+	std::string text;
 };
 
 
@@ -402,13 +404,13 @@ public:
 
 		m_Theme.reset(new Theme());
 
-		auto& debugOverlayStyle = m_Theme->Add(names::DebugOverlayWindowID);
+		auto& debugOverlayStyle = m_Theme->Add(names::debugOverlayWindowID);
 		debugOverlayStyle.Add<LayoutStyle>().Margins(5, 5).Paddings(5, 5);
 		debugOverlayStyle.Add<BoxStyle>().FillColor("#454545dd").Rounding(4);
 
 		RebuildFonts();
-
-		Parent(m_DebugOverlay = new DebugOverlayWindow(), Layer::Overlay);
+		m_DebugOverlay = std::make_unique<DebugOverlayWindow>();
+		Parent(StatefulWidget::New(m_DebugOverlay.get()), Layer::Overlay);
 
 		g_OSWindow->SetOnCursorMoveCallback([](float x, float y) { g_Application->DispatchMouseMoveEvent({x, y}); });
 		g_OSWindow->SetOnMouseButtonCallback([](KeyCode inButton, bool bPressed) { g_Application->DispatchMouseButtonEvent(inButton, bPressed); });
@@ -465,7 +467,7 @@ public:
 		m_HoveredWindow = nullptr;
 		bool bHasPopups = false;
 
-		for(auto it = --m_WidgetStack.end(); it != --m_WidgetStack.begin(); --it) {
+		for(auto it = m_WidgetStack.rbegin(); it != m_WidgetStack.rend(); ++it) {
 			auto& [widget, layer] = *it;
 
 			if(layer == Layer::Overlay) {
@@ -499,7 +501,7 @@ public:
 				widget = widget->GetParent()) {
 
 				const auto bMouseRegion = widget->IsA<MouseRegion>(); 
-				const auto bAlways = bMouseRegion && widget->Cast<MouseRegion>()->ShouldAlwaysReceiveHover();
+				const auto bAlways = bMouseRegion && widget->As<MouseRegion>()->ShouldAlwaysReceiveHover();
 
 				if(bHandled && !bAlways)
 					continue;
@@ -571,7 +573,7 @@ public:
 				do {
 					// Mouse regions have an option to always receive events, so they cannot block them from propagating
 					const auto bMouseRegion = widget->IsA<MouseRegion>(); 
-					const auto bAlways = bMouseRegion && widget->Cast<MouseRegion>()->ShouldAlwaysReceiveHover();
+					const auto bAlways = bMouseRegion && widget->As<MouseRegion>()->ShouldAlwaysReceiveHover();
 
 					if(!bHandled || bAlways) {
 						LOGF(Verbose, "Button event {} dispatched to {}", event.GetDebugID(), widget->GetDebugID());
@@ -588,7 +590,9 @@ public:
 							}
 						}
 					}
-					widget = widget->GetParent()->GetWeakAs<Widget>();
+					widget = widget->GetParent() 
+						? widget->GetParent()->GetWeakAs<Widget>()
+						: nullptr;
 				} while(widget && !widget->IsA<LayoutWidget>());
 			}
 			return;
@@ -636,7 +640,7 @@ public:
 		
 		if(inButton == KeyCode::KEY_D && bPressed) {
 			m_bDrawDebugInfo = !m_bDrawDebugInfo;
-			LayoutWidget::FindNearest(m_DebugOverlay)->SetVisibility(m_bDrawDebugInfo);
+			m_DebugOverlay->SetVisibility(m_bDrawDebugInfo);
 			return;
 		}
 
@@ -655,15 +659,15 @@ public:
 
 	void	DispatchOSWindowResizeEvent(float2 inWindowSize) {
 		// Ignore minimized state for now
-		if(inWindowSize == float2())
+		if(inWindowSize == float2()) {
 			return;
-
+		}
 		ParentLayoutEvent layoutEvent;
 		layoutEvent.constraints = Rect(inWindowSize);
 
-		for(auto& [window, layer] : m_WidgetStack)
-			window->OnEvent(&layoutEvent);
-
+		for(auto& [window, layer] : m_WidgetStack) {
+			UpdateLayout(window.get());
+		}
 		g_Renderer->ResizeFramebuffers(inWindowSize);
 	}
 
@@ -735,6 +739,31 @@ public:
 		}
 	}
 
+	std::string PrintAncestorTree(Widget* inWidget) {
+		std::string out;
+		PropertyArchive ar;
+		for(Widget* w = inWidget; w; w = w->GetParent()) {
+			ar.PushObject(w->GetDebugID(), w, nullptr);
+			w->DebugSerialize(ar);
+		}
+		util::StringBuilder sb(&out);
+		PrintPropertyArchive(ar, &sb);
+		return out;
+	}
+
+	void PrintPropertyArchive(const PropertyArchive& ar, util::StringBuilder* sb) {
+		for(auto it = ar.m_RootObjects.rbegin(); it != ar.m_RootObjects.rend(); ++it) {
+			auto& object = *it;
+			sb->Line(object->m_DebugName);
+			sb->PushIndent();
+
+			for(auto& property : object->m_Properties) {
+				sb->Line("{}: {}", property.Name, property.Value);
+			}
+			sb->PopIndent();
+		}
+	}
+
 	void	PrintHitStack(util::StringBuilder& sb) {
 		PropertyArchive ar;
 
@@ -782,7 +811,7 @@ public:
 			if(m_bDrawDebugClipRects) {
 				canvas.DrawClipRect(false, colors::red);
 			}
-			if(auto* layout = inWidget->Cast<LayoutWidget>()) {
+			if(auto* layout = inWidget->As<LayoutWidget>()) {
 				if(m_bDrawDebugLayout){
 					if(m_LastHitStack.TopWidget() == layout) {
 						canvas.DrawRect(layout->GetRect().Expand(-1), colors::green.MultiplyAlpha(0.3f), true);
@@ -800,6 +829,106 @@ public:
 			return visitResultContinue;
 		};
 		drawFunc(inWindow);
+	}
+
+	void UpdateLayout(Widget* inWidget) {
+		LayoutWidget* layoutWidget = nullptr;
+
+		for(Widget* w = inWidget->GetParent(); w; w = w->GetParent()) {
+			if(auto* l = w->As<LayoutWidget>()) {
+				const auto axisMode = l->GetAxisMode();
+				const auto isLayoutDependsOnChildren =
+					axisMode.x == AxisMode::Shrink || axisMode.y == AxisMode::Shrink;
+
+				if(isLayoutDependsOnChildren) {
+					layoutWidget = l;
+					break;
+				}
+			}
+		}
+		if(!layoutWidget) {
+			layoutWidget = LayoutWidget::FindNearest(inWidget);
+		}
+		if(!layoutWidget) {
+			return;
+		}
+		// Update layout of children recursively starting from this widget
+		ParentLayoutEvent e;
+		const bool isRoot = layoutWidget->FindParentOfClass<LayoutWidget>() == nullptr;
+
+		if(isRoot) {
+			e.constraints = Rect(float2(0), g_OSWindow->GetSize());
+		} else {
+			const auto layoutInfo = *layoutWidget->GetLayoutStyle();
+			e.constraints = Rect(
+                layoutWidget->GetOrigin() - layoutInfo.margins.Size(),
+                layoutWidget->GetSize() + layoutInfo.margins.Size()
+			);
+		}
+		layoutWidget->OnLayout(e);
+	}
+
+	void BuildDirty() {
+		std::function<VisitResult(StatefulWidget*)> build;
+		// TODO: Add "BuildStackTrace" for build debugging
+		// - Widget being requested
+		// - Index of the child being iterated
+
+		// Check if dirty
+		// #1 Call build()
+		// Mount the new tree and keep the old one
+		// Find in the new tree stateful widgets
+		// 		Get the old StatefulWidget from the state of the new one
+		// 		Update the old widget with the new one
+		//		Check if it needs rebuils after update
+		//		If do: goto #1
+		// 		Else: parent the old tree to the new one
+		//	Update layout
+		build = [&](StatefulWidget* widget) {
+			auto* state = widget->GetState();
+
+			if(!state) {
+				auto s = PrintAncestorTree(widget);
+				LOGF(Error, "Stafeful widget without state found during Build. Ancestor tree:\n{}", s);
+				Assert(false);
+			}
+
+			if(widget->NeedsRebuild()) {
+				std::unique_ptr<Widget> oldChild = widget->GetChild() ? widget->OrphanChild() : nullptr;
+
+				if(state->IsVisible()) {
+					widget->Parent(widget->Build());	
+					auto* newChild = widget->GetChild();
+					// LOGF(Verbose, "Rebuild the widget {}, old child {}, new child {}", 
+					// 	widget->GetDebugID(), 
+					// 	oldChild ? oldChild->GetDebugID() : "", 
+					// 	newChild->GetDebugID());
+					
+					widget->VisitChildrenRecursively([&build](Widget* child) {
+						if(auto* w = child->As<StatefulWidget>()) {
+							return build(w);
+						}
+						return visitResultContinue;
+					});
+				}
+			} else {
+				auto* state = widget->GetState();
+				auto* oldWidget = state->GetWidget();
+
+				if(oldWidget) {
+					std::unique_ptr<Widget> oldChild = oldWidget->OrphanChild();
+					widget->Parent(std::move(oldChild));
+				}
+			}
+			widget->RebindToState();
+			return visitResultSkipChildren;
+		};
+
+		for(auto& widget: m_DirtyWidgets) {
+			if(widget) {
+				build(widget.Get());
+			}
+		}
 	}
 
 public:
@@ -827,6 +956,23 @@ public:
 			m_Timers.Tick();
 		}
 
+		// Rebuild
+		{
+			if(!m_DirtyWidgets.empty()) {
+				BuildDirty();	
+			}
+		}
+
+		// Update layout
+		{
+			for(auto& widget: m_DirtyWidgets) {
+				if(widget) {
+					UpdateLayout(widget.Get());
+				}
+			}
+			m_DirtyWidgets.clear();
+		}
+
 		if(m_bDrawDebugInfo) {
 			std::string str;
 			auto sb = util::StringBuilder(&str);
@@ -837,7 +983,7 @@ public:
 			sb.Line("Hovered window: {}", m_HoveredWindow ? m_HoveredWindow->GetDebugID() : "");
 			sb.Line("Hovered widget: {}", !m_HoveredWidgets.Empty() ? m_HoveredWidgets.Print() : "");
 			sb.Line("Mouse pos local: {}", m_HoveredWidgets.Top() ? GetLocalPosForWidget(m_HoveredWidgets.Top()) : m_MousePosGlobal);
-			sb.Line("Mouse pos global: {}", m_MousePosGlobal);
+			sb.Line("Mouse pos global: {}", m_MousePosGlobal == NOPOINT ? "npos" : std::format("{}", m_MousePosGlobal));
 			sb.Line("Capturing mouse widgets: {}", !m_CapturingWidgets.Empty() ? m_CapturingWidgets.Print() : "");
 			sb.Line();
 
@@ -846,7 +992,7 @@ public:
 				sb.PushIndent();
 				PrintHitStack(sb);
 			}
-			m_DebugOverlay->FindChildOfClass<TextBox>()->SetText(str);
+			m_DebugOverlay->SetText(str);
 		}
 
 		// Draw views
@@ -863,9 +1009,7 @@ public:
 			// drawEvent.theme = m_Theme.get();
 
 			for(auto& [window, layer] : m_WidgetStack) {
-				if(LayoutWidget::FindNearest(window.get())->IsVisible()) {
-					DrawWindow(window.get(), frameDrawList, m_Theme.get());
-				}
+				DrawWindow(window.get(), frameDrawList, m_Theme.get());
 			}
 		}
 		const auto frameEndTimePoint = std::chrono::high_resolution_clock::now();
@@ -877,18 +1021,31 @@ public:
 		return true;
 	}
 	
-	void Orphan(Widget* inWidget) override {
+	std::unique_ptr<Widget> Orphan(Widget* inWidget) override {
 		// Remove child without deletion
 		for(auto it = m_WidgetStack.begin(); it != m_WidgetStack.end(); ++it) {
 			if(it->widget.get() == inWidget) {
-				it->widget.release();
+				auto out = std::move(it->widget);
 				m_WidgetStack.erase(it);
-				break;
+				return out;
 			}
 		}
+		return {};
 	}
-	// From Widget::Orphan()
-	void Orphan(Widget* inWidget, WidgetSlot) override { Orphan(inWidget); }
+	
+	void RequestRebuild(StatefulWidget* inWidget) override {
+		// Ancestors of the widget should be scheduled after
+		// for(auto it = m_DirtyWidgets.begin(); it != m_DirtyWidgets.end(); ++it) {
+		// 	auto& w = *it;
+		// 	for(auto* parent = inWidget->GetParent(); parent; parent = parent->GetParent()) {
+		// 		if(parent == w) {
+		// 			m_DirtyWidgets.insert(it, inWidget);
+		// 			return;
+		// 		}
+		// 	}
+		// }
+		m_DirtyWidgets.push_back(inWidget->GetWeak());
+	}
 
 	void BringToFront(Widget* inWidget) override {
 		using Iterator = decltype(m_WidgetStack)::iterator;
@@ -907,30 +1064,34 @@ public:
 		}
 	}
 
-	void Parent(Widget* inWidget, Layer inLayer) override {
+	void Parent(std::unique_ptr<Widget>&& inWidget, Layer inLayer) override {
+		auto* widget = inWidget.get();
 		// Insert the widget based on layer
 		// Call OnParented()
 		if(inLayer == Layer::Overlay) {
-			m_WidgetStack.emplace_back(RootWidget(inWidget, inLayer));
+			m_WidgetStack.emplace_back(RootWidget(std::move(inWidget), inLayer));
 
 		} else if(inLayer == Layer::Background) {
-			m_WidgetStack.emplace_front(RootWidget(inWidget, inLayer));
+			m_WidgetStack.emplace_front(RootWidget(std::move(inWidget), inLayer));
 
 		} else {
 			for(auto it = m_WidgetStack.begin(); it != m_WidgetStack.end(); ++it) {
 				// Insert the window before overlays
 				if(it->layer == Layer::Overlay) {
-					m_WidgetStack.insert(it, RootWidget(inWidget, inLayer));
+					m_WidgetStack.insert(it, RootWidget(std::move(inWidget), inLayer));
 					break;
 				}
 			}
 		}
-		inWidget->OnParented(this);
+		widget->OnParented(this);
+		auto* statefulChild = widget->As<StatefulWidget>() 
+			? widget->As<StatefulWidget>() 
+			: widget->FindChildOfClass<StatefulWidget>();
 
-		if(auto* layout = LayoutWidget::FindNearest(inWidget)) {
-			ParentLayoutEvent layoutEvent;
-			layoutEvent.constraints = Rect(g_OSWindow->GetSize());
-			layout->OnEvent(&layoutEvent);
+		if(statefulChild) {
+			RequestRebuild(statefulChild);	
+		} else {
+			UpdateLayout(widget);
 		}
 	}
 
@@ -1009,7 +1170,9 @@ private:
 	WeakPtr<Widget>			m_HoveredWindow;
 	
 	// Draw hitstack and mouse pos
-	DebugOverlayWindow* 	m_DebugOverlay = nullptr;
+	std::unique_ptr<DebugOverlayWindow>	
+							m_DebugOverlay;
+
 	bool					m_bDrawDebugInfo = true;
 	bool					m_bDrawDebugLayout = false;
 	bool					m_bDrawDebugClipRects = false;
@@ -1019,13 +1182,15 @@ private:
 	struct RootWidget {
 		std::unique_ptr<Widget> widget;
 		Layer 					layer;
-
-		RootWidget(Widget* inWidget, Layer inLayer)
-			: layer(inLayer) {
-			widget.reset(inWidget);
-		}
 	};
 	std::list<RootWidget>	m_WidgetStack;
+
+	// Widgets which state has been changed and need rebuilding
+	// FIXME: It should contain only one widget from a branch
+	// Only the topmost ancestor, because when the topmost is rebuild 
+	// another widgets will be updated too, and pointers will become stale
+	// We will use a weakptr as a workaround
+	std::vector<WeakPtr<StatefulWidget>> m_DirtyWidgets;
 
 	TimerList				m_Timers;
 	std::unique_ptr<Theme>	m_Theme;

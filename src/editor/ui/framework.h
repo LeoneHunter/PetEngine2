@@ -147,6 +147,8 @@ public:
 		return superClassName::GetWeakAs<className>();\
 	}
 
+#define STATE_CLASS(className, superClassName)\
+	DEFINE_CLASS_META(className, superClassName)
 
 
 
@@ -155,9 +157,9 @@ namespace UI {
 	class Widget;
 	class Style;
 	class LayoutWidget;
+	class StatefulWidget;
 	class Theme;
 	class Tooltip;
-	class TooltipSpawner;
 
 	template<typename T>
 	concept WidgetSubclass = std::derived_from<T, Widget>;
@@ -291,8 +293,9 @@ namespace UI {
 		virtual bool			Tick() = 0;
 		// Parents a widget to the root of the widget tree
 		// Widgets parented to the root behave like windows and can be reordered
-		virtual void			Parent(Widget* inWidget, Layer inLayer = Layer::Float) = 0;
-		virtual void 			Orphan(Widget* inWidget) = 0;
+		virtual void			Parent(std::unique_ptr<Widget>&& inWidget, Layer inLayer = Layer::Float) = 0;
+		virtual std::unique_ptr<Widget>
+								Orphan(Widget* inWidget) = 0;
 		virtual void			BringToFront(Widget* inWidget) = 0;
 
 		virtual Theme* 			GetTheme() = 0;
@@ -301,6 +304,8 @@ namespace UI {
 
 		virtual TimerHandle		AddTimer(Widget* inWidget, const TimerCallback& inCallback, u64 inPeriodMs) = 0;
 		virtual void			RemoveTimer(TimerHandle inHandle) = 0;
+
+		virtual void 			RequestRebuild(StatefulWidget* inWidget) = 0;
 	};
 
 
@@ -380,11 +385,13 @@ namespace UI {
 
 		EventCategory	GetCategory() const override { return EventCategory::Layout; }
 
+		// TODO: Deprecated
 		LayoutWidget*	parent;
 		Rect			constraints;
 	};
 
 	/*
+	* TODO: deprecated
 	* Passed to the parent by a LayoutWidget widget
 	* when its added, modified or deleted to update parent's and itself's layout
 	* Widgets that are not subclasses of LayoutWidget do not care about these events
@@ -598,8 +605,6 @@ namespace UI {
 		Mode y;
 	};
 
-	
-
 	constexpr auto axisModeFixed = AxisMode(AxisMode::Fixed, AxisMode::Fixed);
 	constexpr auto axisModeExpand = AxisMode(AxisMode::Expand, AxisMode::Expand);
 	constexpr auto axisModeShrink = AxisMode(AxisMode::Shrink, AxisMode::Shrink);
@@ -618,33 +623,17 @@ namespace UI {
 	// when provided to the Widget::Visit() method
 	using WidgetVisitor = std::function<VisitResult(Widget*)>;
 
-
-	/*
-	* Top object for all logical widgets
-	* Provides basic functionality for all widgets
-	* Basic concept is that every widget in the tree has only limited functionality 
-	* And the user can connect these widget as they like in any order
-	* For example a PopupSpawner can wrap any layout widget and can provide a popup for it when hovered
-	* Or a Centered widget which centers it's child inside parent's constraints
-	*
-	* There are two big classes of widgets: Controllers and LayoutWidgets
-	*	  Controllers has only logic and can control and manage other widgets in the tree
-	*	      Some controllers can take events from the user, like a popup controller which spawns a popup on left click
-	*     LayoutWidgets has a visual representation and can be interacted by the user directly
-	*/
 	class Widget {
 		DEFINE_ROOT_CLASS_META(Widget)
 	public:
 
 		template<class T = Widget>
 		WeakPtr<T>			GetWeakAs() {
-			if(this == nullptr) return {};
-			Assertf(this->Cast<T>(), "Cannot cast {} to the class {}", GetDebugID(), T::GetStaticClassName());
-
+			Assertf(this->As<T>(), "Cannot cast {} to the class {}", GetDebugID(), T::GetStaticClassName());
 			if(!m_RefCounter) {
 				m_RefCounter = new util::RefCounter();
 			}
-			return WeakPtr<T>{this->Cast<T>(), m_RefCounter};
+			return WeakPtr<T>{this->As<T>(), m_RefCounter};
 		}
 
 		WeakPtr<Widget>		GetWeak() { return GetWeakAs<Widget>(); }
@@ -657,12 +646,14 @@ namespace UI {
 
 		// Notify parents that we are about to be destructed
 		virtual void		Destroy() {
-			GetParent()->Orphan(this);
-			delete this;
+			std::unique_ptr<Widget> self = GetParent()->Orphan(this);
+			// Destructed here
 		}
 		
 		// Calls a visitor callback on this object and children if bRecursive == true
-		virtual VisitResult	VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = true) { return visitResultContinue; }
+		virtual VisitResult	VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive = false) { return visitResultContinue; }
+
+		VisitResult  	    VisitChildrenRecursively(const WidgetVisitor& inVisitor) { return VisitChildren(inVisitor, true); }
 
 		// Visits parents in the tree recursively
 		void				VisitParent(const WidgetVisitor& inVisitor, bool bRecursive = true) {
@@ -673,27 +664,14 @@ namespace UI {
 		}
 
 		// Attaches this widget to a parent slot
-		virtual void		Parent(Widget* inWidget, WidgetSlot inSlot = defaultWidgetSlot) { Assertf(false, "Class {} cannot have children.", GetClassName()); }
-		virtual void		Orphan(Widget* inWidget, WidgetSlot inSlot = defaultWidgetSlot) { Assertf(false, "Class {} cannot have children.", GetClassName()); }
-		
-		/*
-		* Called by a parent when widget is being parented
-		* Here a widget can execute subclass specific parenting functionality
-		* For example a LayoutWidget which has position and size can notify the parent that it needs to update it's layout
-		* We cannot do it directly in the Parent() function because a LayoutWidget child can be parented later down the tree
-		* and it can be wrapped in a few controller widgets
-		*/
-		virtual void		OnParented(Widget* inParent) { m_Parent = inParent; };
+		virtual void Parent(std::unique_ptr<Widget>&& inWidget) { Assertf(false, "Class {} cannot have children.", GetClassName()); }
+		NODISCARD virtual std::unique_ptr<Widget> Orphan(Widget* inWidget) { Assertf(false, "Class {} cannot have children.", GetClassName()); return {}; }
 
-		/*
-		* Called by a parent when widget has been orphaned from parent
-		* Here a widget can execute subclass specific functionality.
-		* Generally a widget is not deleted on this step
-		*/
-		virtual void		OnOrphaned() { m_Parent = nullptr; }
+		virtual void OnParented(Widget* inParent) { m_Parent = inParent; };
+		virtual void OnOrphaned() { m_Parent = nullptr; }
 			 
 		virtual bool		OnEvent(IEvent* inEvent) {	
-			if(auto* event = inEvent->Cast<DebugLogEvent>()) {
+			if(auto* event = inEvent->As<DebugLogEvent>()) {
 				event->archive->PushObject(GetClassName().data(), this, GetParent());
 				DebugSerialize(*event->archive);
 				return true;
@@ -703,6 +681,7 @@ namespace UI {
 
 		virtual void		DebugSerialize(PropertyArchive& inArchive) {}
 
+		// TODO: Move to LayoutWidget
 		// Transforms a point in local space into a point in global space
 		// recursively iterating parents
 		virtual Point		TransformLocalToGlobal(Point inPosition) const { 
@@ -785,20 +764,21 @@ namespace UI {
 		WIDGET_CLASS(SingleChildWidget, Widget)
 	public:
 
-		void Parent(Widget* inChild, WidgetSlot inSlot = defaultWidgetSlot) override {
-			Assert(inChild && !inChild->GetParent() && !m_Child);
-			m_Child.reset(inChild);
+		void Parent(std::unique_ptr<Widget>&& inWidget) override {
+			Assert(inWidget && !inWidget->GetParent() && !m_Child);
+			m_Child = std::move(inWidget);
 			m_Child->OnParented(this);
 		}
-		void SetChild(Widget* inWidget) { Parent(inWidget); }
 
-		void Orphan(Widget* inChild, WidgetSlot inSlot = defaultWidgetSlot) override {
-			Assert(inChild);
-			if(m_Child.get() == inChild) {
-				m_Child.release();
+		NODISCARD std::unique_ptr<Widget> Orphan(Widget* inWidget) override {
+			Assert(inWidget);
+			if(m_Child.get() == inWidget) {
 				m_Child->OnOrphaned();
+				return std::move(m_Child);
 			}
+			return {};
 		}
+		NODISCARD std::unique_ptr<Widget> OrphanChild() { return Orphan(GetChild()); }
 
 		void OnParented(Widget* inParent) override;
 		void OnOrphaned() override;
@@ -825,7 +805,7 @@ namespace UI {
 		
 		bool OnEvent(IEvent* inEvent) override {
 			
-			if(auto* event = inEvent->Cast<DebugLogEvent>()) {
+			if(auto* event = inEvent->As<DebugLogEvent>()) {
 				event->archive->PushObject(GetDebugID(), this, GetParent());
 				DebugSerialize(*event->archive);
 				DispatchToChildren(inEvent);
@@ -838,6 +818,8 @@ namespace UI {
 			}
 			return Super::OnEvent(inEvent);
 		};
+
+		Widget* GetChild() { return m_Child.get(); }
 
 	protected:
 		SingleChildWidget(const std::string& inID = {})
@@ -852,6 +834,7 @@ namespace UI {
 
 
 	/*
+	* TODO: deprecated
 	* Serves as an interface to and controller to the tree of widgets
 	* Usually the topmost widget in the group of widget that control its descendants
 	* Responsible for managing interactions between its children
@@ -880,6 +863,125 @@ namespace UI {
 
 
 
+
+	class StatefulWidget;
+
+	/*
+	* TODO: maybe inherit for Object
+	*/
+	class WidgetState {
+		DEFINE_ROOT_CLASS_META(WidgetState)	
+	public:
+		friend class StatefulWidget;
+
+		WidgetState() = default;
+		~WidgetState();
+
+		WidgetState(const WidgetState&) = delete;
+		WidgetState& operator=(const WidgetState&) = delete;
+
+		virtual std::unique_ptr<Widget> Build() = 0;
+
+		void MarkNeedsRebuild();
+
+		void SetVisibility(bool isVisible) {
+			m_IsVisible = isVisible;
+			MarkNeedsRebuild();
+		}
+
+		bool IsVisible() { return m_IsVisible; }
+
+		// Called after build
+		// Could be null if the widget tree is destructed before the state
+		void SetWidget(StatefulWidget* inWidget) {
+			m_Widget = inWidget;
+			// If our widget has been unmounted and destroyes mark us dirty
+			// so we will be built at the next mount
+			if(!m_Widget) {
+				m_NeedsRebuild = true;
+			}
+		}
+
+		StatefulWidget* GetWidget() { return m_Widget; }
+
+	private:
+		bool m_IsVisible = true;
+		bool m_NeedsRebuild = true;
+		StatefulWidget* m_Widget = nullptr;
+	};
+
+
+
+	class StatefulWidget: public SingleChildWidget {
+		WIDGET_CLASS(StatefulWidget, SingleChildWidget)
+	public:
+
+		static std::unique_ptr<StatefulWidget> New(WidgetState* inState) {
+			return std::make_unique<StatefulWidget>(inState);
+		}
+
+		StatefulWidget(WidgetState* inState)
+			: m_State(inState)
+		{}
+		
+		~StatefulWidget() {
+			if(m_State) {
+				m_State->SetWidget(nullptr);
+			}
+		}
+
+		void MarkNeedsRebuild() {
+			m_State->m_NeedsRebuild = true;
+			Application::Get()->RequestRebuild(this);
+		}
+
+		std::unique_ptr<Widget> Build() {
+			Assertf(m_State, "{} doesn't have a state.", GetDebugID());
+			m_State->m_NeedsRebuild = false;
+			return m_State->Build();
+		}
+
+		bool NeedsRebuild() const {
+			Assertf(m_State, "{} doesn't have a state.", GetDebugID());
+			return m_State->m_NeedsRebuild;
+		}
+
+		// Bind this widget to the state and unbind the old one
+		void RebindToState() {
+			Assertf(m_State, "{} doesn't have a state.", GetDebugID());
+			auto* old = m_State->GetWidget();
+			m_State->SetWidget(this);
+
+			if(old && old != this) {
+				old->m_State = nullptr;
+			}
+		}
+
+		WidgetState* GetState() { return m_State; }
+
+	private:
+		WidgetState* m_State;
+	};
+
+	inline void WidgetState::MarkNeedsRebuild() { 
+		Assertf(m_Widget, "State doesn't have a widget.");
+		m_Widget->MarkNeedsRebuild();
+	}
+
+	inline WidgetState::~WidgetState() {
+		if(m_Widget) {
+			m_Widget->Destroy();
+		}
+	}
+
+
+
+
+
+
+
+
+
 	/*
 	* A widget which has size and position
 	* And possibly can be drawn
@@ -890,33 +992,33 @@ namespace UI {
 
 		void OnParented(Widget* inParent) override {
 			Super::OnParented(inParent);
-			auto* parent = FindParentOfClass<LayoutWidget>();
+			// auto* parent = FindParentOfClass<LayoutWidget>();
 
-			if(parent) {
-				ChildLayoutEvent onChild;
-				onChild.child = this;
-				onChild.size = m_Size;
-				onChild.subtype = ChildLayoutEvent::OnAdded;
-				parent->OnEvent(&onChild);
-			}
+			// if(parent) {
+			// 	ChildLayoutEvent onChild;
+			// 	onChild.child = this;
+			// 	onChild.size = m_Size;
+			// 	onChild.subtype = ChildLayoutEvent::OnAdded;
+			// 	parent->OnEvent(&onChild);
+			// }
 		}
 
 		void OnOrphaned() override {
-			auto* parent = FindParentOfClass<LayoutWidget>();
+			//auto* parent = FindParentOfClass<LayoutWidget>();
 
-			if(parent) {
-				ChildLayoutEvent onChild;
-				onChild.child = this;
-				onChild.size = m_Size;
-				onChild.subtype = ChildLayoutEvent::OnRemoved;
-				parent->OnEvent(&onChild);
-			}
+			// if(parent) {
+			// 	ChildLayoutEvent onChild;
+			// 	onChild.child = this;
+			// 	onChild.size = m_Size;
+			// 	onChild.subtype = ChildLayoutEvent::OnRemoved;
+			// 	parent->OnEvent(&onChild);
+			// }
 			Super::OnOrphaned();
 		}
 
 		bool OnEvent(IEvent* inEvent) override {
 
-			if(auto* event = inEvent->Cast<HitTestEvent>()) {
+			if(auto* event = inEvent->As<HitTestEvent>()) {
 				if(!IsVisible()) return false;
 				auto hitPosLocalSpace = event->GetLastHitPos();
 
@@ -927,12 +1029,12 @@ namespace UI {
 				return false;
 			} 
 			
-			if(auto* event = inEvent->Cast<ParentLayoutEvent>()) {
+			if(auto* event = inEvent->As<ParentLayoutEvent>()) {
 				HandleParentLayoutEvent(event);
 				return true;
 			} 
 			
-			if(auto* event = inEvent->Cast<DebugLogEvent>()) {
+			if(auto* event = inEvent->As<DebugLogEvent>()) {
 				event->archive->PushObject(GetDebugID(), this, GetParent());
 				DebugSerialize(*event->archive);
 				return true;
@@ -963,7 +1065,7 @@ namespace UI {
 		// Looks for a nearest LayoutWidget down the tree starting from inWidget
 		static LayoutWidget* FindNearest(Widget* inWidget) {
 			if(inWidget->IsA<LayoutWidget>())
-				return inWidget->Cast<LayoutWidget>();
+				return inWidget->As<LayoutWidget>();
 			return inWidget->FindChildOfClass<LayoutWidget>();
 		}
 
@@ -1038,6 +1140,14 @@ namespace UI {
 
 		// Widget's position won't be affected by parent's layout events
 		void SetFloatLayout(bool bEnable = true) { m_bFloatLayout = bEnable; }
+		bool IsFloatLayout() const { return m_bFloatLayout; }
+	
+	public:
+
+		// Returns size after layout is performed
+		virtual float2 OnLayout(const ParentLayoutEvent& inEvent) { 
+			Assertf(false, "The widget of class {} should override OnLayout() method", GetClassName());
+		}
 
 	public:
 		// Helper
@@ -1074,15 +1184,16 @@ namespace UI {
 		// @return true if our size has actually changed
 		bool HandleParentLayoutEvent(const ParentLayoutEvent* inEvent) {
 			const auto prevSize = GetSize();
-			const auto margins = GetLayoutStyle() ? GetLayoutStyle()->margins : Margins{};
+			const auto margins = GetLayoutStyle()->margins;
 
-			if(!m_bFloatLayout)
+			if(!m_bFloatLayout) {
 				SetOrigin(inEvent->constraints.TL() + margins.TL());
-			
-			for(auto axis: Axes2D)
-				if(GetAxisMode()[axis] == AxisMode::Expand)
+			}
+			for(auto axis: Axes2D) {
+				if(GetAxisMode()[axis] == AxisMode::Expand) {
 					SetSize(axis, inEvent->constraints.Size()[axis] - margins.Size()[axis]);
-
+				}
+			}
 			return GetSize() != prevSize;
 		}
 
@@ -1117,20 +1228,20 @@ namespace UI {
 		WIDGET_CLASS(SingleChildLayoutWidget, LayoutWidget)
 	public:		
 
-		void Parent(Widget* inWidget, WidgetSlot inSlot = defaultWidgetSlot) override {
+		void Parent(std::unique_ptr<Widget>&& inWidget) override {
 			Assert(inWidget && !inWidget->GetParent() && !m_Child);
-			m_Child.reset(inWidget);
+			m_Child = std::move(inWidget);
 			m_Child->OnParented(this);
 			DispatchLayoutToChildren();
 		}
-		void SetChild(Widget* inWidget, WidgetSlot inSlot = defaultWidgetSlot) { Parent(inWidget, inSlot); }
 
-		void Orphan(Widget* inWidget, WidgetSlot inSlot = defaultWidgetSlot) override {
+		NODISCARD std::unique_ptr<Widget> Orphan(Widget* inWidget) override {
 			Assert(inWidget);
 			if(m_Child.get() == inWidget) {
-				m_Child.release();
 				m_Child->OnOrphaned();
+				return std::move(m_Child);
 			}
+			return {};
 		}
 
 		bool DispatchToChildren(IEvent* inEvent) {
@@ -1154,32 +1265,25 @@ namespace UI {
 		}
 
 		bool OnEvent(IEvent* inEvent) override {
-
-			if(auto* layoutEvent = inEvent->Cast<ParentLayoutEvent>()) {
-
+			if(auto* layoutEvent = inEvent->As<ParentLayoutEvent>()) {
 				if(HandleParentLayoutEvent(layoutEvent)) {
 					DispatchLayoutToChildren();
 				}
 				return true;
 			}
-			
-			if(auto* childLayoutEvent = inEvent->Cast<ChildLayoutEvent>()) {
-
+			if(auto* childLayoutEvent = inEvent->As<ChildLayoutEvent>()) {
 				if(HandleChildEvent(childLayoutEvent)) {
 					DispatchLayoutToParent();
 				}
 				return true;
 			}
-
-			if(auto* event = inEvent->Cast<DebugLogEvent>()) {
+			if(auto* event = inEvent->As<DebugLogEvent>()) {
 				event->archive->PushObject(GetDebugID(), this, GetParent());
 				DebugSerialize(*event->archive);
 				DispatchToChildren(inEvent);
 				return true;
 			} 
-			
 			if(inEvent->IsA<HitTestEvent>()) {
-				
 				if(Super::OnEvent(inEvent)) {
 					// Dispatch HitTest only if we was hit
 					if(auto* layoutChild = FindChildOfClass<LayoutWidget>(this)) {
@@ -1189,12 +1293,44 @@ namespace UI {
 				} 
 				return false;
 			} 
-
-			// if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
+			// if(auto* drawEvent = inEvent->As<DrawEvent>()) {
 			// 	DispatchDrawToChildren(drawEvent);
 			// 	return true;
 			// }
 			return Super::OnEvent(inEvent);
+		}
+
+	public:
+
+		float2 OnLayout(const ParentLayoutEvent& inEvent) override { 
+			const auto layoutInfo = *GetLayoutStyle();
+			const auto margins = layoutInfo.margins;
+
+			if(!IsFloatLayout()) {
+				SetOrigin(inEvent.constraints.TL() + margins.TL());
+			}
+			for(auto axis: Axes2D) {
+				if(GetAxisMode()[axis] == AxisMode::Expand) {
+					SetSize(axis, inEvent.constraints.Size()[axis] - margins.Size()[axis]);
+				}
+			}
+			if(!m_Child) {
+				return GetSize() + margins.Size();
+			}
+			ParentLayoutEvent e;
+			e.parent = this;
+			e.constraints = Rect(layoutInfo.paddings.TL(), GetSize() - layoutInfo.paddings.Size());
+
+			if(auto* layoutWidget = FindChildOfClass<LayoutWidget>()) {
+				const auto childOuterSize = layoutWidget->OnLayout(e);
+
+				for(auto axis: Axes2D) {
+					if(GetAxisMode()[axis] == AxisMode::Shrink) {
+						SetSize(axis, childOuterSize[axis] + layoutInfo.paddings.Size()[axis]);
+					}
+				}
+			}
+			return GetSize() + margins.Size();
 		}
 
 	protected:
@@ -1208,7 +1344,6 @@ namespace UI {
 
 		// Centers our child when parent layout changes
 		void CenterChild(ParentLayoutEvent* inEvent) {
-
 			if(auto* child = Super::FindChildOfClass<LayoutWidget>()) {
 				const auto margins = GetLayoutStyle() ? GetLayoutStyle()->margins : Margins{};
 				const auto childOuterSize = child->GetSize() + margins.Size();
@@ -1236,12 +1371,13 @@ namespace UI {
 			layoutEvent.constraints = Rect(layoutInfo->paddings.TL(), GetSize() - layoutInfo->paddings.Size());
 
 			if(auto* layoutWidget = FindChildOfClass<LayoutWidget>()) {
-				LOGF(Verbose, "Widget {} dispatched parent layout event to child {}", GetDebugID(), layoutWidget->GetDebugID());
+				//LOGF(Verbose, "Widget {} dispatched parent layout event to child {}", GetDebugID(), layoutWidget->GetDebugID());
 				layoutWidget->OnEvent(&layoutEvent);
 			}
 		}
 
 		/**
+		 * TODO: deprecated
 		 * Helper to update our size based on AxisMode
 		 * @param bUpdateChildOnAdded if true, updates a newly added child
 		 * @return true if our size was changed by the child
@@ -1290,7 +1426,7 @@ namespace UI {
 				}
 			}
 			if(bSizeChanged){
-				LOGF(Verbose, "{} has been updated on child event. New size: {}", GetDebugID(), GetSize());
+				//LOGF(Verbose, "{} has been updated on child event. New size: {}", GetDebugID(), GetSize());
 			}
 			return bSizeChanged;
 		}
@@ -1318,26 +1454,24 @@ namespace UI {
 		WIDGET_CLASS(MultiChildLayoutWidget, LayoutWidget)
 	public:
 
-		void Parent(Widget* inWidget, WidgetSlot inSlot = defaultWidgetSlot) override {
+		void Parent(std::unique_ptr<Widget>&& inWidget) override {
 			Assert(inWidget && !inWidget->GetParent());
-			m_Children.emplace_back(inWidget);
-			inWidget->OnParented(this);
-		}
-		void AddChild(Widget* inWidget, WidgetSlot inSlot = defaultWidgetSlot) {
-			Parent(inWidget, inSlot);
+			auto* w = inWidget.get();
+			m_Children.push_back(std::move(inWidget));
+			w->OnParented(this);
 		}
 
-		void Orphan(Widget* inWidget, WidgetSlot inSlot = defaultWidgetSlot) override {
+		std::unique_ptr<Widget> Orphan(Widget* inWidget) override {
 			Assert(inWidget);
-
 			for(auto it = m_Children.begin(); it != m_Children.end(); ++it) {
 				if(it->get() == inWidget) {
-					it->release();
+					auto out = std::move(*it);
 					m_Children.erase(it);
-					break;
+					inWidget->OnOrphaned();
+					return out; 
 				}
 			}			
-			inWidget->OnOrphaned();
+			return {};
 		}
 
 		bool DispatchToChildren(IEvent* inEvent) {
@@ -1355,7 +1489,7 @@ namespace UI {
 			outVisibleChildren->reserve(m_Children.size());
 
 			for(auto& child : m_Children) {
-				auto layoutChild = child->Cast<LayoutWidget>();
+				auto layoutChild = child->As<LayoutWidget>();
 
 				if(!layoutChild) {
 					layoutChild = child->FindChildOfClass<LayoutWidget>();
@@ -1380,10 +1514,6 @@ namespace UI {
 			return visitResultContinue;
 		}
 
-		VisitResult VisitChildrenRecursively(const WidgetVisitor& inVisitor) {
-			return VisitChildren(inVisitor, true);
-		}
-
 		bool OnEvent(IEvent* inEvent) override {
 			Assertf(!inEvent->IsA<ChildLayoutEvent>(), 
 					"ChildLayoutEvent is not handled by the MultiChildLayoutWidget subclass. Subclass is {}", GetClassName());
@@ -1400,13 +1530,13 @@ namespace UI {
 				} 
 				return false;
 			} 
-			if(auto* event = inEvent->Cast<DebugLogEvent>()) {
+			if(auto* event = inEvent->As<DebugLogEvent>()) {
 				event->archive->PushObject(GetDebugID(), this, GetParent());
 				DebugSerialize(*event->archive);
 				DispatchToChildren(inEvent);
 				return true;
 			} 
-			// if(auto* drawEvent = inEvent->Cast<DrawEvent>()) {
+			// if(auto* drawEvent = inEvent->As<DrawEvent>()) {
 			// 	drawEvent->drawList->PushTransform(GetOrigin());
 			// 	DispatchToChildren(drawEvent);
 			// 	drawEvent->drawList->PopTransform();
@@ -1461,18 +1591,9 @@ namespace UI {
 	public:
 		static MouseRegionBuilder Build();
 
-		static MouseRegion* New(const MouseRegionConfig& inConfig, Widget* inChild) { 
-			if(inConfig.onMouseHover || inConfig.onMouseEnter) {
-				Assertf(inConfig.onMouseLeave, "OnMouseLeave callback should be set if OnMouseEnter or OnMouseHover is set");
-			}
-			auto* out = new MouseRegion(inConfig); 
-			out->SetChild(inChild);
-			return out;
-		}
-
 		bool OnEvent(IEvent* inEvent) override {
 
-			if(auto* event = inEvent->Cast<HoverEvent>()) {
+			if(auto* event = inEvent->As<HoverEvent>()) {
 				if(event->bHoverEnter) {
 					if(m_Config.onMouseEnter) {
 						m_Config.onMouseEnter();
@@ -1489,7 +1610,7 @@ namespace UI {
 				return m_Config.onMouseEnter || m_Config.onMouseHover;
 			}
 
-			if(auto* e = inEvent->Cast<MouseDragEvent>()) {
+			if(auto* e = inEvent->As<MouseDragEvent>()) {
 				if(m_Config.onMouseDrag) {
 					m_Config.onMouseDrag(*e);
 					return true;
@@ -1497,7 +1618,7 @@ namespace UI {
 				return m_Config.onMouseDrag || m_Config.onMouseButton;
 			}
 
-			if(auto* event = inEvent->Cast<MouseButtonEvent>()) {
+			if(auto* event = inEvent->As<MouseButtonEvent>()) {
 				if(m_Config.onMouseButton) {
 					m_Config.onMouseButton(*event);
 					return true;
@@ -1514,6 +1635,7 @@ namespace UI {
 		MouseRegion(const MouseRegionConfig& inConfig) 
 			: m_Config(inConfig)
 		{}
+		friend class MouseRegionBuilder;
 	
 	private:	
 		MouseRegionConfig m_Config;
@@ -1529,9 +1651,20 @@ namespace UI {
 		MouseRegionBuilder& OnMouseHover(const MouseHoverEventCallback& c) { config.onMouseHover = c; return *this; }
 		MouseRegionBuilder& HandleHoverAlways(bool b = true) { config.bHandleHoverAlways = b; return *this; }
 		MouseRegionBuilder& HandleButtonAlways(bool b = true) { config.bHandleButtonAlways = b; return *this; }
-		MouseRegionBuilder& Child(Widget* inChild) { child.reset(inChild); return *this; }
+		MouseRegionBuilder& Child(std::unique_ptr<Widget>&& inChild) { child = std::move(inChild); return *this; }
 
-		MouseRegion* 		New() { return MouseRegion::New(config, child.release()); }
+		std::unique_ptr<MouseRegion> New() { 
+			Assertf([&]() {
+				if(config.onMouseHover || config.onMouseEnter) {
+					return (bool)config.onMouseLeave;
+				}
+				return true;
+			}(), "OnMouseLeave callback should be set if OnMouseEnter or OnMouseHover is set");
+
+			std::unique_ptr<MouseRegion> out(new MouseRegion(config));
+			out->Parent(std::move(child));
+			return out;
+		}
 
 	private:
 		MouseRegionConfig       config;
@@ -1544,30 +1677,30 @@ namespace UI {
 
 inline void UI::SingleChildWidget::OnParented(Widget* inParent) {
 	Super::OnParented(inParent);
-	LOGF(Verbose, "A widget {} has been parented to {}", GetDebugID(), inParent->GetDebugID());
-	if(!inParent->IsA<LayoutWidget>()) return;
-	auto* layoutChild = FindChildOfClass<LayoutWidget>();
-	// If a layout widget with wrappers is parented
-	// we need to notify the parent to update the layout
-	if(layoutChild) {
-		ChildLayoutEvent e;
-		e.child = layoutChild;
-		e.subtype = ChildLayoutEvent::OnAdded;
-		inParent->OnEvent(&e);
-	}
+	// LOGF(Verbose, "A widget {} has been parented to {}", GetDebugID(), inParent->GetDebugID());
+	// if(!inParent->IsA<LayoutWidget>()) return;
+	// auto* layoutChild = FindChildOfClass<LayoutWidget>();
+	// // If a layout widget with wrappers is parented
+	// // we need to notify the parent to update the layout
+	// if(layoutChild) {
+	// 	ChildLayoutEvent e;
+	// 	e.child = layoutChild;
+	// 	e.subtype = ChildLayoutEvent::OnAdded;
+	// 	inParent->OnEvent(&e);
+	// }
 }
 
 inline void UI::SingleChildWidget::OnOrphaned() {
-	auto  bParentIsLayout = GetParent()->IsA<LayoutWidget>();
-	auto* child = FindChildOfClass<LayoutWidget>();
+	// auto  bParentIsLayout = GetParent()->IsA<LayoutWidget>();
+	// auto* child = FindChildOfClass<LayoutWidget>();
 
-	if(bParentIsLayout && child) {
-		ChildLayoutEvent e;
-		e.child = child;
-		e.size = child->GetSize();
-		e.subtype = ChildLayoutEvent::OnRemoved;
-		GetParent()->OnEvent(&e);
-	}
+	// if(bParentIsLayout && child) {
+	// 	ChildLayoutEvent e;
+	// 	e.child = child;
+	// 	e.size = child->GetSize();
+	// 	e.subtype = ChildLayoutEvent::OnRemoved;
+	// 	GetParent()->OnEvent(&e);
+	// }
 	Super::OnOrphaned();
 }
 
