@@ -26,20 +26,20 @@ public:
 	virtual ~RefCounted() = default;
 
 	void Incref() {
-		m_ReferenceCount.fetch_add(1, std::memory_order::relaxed);
+		referenceCount_.fetch_add(1, std::memory_order::relaxed);
 	}
 
 	void Decref() {
-		const auto count = m_ReferenceCount.fetch_sub(1, std::memory_order::relaxed);
+		const auto count = referenceCount_.fetch_sub(1, std::memory_order::relaxed);
 
 		if(count == 1) {
-			m_Deleter.Delete(this);
+			deleter_.Delete(this);
 		}
 	}
 
 private:
-	Deleter					m_Deleter;
-	std::atomic_uint64_t	m_ReferenceCount;
+	Deleter					deleter_;
+	std::atomic_uint64_t	referenceCount_;
 };
 
 template<class T>
@@ -55,17 +55,17 @@ struct ReferenceCountedPtr {
 	ReferenceCountedPtr& operator= (const ReferenceCountedPtr& right);
 
 	NODISCARD constexpr ref_counted& operator*() const {
-		return *m_RefCounted;
+		return *refCounted_;
 	}
 
 	NODISCARD constexpr ref_counted* operator->() const {
-		return m_RefCounted;
+		return refCounted_;
 	}
 
-	constexpr operator bool() const { return m_RefCounted != nullptr; }
+	constexpr operator bool() const { return refCounted_ != nullptr; }
 
 public:
-	ref_counted* m_RefCounted = nullptr;
+	ref_counted* refCounted_ = nullptr;
 };
 
 namespace IO {
@@ -80,9 +80,9 @@ namespace IO {
 	* Async future
 	*/
 	struct Request: RefCounted<Request> {
-		JobSystem::EventRef		m_CompletedEvent;
-		StatusCode				m_Status;
-		std::vector<u8>			m_Buffer;
+		JobSystem::EventRef		completedEvent_;
+		StatusCode				status_;
+		std::vector<u8>			buffer_;
 	};
 
 	using RequestRef = ReferenceCountedPtr<Request>;

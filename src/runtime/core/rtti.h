@@ -73,36 +73,36 @@ public:
 public:
 
 	ClassTree()
-		: m_ClassList{}
-		, m_Tail(0) {}
+		: classList_{}
+		, tail_(0) {}
 
 	// Called statically before main
 	// Which means call order is unspecified
 	const ClassMeta* RegisterClass(std::string_view inClassName, std::string_view inSuperClassName) {
-		assert(m_Tail < BufferSize);
+		assert(tail_ < BufferSize);
 		ClassMeta* superClassPtr = nullptr;
 
 		if(!inSuperClassName.empty()) {
-			auto superClass = std::ranges::find_if(m_ClassList,
+			auto superClass = std::ranges::find_if(classList_,
 			[&](const ClassMeta& inClass) { return inClass.ClassName == inSuperClassName; });
 
-			if(superClass == m_ClassList.end()) {
+			if(superClass == classList_.end()) {
 				// Precreate superclass for later, when the actual class gets to register, update its super
-				m_ClassList[m_Tail].ClassName = std::string(inSuperClassName);
-				superClass = m_ClassList.begin() + m_Tail;
-				++m_Tail;
+				classList_[tail_].ClassName = std::string(inSuperClassName);
+				superClass = classList_.begin() + tail_;
+				++tail_;
 			}
 			superClassPtr = &*superClass;
 		}
 		// Check if already added as a super previously
-		auto classObject = std::ranges::find_if(m_ClassList,
+		auto classObject = std::ranges::find_if(classList_,
 			[&](const ClassMeta& inClass) { return inClass.ClassName == inClassName; });
 
-		if(classObject == m_ClassList.end()) {
-			m_ClassList[m_Tail].Super = superClassPtr;
-			m_ClassList[m_Tail].ClassName = std::string(inClassName);
-			classObject = m_ClassList.begin() + m_Tail;
-			++m_Tail;
+		if(classObject == classList_.end()) {
+			classList_[tail_].Super = superClassPtr;
+			classList_[tail_].ClassName = std::string(inClassName);
+			classObject = classList_.begin() + tail_;
+			++tail_;
 
 		} else {
 			classObject->Super = superClassPtr;
@@ -122,8 +122,8 @@ public:
 
 private:
 	// Points to sentinel
-	size_t			m_Tail;
-	container_type	m_ClassList;
+	size_t			tail_;
+	container_type	classList_;
 };
 
 /*

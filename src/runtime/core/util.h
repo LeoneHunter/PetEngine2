@@ -236,22 +236,22 @@ namespace util {
 	public:
 
 		StringBuilder(std::string* inBuffer, u32 inIndentSize = 2)
-			: m_Buffer(inBuffer)
-			, m_Indent(0)
-			, m_IndentSize(inIndentSize)
+			: buffer_(inBuffer)
+			, indent_(0)
+			, indentSize_(inIndentSize)
 		{}
 
 		template <typename... ArgTypes>
 		StringBuilder& Line(const std::format_string<ArgTypes...> inFormat, ArgTypes&&... inArgs) {
 			AppendIndent();
-			m_Buffer->append(std::format(inFormat, std::forward<ArgTypes>(inArgs)...));
+			buffer_->append(std::format(inFormat, std::forward<ArgTypes>(inArgs)...));
 			EndLine();
 			return *this;
 		}
 
 		StringBuilder& Line(std::string_view inStr) {
 			AppendIndent();
-			m_Buffer->append(inStr);
+			buffer_->append(inStr);
 			EndLine();
 			return *this;
 		}
@@ -262,38 +262,38 @@ namespace util {
 		}
 
 		StringBuilder& SetIndent(u32 inIndent = 1) {
-			m_Indent = inIndent;
+			indent_ = inIndent;
 			return *this;
 		}
 
 		StringBuilder& PushIndent(u32 inIndent = 1) {
-			m_Indent += inIndent;
+			indent_ += inIndent;
 			return *this;
 		}
 
 		StringBuilder& PopIndent(u32 inIndent = 1) {
-			if(m_Indent) m_Indent -= inIndent;
+			if(indent_) indent_ -= inIndent;
 			return *this;
 		}
 
 		StringBuilder& EndLine() {
-			m_Buffer->append("\n");
+			buffer_->append("\n");
 			return *this;
 		}
 
 	private:
 
 		void AppendIndent() {
-			if(!m_Indent) return;
-			for(auto i = m_Indent * m_IndentSize; i; --i) {
-				m_Buffer->append(" ");
+			if(!indent_) return;
+			for(auto i = indent_ * indentSize_; i; --i) {
+				buffer_->append(" ");
 			}
 		}
 
 	private:
-		u32			 m_IndentSize;
-		u32			 m_Indent;
-		std::string* m_Buffer;
+		u32			 indentSize_;
+		u32			 indent_;
+		std::string* buffer_;
 	};
 
 	inline std::wstring ToWideString(const std::string& inStr) {

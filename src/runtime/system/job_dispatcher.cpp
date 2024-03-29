@@ -25,9 +25,9 @@ constexpr static u32 NOT_AN_INDEX = std::numeric_limits<u32>::max();
 using hFiber = void*;
 
 struct Mutex {
-	u64					m_MutexID;
+	u64					mutexID_;
 	// List of workers blocked, waiting for this mutex
-	std::list<hFiber>	m_BlockedWorkers;
+	std::list<hFiber>	blockedWorkers_;
 };
 
 template<typename ListType>
@@ -38,29 +38,29 @@ public:
 	using node_type = typename ListType::node_type;
 
 	constexpr Iterator()
-		: m_Node() {}
+		: node_() {}
 
 	constexpr Iterator(node_type* inHead)
-		: m_Node(inHead) {}
+		: node_(inHead) {}
 
 	NODISCARD constexpr value_type& operator*() const {
-		return m_Node->Value;
+		return node_->Value;
 	}
 
 	NODISCARD constexpr value_type* operator->() const {
-		return &m_Node->Value;
+		return &node_->Value;
 	}
 
 	constexpr Iterator& operator++() {
-		m_Node = m_Node->Next;
+		node_ = node_->Next;
 		return *this;
 	}
 
 	NODISCARD constexpr bool operator==(const Iterator& right) const {
-		return m_Node == right.m_Node;
+		return node_ == right.node_;
 	}
 
-	node_type* m_Node = nullptr;
+	node_type* node_ = nullptr;
 };
 
 template < class T >
@@ -84,38 +84,38 @@ public:
 public:
 
 	constexpr SynchronizedQueue()
-		: m_Head(nullptr)
-		, m_Tail(nullptr) {}
+		: head_(nullptr)
+		, tail_(nullptr) {}
 
 	~SynchronizedQueue() {
 		for(auto it = begin(); it != end(); ++it) {
-			delete it.m_Node;
+			delete it.node_;
 		}
 	}
 
 	void Push(T inVal) {
-		Spinlock::ScopedLock lock(m_Lock);
-		if(!m_Head) {
-			m_Head = new Node{inVal, nullptr};
-			m_Tail = m_Head;
+		Spinlock::ScopedLock lock(lock_);
+		if(!head_) {
+			head_ = new Node{inVal, nullptr};
+			tail_ = head_;
 		} else {
-			auto* oldTail = m_Tail;
-			m_Tail = new Node{inVal, nullptr};
-			oldTail->Next = m_Tail;
+			auto* oldTail = tail_;
+			tail_ = new Node{inVal, nullptr};
+			oldTail->Next = tail_;
 		}
 	}
 
 	NODISCARD T PopOrDefault(T inDefault) {
-		Spinlock::ScopedLock lock(m_Lock);
-		if(m_Head == nullptr) {
+		Spinlock::ScopedLock lock(lock_);
+		if(head_ == nullptr) {
 			return inDefault;
 		} else {
-			auto* oldHead = m_Head;
-			m_Head = oldHead->Next;
+			auto* oldHead = head_;
+			head_ = oldHead->Next;
 			auto ret = oldHead->Value;
 
-			if(oldHead == m_Tail) {
-				m_Tail = nullptr;
+			if(oldHead == tail_) {
+				tail_ = nullptr;
 			}
 
 			delete oldHead;
@@ -124,12 +124,12 @@ public:
 	}
 
 	NODISCARD constexpr bool Empty() const {
-		Spinlock::ScopedLock lock(m_Lock);
-		return m_Head == nullptr;
+		Spinlock::ScopedLock lock(lock_);
+		return head_ == nullptr;
 	}
 
 	iterator begin() const {
-		return iterator{m_Head};
+		return iterator{head_};
 	}
 
 	iterator end() const {
@@ -137,9 +137,9 @@ public:
 	}
 
 private:
-	mutable Spinlock	m_Lock;
-	Node*				m_Head;
-	Node*				m_Tail;
+	mutable Spinlock	lock_;
+	Node*				head_;
+	Node*				tail_;
 };
 
 
@@ -163,11 +163,11 @@ void WINAPI WorkerFiberProc(Windows::LPVOID inParameter);
 struct FenceObject {
 
 	constexpr FenceObject() = default;
-	constexpr FenceObject(u64 inID): m_ID(inID) {}
-	constexpr explicit operator bool() const { return m_ID != 0; }
+	constexpr FenceObject(u64 inID): iD_(inID) {}
+	constexpr explicit operator bool() const { return iD_ != 0; }
 
-	u64		m_ID = 0;
-	Fiber*	m_WaitingWorkerFiber = nullptr;
+	u64		iD_ = 0;
+	Fiber*	waitingWorkerFiber_ = nullptr;
 };
 
 struct Job {
@@ -179,22 +179,22 @@ struct Job {
 		WaitingOnCounter
 	};
 
-	std::string		m_DebugName;
-	Flags			m_Flags = Flags::None;
-	CallableType	m_JobCallable;
-	hFiber			m_SuspendedFiber = nullptr;
-	JobGroup*		m_ParentGroup = nullptr;
+	std::string		debugName_;
+	Flags			flags_ = Flags::None;
+	CallableType	jobCallable_;
+	hFiber			suspendedFiber_ = nullptr;
+	JobGroup*		parentGroup_ = nullptr;
 };
 
 struct JobGroup {
 	JobGroup() = default;
 
-	std::list<Job>		m_Jobs;
-	std::atomic<u64>	m_Counter;
-	JobGroup*			m_NextGroup = nullptr;
-	u64					m_FenceID = 0;
+	std::list<Job>		jobs_;
+	std::atomic<u64>	counter_;
+	JobGroup*			nextGroup_ = nullptr;
+	u64					fenceID_ = 0;
 
-	EventRef			m_FenceEvent;
+	EventRef			fenceEvent_;
 };
 
 enum class FiberSwitchCode {
@@ -273,7 +273,7 @@ struct Fiber {
 
 			JobContext jobContext;
 
-			auto& job = Job->m_JobCallable;
+			auto& job = Job->jobCallable_;
 			Assert(job && "The job callable is empty");
 
 			job(jobContext);
@@ -329,43 +329,43 @@ public:
 	Dispatcher(u32 inFibersNum) {
 		g_Context = this;
 		// Create fiber pool
-		m_FibersPool.assign(k_FibersNum, Fiber());
+		fibersPool_.assign(k_FibersNum, Fiber());
 
 		for(u32 i = 0; i != k_FibersNum; ++i) {
 			const auto fiberIndex = i;
-			auto& fiber = m_FibersPool[i];
+			auto& fiber = fibersPool_[i];
 
 			Windows::LPVOID hWorkerFiber;
 			hWorkerFiber = Windows::CreateFiber(0, WorkerFiberProc, (Windows::LPVOID)&fiber);
 			Assert(hWorkerFiber != NULL && "Cannot create a fiber");
 
 			fiber.Init(hWorkerFiber, fiberIndex);
-			m_FibersFree.Push(&fiber);
+			fibersFree_.Push(&fiber);
 		}
 
-		m_ReadyJobSemaphore = Windows::CreateSemaphore(0, 1);
-		Assert(m_ReadyJobSemaphore != NULL && "CreateSemaphore error");
+		readyJobSemaphore_ = Windows::CreateSemaphore(0, 1);
+		Assert(readyJobSemaphore_ != NULL && "CreateSemaphore error");
 
 		// Create threads
 		auto WorkerThreadNum = k_ThreadNum ? k_ThreadNum : std::thread::hardware_concurrency();
 
 		for(auto i = 0; i != WorkerThreadNum; ++i) {
-			m_WorkerThreads.emplace_back(MasterFiberProc, std::format("Worker {}", i));
+			workerThreads_.emplace_back(MasterFiberProc, std::format("Worker {}", i));
 		}
 		LOGF(Verbose, "Dispatcher has created {} fibers on {} threads.", k_FibersNum, WorkerThreadNum);
 	}
 
 	~Dispatcher() {
 		LOGF(Verbose, "Dispatcher destructor has been called.");
-		m_Exit.store(true, std::memory_order::relaxed);
+		exit_.store(true, std::memory_order::relaxed);
 		AwakenAll();
 
-		for(auto& thread : g_Context->m_WorkerThreads) {
+		for(auto& thread : g_Context->workerThreads_) {
 			thread.join();
 		}
 
 		for(u32 i = 0; i != k_FibersNum; ++i) {
-			auto& fiber = m_FibersPool[i];
+			auto& fiber = fibersPool_[i];
 			Windows::DeleteFiber(fiber.GetHandle());
 		}
 	}
@@ -373,21 +373,21 @@ public:
 	// If called is a fiber returns it's state
 	Fiber* GetCurrentFiber() {
 		const auto currentFiber = Windows::GetCurrentFiber();
-		auto it = std::ranges::find_if(m_FibersPool, [=](const Fiber& inFiber) { return inFiber.GetHandle() == currentFiber; });
+		auto it = std::ranges::find_if(fibersPool_, [=](const Fiber& inFiber) { return inFiber.GetHandle() == currentFiber; });
 
-		if(it != m_FibersPool.end()) {
+		if(it != fibersPool_.end()) {
 			return &*it;
 		}
 		return nullptr;
 	}
 
 	bool ShouldExit() {
-		return m_Exit.load(std::memory_order::relaxed);
+		return exit_.load(std::memory_order::relaxed);
 	}
 
 	// Get fiber from free list
 	Fiber* GetFreeFiber() {
-		auto* freeFiber = m_FibersFree.PopOrDefault(nullptr);
+		auto* freeFiber = fibersFree_.PopOrDefault(nullptr);
 		Assert(freeFiber && "Out of free fibers!");
 		return freeFiber;
 	}
@@ -395,7 +395,7 @@ public:
 	// Return fiber to free list
 	void ReleaseFiber(Fiber* inFiber) {
 		Assert(inFiber);
-		m_FibersFree.Push(inFiber);
+		fibersFree_.Push(inFiber);
 	}
 
 	// Resumes suspended fiber
@@ -403,51 +403,51 @@ public:
 #if DEBUG
 		// TODO Assert that no other thread uses that fiber
 #endif
-		m_ResumedFibers.Push(inFiber);
+		resumedFibers_.Push(inFiber);
 		AwakenAll();
 	}
 
 	// Puts calling thread to sleep
 	void WaitForJob() {
 		// zero-second time-out interval
-		Windows::WaitForSingleObject(m_ReadyJobSemaphore, 0L);           
+		Windows::WaitForSingleObject(readyJobSemaphore_, 0L);           
 	}
 
 	void AwakenAll() {
 		//// Notify threads that the job is ready
 		Windows::ReleaseSemaphore(
-			m_ReadyJobSemaphore,	// handle to semaphore
+			readyJobSemaphore_,	// handle to semaphore
 			1,						// increase count by one
 			NULL);
 	}
 
 	Job* PollJob() {
-		return m_ReadyJobListSync.PopOrDefault(nullptr);
+		return readyJobListSync_.PopOrDefault(nullptr);
 	}
 
 	Fiber* PopUnlockedFiber() {
-		return m_ResumedFibers.PopOrDefault(nullptr);
+		return resumedFibers_.PopOrDefault(nullptr);
 	}
 
 	// Decrement group counter and manages graphs
 	void OnJobComplete(Job* inJob) {
 		Assert(inJob);
 
-		auto* jobGroup = inJob->m_ParentGroup;
+		auto* jobGroup = inJob->parentGroup_;
 		Assert(jobGroup);
 
-		const auto counter = jobGroup->m_Counter.fetch_sub(1, std::memory_order::relaxed) - 1;
+		const auto counter = jobGroup->counter_.fetch_sub(1, std::memory_order::relaxed) - 1;
 
 		// The fiber called us has executed the last job in the group
 		if(counter == 0) {
-			auto* nextGroup = jobGroup->m_NextGroup;
+			auto* nextGroup = jobGroup->nextGroup_;
 
 			if(nextGroup) {
 				g_Context->EnqueueGroup(nextGroup);
 			}
 
-			if(jobGroup->m_FenceEvent) {
-				jobGroup->m_FenceEvent.Signal();
+			if(jobGroup->fenceEvent_) {
+				jobGroup->fenceEvent_.Signal();
 			}
 			delete jobGroup;
 		}
@@ -455,12 +455,12 @@ public:
 
 	// Enqueue job group for executing
 	void EnqueueGroup(JobGroup* inGroup) {
-		Assert(inGroup && !inGroup->m_Jobs.empty());
+		Assert(inGroup && !inGroup->jobs_.empty());
 
-		for(auto& job : inGroup->m_Jobs) {
+		for(auto& job : inGroup->jobs_) {
 			{
 				OPTICK_EVENT("Releasing a job");
-				g_Context->m_ReadyJobListSync.Push(&job);
+				g_Context->readyJobListSync_.Push(&job);
 				AwakenAll();
 			}
 		}
@@ -468,42 +468,42 @@ public:
 
 	// Creates graph of jobs combined into groups for parallel execution
 	void BuildGraph(const JobSystem::Builder& inBuilder) {
-		Assert(!inBuilder.m_Jobs.empty() && "Submitted graph is empty!");
+		Assert(!inBuilder.jobs_.empty() && "Submitted graph is empty!");
 
-		auto jobIt = inBuilder.m_Jobs.begin();
-		auto fenceIt = inBuilder.m_Fences.begin();
+		auto jobIt = inBuilder.jobs_.begin();
+		auto fenceIt = inBuilder.fences_.begin();
 
 		JobGroup* outGroupPredecessor = nullptr;
 		// First group in the graph
 		JobGroup* outGroupHead = nullptr;
 
-		while(jobIt != inBuilder.m_Jobs.end()) {
-			const auto inGroupCounterID = jobIt->m_GroupCounterID;
+		while(jobIt != inBuilder.jobs_.end()) {
+			const auto inGroupCounterID = jobIt->groupCounterID_;
 			auto* newGroup = new JobGroup();
 			auto& outGroup = *newGroup;
-			auto& outJobs = outGroup.m_Jobs;
+			auto& outJobs = outGroup.jobs_;
 
-			for(; jobIt != inBuilder.m_Jobs.end() && jobIt->m_GroupCounterID == inGroupCounterID; ++jobIt) {
+			for(; jobIt != inBuilder.jobs_.end() && jobIt->groupCounterID_ == inGroupCounterID; ++jobIt) {
 				auto& outJob = outJobs.emplace_back();
-				outJob.m_DebugName = jobIt->m_DebugName;
-				outJob.m_JobCallable = jobIt->m_JobCallable;
-				outJob.m_ParentGroup = &outGroup;
+				outJob.debugName_ = jobIt->debugName_;
+				outJob.jobCallable_ = jobIt->jobCallable_;
+				outJob.parentGroup_ = &outGroup;
 
-				Assert(outJob.m_JobCallable && "Job callable is empty!");
+				Assert(outJob.jobCallable_ && "Job callable is empty!");
 			}
-			outGroup.m_Counter.store(outJobs.size(), std::memory_order::relaxed);
+			outGroup.counter_.store(outJobs.size(), std::memory_order::relaxed);
 
 			if(outGroupPredecessor) {
-				outGroupPredecessor->m_NextGroup = &outGroup;
+				outGroupPredecessor->nextGroup_ = &outGroup;
 			} else {
 				outGroupHead = newGroup;
 			}
 			outGroupPredecessor = &outGroup;
 
-			if(fenceIt != inBuilder.m_Fences.end() && fenceIt->m_PredecessorGroupCounterID == inGroupCounterID) {
+			if(fenceIt != inBuilder.fences_.end() && fenceIt->predecessorGroupCounterID_ == inGroupCounterID) {
 				// User has destroyed the event, so ignore
-				if(fenceIt->m_Event.GetRefCount() != 1) {
-					outGroup.m_FenceEvent = fenceIt->m_Event;
+				if(fenceIt->event_.GetRefCount() != 1) {
+					outGroup.fenceEvent_ = fenceIt->event_;
 				}
 				++fenceIt;
 			}
@@ -514,18 +514,18 @@ public:
 private:
 
 	// Request exit of all threads
-	std::atomic_bool					m_Exit;
+	std::atomic_bool					exit_;
 
-	SynchronizedQueue<Job*>				m_ReadyJobListSync;
-	std::list<std::thread>				m_WorkerThreads;
+	SynchronizedQueue<Job*>				readyJobListSync_;
+	std::list<std::thread>				workerThreads_;
 
 	// Pool of free fibers
-	std::vector<Fiber>					m_FibersPool;
-	SynchronizedQueue<Fiber*>			m_FibersFree;
-	SynchronizedQueue<Fiber*>			m_ResumedFibers;
+	std::vector<Fiber>					fibersPool_;
+	SynchronizedQueue<Fiber*>			fibersFree_;
+	SynchronizedQueue<Fiber*>			resumedFibers_;
 
 	// When there's no awailable work, thread go to sleep and awakened by this object
-	Windows::HANDLE						m_ReadyJobSemaphore;
+	Windows::HANDLE						readyJobSemaphore_;
 };
 
 /*
@@ -536,28 +536,28 @@ private:
 class Event {
 public:
 
-	Event() : m_WaitFiberList(), mb_Signalled(false) {}
+	Event() : waitFiberList_(), mb_Signalled(false) {}
 
 	void Incref() {
-		m_RefCounter.fetch_add(1, std::memory_order::relaxed);
+		refCounter_.fetch_add(1, std::memory_order::relaxed);
 	}
 
 	void Decref() {
-		const auto count = m_RefCounter.fetch_sub(1, std::memory_order::relaxed);
+		const auto count = refCounter_.fetch_sub(1, std::memory_order::relaxed);
 
 		if(count == 1) {
-			Assert(m_WaitFiberList.empty());
+			Assert(waitFiberList_.empty());
 			delete this;
 		}
 	}
 
 	u32 GetRefCount() const {
-		return m_RefCounter.load(std::memory_order::relaxed);
+		return refCounter_.load(std::memory_order::relaxed);
 	}
 
 	void Signal() {
 		{
-			Spinlock::ScopedLock lock(m_Mutex);
+			Spinlock::ScopedLock lock(mutex_);
 
 			if(mb_Signalled) {
 				return;
@@ -568,37 +568,37 @@ public:
 	}
 
 	bool IsSignalled() const {
-		Spinlock::ScopedLock lock(m_Mutex);
+		Spinlock::ScopedLock lock(mutex_);
 		return mb_Signalled;
 	}
 
 	void ResumeFibers() {
-		for(auto fiberit = m_WaitFiberList.begin(); fiberit != m_WaitFiberList.end(); ++fiberit) {
+		for(auto fiberit = waitFiberList_.begin(); fiberit != waitFiberList_.end(); ++fiberit) {
 			g_Context->ResumeFiber(*fiberit);
 		}
-		m_WaitFiberList.clear();
+		waitFiberList_.clear();
 	}
 
 	bool PushWaitingFiber(Fiber* inFiber) {
-		Spinlock::ScopedLock lock(m_Mutex);
+		Spinlock::ScopedLock lock(mutex_);
 
 		if(mb_Signalled) {
 			return false;
 		}
 #if DEBUG 
-		auto it = std::ranges::find(m_WaitFiberList, inFiber);
-		Assert(it == m_WaitFiberList.end() && "This fiber is already waiting");
+		auto it = std::ranges::find(waitFiberList_, inFiber);
+		Assert(it == waitFiberList_.end() && "This fiber is already waiting");
 #endif
-		m_WaitFiberList.push_back(inFiber);
+		waitFiberList_.push_back(inFiber);
 		return true;
 	}
 
 private:
-	mutable Spinlock	m_Mutex;
-	std::list<Fiber*>	m_WaitFiberList;
+	mutable Spinlock	mutex_;
+	std::list<Fiber*>	waitFiberList_;
 	bool				mb_Signalled;
 
-	std::atomic<u32>	m_RefCounter;
+	std::atomic<u32>	refCounter_;
 };
 
 /*
@@ -701,7 +701,7 @@ void MasterFiberProc(std::string_view inThreadDebugName) {
 			fiber->SwitchTo(&context);
 
 			if(context.SwitchCode == FiberSwitchCode::JobComplete) {
-				LOGF(Verbose, "Thread '{}' has completed a job '{}'.", inThreadDebugName, context.Job->m_DebugName);
+				LOGF(Verbose, "Thread '{}' has completed a job '{}'.", inThreadDebugName, context.Job->debugName_);
 				g_Context->OnJobComplete(context.Job);
 				context.Job = nullptr;
 				break;
@@ -759,7 +759,7 @@ void ThisFiber::WaitForEvent(EventRef inEventRef) {
 	if(inEventRef.IsSignalled()) {
 		return;
 	}
-	g_Context->GetCurrentFiber()->WaitForEvent(*inEventRef.m_Event);
+	g_Context->GetCurrentFiber()->WaitForEvent(*inEventRef.event_);
 }
 
 EventRef JobSystem::CreateEvent() {
@@ -769,59 +769,59 @@ EventRef JobSystem::CreateEvent() {
 }
 
 EventRef Builder::PushFence() {
-	Assert(!m_Jobs.empty());
-	auto& fence = m_Fences.emplace_back();
-	++m_GroupCounter;
+	Assert(!jobs_.empty());
+	auto& fence = fences_.emplace_back();
+	++groupCounter_;
 	auto fenceEvent = new Event();
-	fence.m_Event = fenceEvent;
+	fence.event_ = fenceEvent;
 	return EventRef(fenceEvent);
 }
 
 EventRef::EventRef(Event* inEvent)
-	: m_Event(inEvent)
+	: event_(inEvent)
 {
-	if(m_Event) {
-		m_Event->Incref();
+	if(event_) {
+		event_->Incref();
 	}
 }
 
 EventRef::~EventRef() {
-	if(!m_Event) return;
-	m_Event->Decref();	
+	if(!event_) return;
+	event_->Decref();	
 }
 
 void EventRef::Signal() const {
-	Assert(m_Event && "Reference is null");
-	m_Event->Signal();
+	Assert(event_ && "Reference is null");
+	event_->Signal();
 }
 
 EventRef::EventRef(const EventRef& other)
-	: m_Event(other.m_Event) {
-	if(!m_Event) return;
-	m_Event->Incref();
+	: event_(other.event_) {
+	if(!event_) return;
+	event_->Incref();
 }
 
 EventRef& EventRef::operator= (const EventRef& right) {
-	if(!right.m_Event) return *this;
-	if(m_Event) m_Event->Decref();
-	m_Event = right.m_Event;
-	m_Event->Incref();
+	if(!right.event_) return *this;
+	if(event_) event_->Decref();
+	event_ = right.event_;
+	event_->Incref();
 	return *this;
 }
 
 bool EventRef::IsSignalled() const {
-	Assert(m_Event && "Reference is null");
-	return m_Event->IsSignalled();
+	Assert(event_ && "Reference is null");
+	return event_->IsSignalled();
 }
 
 u32 EventRef::GetRefCount() const {
-	Assert(m_Event && "Reference is null");
-	return m_Event->GetRefCount();
+	Assert(event_ && "Reference is null");
+	return event_->GetRefCount();
 }
 
 void EventRef::Reset() {
-	if(m_Event) m_Event->Decref();
-	m_Event = nullptr;
+	if(event_) event_->Decref();
+	event_ = nullptr;
 }
 
 JOBSYSTEM_NAMESPACE_END

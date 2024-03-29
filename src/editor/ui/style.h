@@ -301,16 +301,16 @@ using StyleParameterVariant = std::variant<u32, s32, float>;
 class StyleClass {
 public:
 	StyleClass(StringID inName, const StyleClass* inParent = nullptr)
-		: m_Name(inName)
-		, m_Parent(inParent) {}
+		: name_(inName)
+		, parent_(inParent) {}
 
 	StyleClass(const StyleClass& inStyle)
-		: m_Name(inStyle.m_Name)
-		, m_Parent(inStyle.m_Parent) {
-		m_Styles.reserve(inStyle.m_Styles.size());
+		: name_(inStyle.name_)
+		, parent_(inStyle.parent_) {
+		styles_.reserve(inStyle.styles_.size());
 
-		for(const auto& styleToCopy: inStyle.m_Styles) {
-			m_Styles.emplace_back(styleToCopy->Copy());
+		for(const auto& styleToCopy: inStyle.styles_) {
+			styles_.emplace_back(styleToCopy->Copy());
 		}
 	}
 
@@ -328,7 +328,7 @@ public:
 
 		auto out  = new StyleType(copyStyle);
 		out->name = name;
-		m_Styles.emplace_back(out);
+		styles_.emplace_back(out);
 		return *out;
 	}
 
@@ -336,24 +336,24 @@ public:
 	void AddParameter(std::string_view inName, T inVal) {
 		auto name = StringID(inName.data());
 
-		m_Parameters.emplace_back(StyleParameterVariant(inVal));
+		parameters_.emplace_back(StyleParameterVariant(inVal));
 	}
 
 	template<class StyleType>
 	const StyleType* Find(StringID inName = "") const {
 		const StyleType* out = nullptr;
 
-		for(auto& style: m_Styles) {
+		for(auto& style: styles_) {
 			if(style->IsA<StyleType>() && (inName == style->name || inName.Empty())) {
 				out = style->As<StyleType>();
 				break;
 			}
 		}
 
-		if(!out && m_Parent) {
-			out = m_Parent->Find<StyleType>(inName);
+		if(!out && parent_) {
+			out = parent_->Find<StyleType>(inName);
 		}
-		Assertf(out, "Style class '{}' does not contain a style of type '{}' and name '{}'", *m_Name, StyleType::GetStaticClassName(), inName.String());
+		Assertf(out, "Style class '{}' does not contain a style of type '{}' and name '{}'", *name_, StyleType::GetStaticClassName(), inName.String());
 		return out;
 	}
 
@@ -362,45 +362,45 @@ public:
 	const StyleType* FindOrDefault(StringID inName = "") const {
 		const StyleType* out = nullptr;
 		// If we are the fallback style ignore name selector
-		const auto name = m_Name.Empty() ? m_Name : inName;
+		const auto name = name_.Empty() ? name_ : inName;
 
-		for(auto& style: m_Styles) {
+		for(auto& style: styles_) {
 			if(style->IsA<StyleType>() && (name == style->name || name.Empty())) {
 				out = style->As<StyleType>();
 				break;
 			}
 		}
 
-		if(!out && m_Parent) {
-			out = m_Parent->Find<StyleType>(name);
+		if(!out && parent_) {
+			out = parent_->Find<StyleType>(name);
 		}
 
 		if(!out) {
 			// Return fallback
 			LOGF(Verbose, "Style [{}:{}] not found. Using fallback style.", StyleType::GetStaticClassName(), name);
-			return m_Parent->FindOrDefault<StyleType>();
+			return parent_->FindOrDefault<StyleType>();
 		}
 		return out;
 	}
 
 	// Add styles from other style class overriding existent
 	void Merge(const StyleClass& inStyle) {
-		std::ranges::for_each(inStyle.m_Styles, [this](const std::unique_ptr<Style>& inStyle) {
-			for(auto& style: m_Styles) {
+		std::ranges::for_each(inStyle.styles_, [this](const std::unique_ptr<Style>& inStyle) {
+			for(auto& style: styles_) {
 				if(style->GetClass() == inStyle->GetClass() && (style->name == inStyle->name)) {
 					style.reset(inStyle->Copy());
 					return;
 				}
 			}
-			m_Styles.emplace_back(inStyle->Copy());
+			styles_.emplace_back(inStyle->Copy());
 		});
 	}
 
 public:
-	StringID                            m_Name;
-	const StyleClass*                   m_Parent;
-	std::vector<std::unique_ptr<Style>> m_Styles;
-	std::vector<StyleParameterVariant>  m_Parameters;
+	StringID                            name_;
+	const StyleClass*                   parent_;
+	std::vector<std::unique_ptr<Style>> styles_;
+	std::vector<StyleParameterVariant>  parameters_;
 };
 
 
@@ -415,7 +415,7 @@ public:
 
 	Theme(u8 inDefaultFontSize = kDefaultFontSize) {
 		// Create default fallback styles
-		auto& fallback = m_Styles.emplace("", StyleClass("")).first->second;
+		auto& fallback = styles_.emplace("", StyleClass("")).first->second;
 		fallback.Add<LayoutStyle>();
 		// Purple color
 		fallback.Add<BoxStyle>().FillColor("#FF00EE");
@@ -423,9 +423,9 @@ public:
 		auto& text    = fallback.Add<TextStyle>();
 		text.fontSize = inDefaultFontSize;
 		text.color    = Color::FromHex("#ffffff");
-		m_Fallback    = &fallback;
+		fallback_    = &fallback;
 
-		auto* fontDefault = &*m_Fonts.emplace_back(Font::FromInternal());
+		auto* fontDefault = &*fonts_.emplace_back(Font::FromInternal());
 		fontDefault->RasterizeFace(inDefaultFontSize);
 		text.font = fontDefault;
 	}
@@ -433,27 +433,27 @@ public:
 	// Adds a new style or returns existing
 	StyleClass& Add(std::string_view inStyleName, std::string_view inParentStyle = "") {
 		if(inStyleName.empty())
-			return *m_Fallback;
+			return *fallback_;
 
 		auto              name       = StringID(inStyleName.data());
 		auto              parentName = StringID(inParentStyle.data());
-		const StyleClass* parent     = m_Fallback;
+		const StyleClass* parent     = fallback_;
 
 		if(!parentName.Empty()) {
 			parent = Find(parentName);
 			Assertf(parent, "Cannot find parent style with the name {}", inParentStyle);
 		}
-		auto [it, bExists] = m_Styles.emplace(name, StyleClass(name, parent));
+		auto [it, bExists] = styles_.emplace(name, StyleClass(name, parent));
 		return it->second;
 	}
 
 	// Merges two themes together
 	void Merge(const Theme* inTheme, bool bOverride = true) {
-		for(const auto& [id, style]: inTheme->m_Styles) {
-			auto thisStyleEntry = m_Styles.find(id);
+		for(const auto& [id, style]: inTheme->styles_) {
+			auto thisStyleEntry = styles_.find(id);
 
-			if(thisStyleEntry == m_Styles.end()) {
-				m_Styles.emplace(id, style);
+			if(thisStyleEntry == styles_.end()) {
+				styles_.emplace(id, style);
 
 			} else if(bOverride) {
 				thisStyleEntry->second.Merge(style);
@@ -466,8 +466,8 @@ public:
 	// The caller is responsible for building the atlas for rendering these fonts
 	void RasterizeFonts(std::vector<Font*>* outFonts) {
 		// Load fonts
-		for(auto& [selector, styleClass]: m_Styles) {
-			for(auto& style: styleClass.m_Styles) {
+		for(auto& [selector, styleClass]: styles_) {
+			for(auto& style: styleClass.styles_) {
 				if(auto* textStyle = style->As<TextStyle>()) {
 
 					if(textStyle->font) {
@@ -477,7 +477,7 @@ public:
 
 					} else if(textStyle->filename.empty()) {
 						// If empty set default
-						textStyle->font = m_Fonts.front().get();
+						textStyle->font = fonts_.front().get();
 						textStyle->font->RasterizeFace(textStyle->fontSize);
 						outFonts->push_back(textStyle->font);
 
@@ -486,7 +486,7 @@ public:
 						Assertf(textStyle->font, "Font with filename {} not found", textStyle->filename);
 
 						if(textStyle->font) {
-							m_Fonts.emplace_back(textStyle->font);
+							fonts_.emplace_back(textStyle->font);
 							textStyle->font->RasterizeFace(textStyle->fontSize);
 						}
 					}
@@ -496,22 +496,22 @@ public:
 	}
 
 	// Default internal font. Currently ImGui internal
-	Font* GetDefaultFont() { return m_Fallback->Find<TextStyle>()->font; }
+	Font* GetDefaultFont() { return fallback_->Find<TextStyle>()->font; }
 
 	const StyleClass* Find(StringID inStyleClass) const {
-		auto it = m_Styles.find(inStyleClass);
+		auto it = styles_.find(inStyleClass);
 
-		if(it == m_Styles.end()) {
+		if(it == styles_.end()) {
 			LOGF(Verbose, "Style with the name {} not found. Using fallback style.", inStyleClass);
-			return m_Fallback;
+			return fallback_;
 		}
-		return it != m_Styles.end() ? &it->second : nullptr;
+		return it != styles_.end() ? &it->second : nullptr;
 	}
 
 private:
-	StyleClass*                    m_Fallback;
-	std::map<StringID, StyleClass> m_Styles;
+	StyleClass*                    fallback_;
+	std::map<StringID, StyleClass> styles_;
 	// All fonts used by this theme
-	std::vector<std::unique_ptr<Font>> m_Fonts;
+	std::vector<std::unique_ptr<Font>> fonts_;
 };
 }  // namespace UI

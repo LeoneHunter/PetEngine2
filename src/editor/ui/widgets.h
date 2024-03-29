@@ -43,19 +43,17 @@ class TextBox: public LayoutWidget {
 public:
 	static const inline StringID defaultStyleName{"Text"};
 
-	static std::unique_ptr<TextBox> New(const std::string& inText, StringID inStyle = defaultStyleName) {
-		return std::make_unique<TextBox>(inText, inStyle);
+	static std::unique_ptr<TextBox> New(const std::string& text, StringID style = defaultStyleName) {
+		return std::make_unique<TextBox>(text, style);
 	}
-	TextBox(const std::string& inText, StringID inStyle = defaultStyleName);
+	TextBox(const std::string& text, StringID style = defaultStyleName);
 
-	// TODO: remove because should be changed on rebuild
-	void SetText(const std::string& inText);
-	bool OnEvent(IEvent* inEvent) override;
-	float2 OnLayout(const ParentLayoutEvent& inEvent) override;
+	bool OnEvent(IEvent* event) override;
+	float2 OnLayout(const LayoutConstraints& event) override;
 
 private:
-	const StyleClass* m_Style;
-	std::string       m_Text;
+	const StyleClass* style_;
+	std::string       text_;
 };
 
 
@@ -73,46 +71,32 @@ public:
 
 	static ContainerBuilder Build();
 
-	bool OnEvent(IEvent* inEvent) override {
-		if(auto* layoutEvent = inEvent->As<ParentLayoutEvent>()) {
-			if(HandleParentLayoutEvent(layoutEvent)) {
-				DispatchLayoutToChildren();
-			}
-			return true;
-		}
-
-		if(auto* event = inEvent->As<ChildLayoutEvent>()) {
-			if(HandleChildEvent(event)) {
-				DispatchLayoutToParent();
-			}
-			return true;
-		}
-
-		if(auto* drawEvent = inEvent->As<DrawEvent>()) {
-			drawEvent->canvas->DrawBox(GetRect(), m_Style->FindOrDefault<BoxStyle>(m_BoxStyleName));
-			if(m_bClip) 
+	bool OnEvent(IEvent* event) override {
+		if(auto* drawEvent = event->As<DrawEvent>()) {
+			drawEvent->canvas->DrawBox(GetRect(), style_->FindOrDefault<BoxStyle>(boxStyleName_));
+			if(bClip_) 
 				drawEvent->canvas->ClipRect(GetRect());
 			return true;
 		}
-		return Super::OnEvent(inEvent);
+		return Super::OnEvent(event);
 	}
 
 	// TODO: maybe change on rebuild
 	// Sets style selector for box style used for drawing
-	void SetBoxStyleName(StringID inName) {
-		m_BoxStyleName = inName;
+	void SetBoxStyleName(StringID name) {
+		boxStyleName_ = name;
 	}
 
 protected:
-	Container(StringID inStyleName)
-		: Super(inStyleName, axisModeShrink) 
+	Container(StringID styleName)
+		: Super(styleName, axisModeShrink) 
 	{}
 	friend class ContainerBuilder;
 
 private:
-	bool              m_bClip = false;
-	const StyleClass* m_Style;
-	StringID          m_BoxStyleName;
+	bool              bClip_ = false;
+	const StyleClass* style_;
+	StringID          boxStyleName_;
 };
 
 class ContainerBuilder {
@@ -132,7 +116,7 @@ public:
 		std::unique_ptr<Container> out(new Container(styleClass));
 		out->SetID(id);
 		out->SetSize(size);
-		out->m_bClip = bClipContent;
+		out->bClip_ = bClipContent;
 
 		if(bSizeFixed) {
 			out->SetAxisMode(axisModeFixed);
@@ -143,7 +127,7 @@ public:
 			out->SetFloatLayout(true);
 			out->SetOrigin(pos);
 		} 
-		out->m_Style = Application::Get()->GetTheme()->Find(styleClass);
+		out->style_ = Application::Get()->GetTheme()->Find(styleClass);
 		if(child) {
 			out->Parent(std::move(child));
 		}
@@ -180,8 +164,8 @@ class ButtonEvent: public IEvent {
 	EVENT_CLASS(ButtonEvent, IEvent);
 
 public:
-	ButtonEvent(Button* inSource, MouseButton inBtn, bool bPressed)
-		: source(inSource), button(inBtn), bPressed(bPressed) {}
+	ButtonEvent(Button* source, MouseButton btn, bool bPressed)
+		: source(source), button(btn), bPressed(bPressed) {}
 
 	EventCategory GetCategory() const override { return EventCategory::Callback; }
 
@@ -197,84 +181,84 @@ using ButtonEventFunc = std::function<void(const ButtonEvent&)>;
  * TODO: maybe use composited widgets from MouseRegion and Container instead
  * and use some bindings or notifications
  */
-class Button: public Controller {
-	WIDGET_CLASS(Button, Controller)
+class Button: public SingleChildWidget {
+	WIDGET_CLASS(Button, SingleChildWidget)
 public:
 
 	static ButtonBuilder Build();
 
-	bool OnEvent(IEvent* inEvent) override {
-		if(auto* event = inEvent->As<HoverEvent>()) {
+	bool OnEvent(IEvent* event) override {
+		if(auto* hoverEvent = event->As<HoverEvent>()) {
 			// Change state and style
-			if(event->bHoverEnter) {
-				m_State = State::Hovered;
+			if(hoverEvent->bHoverEnter) {
+				state_ = State::Hovered;
 				FindChildOfClass<Container>()->SetBoxStyleName(State::Hovered);
 
-			} else if(event->bHoverLeave) {
-				m_State = State::Normal;
+			} else if(hoverEvent->bHoverLeave) {
+				state_ = State::Normal;
 				FindChildOfClass<Container>()->SetBoxStyleName(State::Normal);
 			}
 			return true;
 		}
-		if(auto* event = inEvent->As<MouseButtonEvent>()) {
-			if(event->button == MouseButton::ButtonLeft) {
+		if(auto* mouseButtonEvent = event->As<MouseButtonEvent>()) {
+			if(mouseButtonEvent->button == MouseButton::ButtonLeft) {
 				
-				if(event->bPressed) {
-					m_State = State::Pressed;
+				if(mouseButtonEvent->bPressed) {
+					state_ = State::Pressed;
 					FindChildOfClass<Container>()->SetBoxStyleName(State::Pressed);
 
 				} else {
 					auto* container = FindChildOfClass<Container>(); 
 
-					if(container->GetRect().Contains(event->mousePosLocal)) {
-						m_State = State::Hovered;
+					if(container->GetRect().Contains(mouseButtonEvent->mousePosLocal)) {
+						state_ = State::Hovered;
 						container->SetBoxStyleName(State::Hovered);
 					} else {
-						m_State = State::Normal;
+						state_ = State::Normal;
 						container->SetBoxStyleName(State::Normal);
 					}
 				}
-				if(m_EventCallback) {
-					ButtonEvent btnEvent(this, event->button, event->bPressed);
-					m_EventCallback(btnEvent);
+				if(eventCallback_) {
+					ButtonEvent btnEvent(this, mouseButtonEvent->button, mouseButtonEvent->bPressed);
+					eventCallback_(btnEvent);
 				}
 				return true;
 			}
 			return false;
 		}
-		return Super::OnEvent(inEvent);
+		return Super::OnEvent(event);
 	}
 
-	void DebugSerialize(PropertyArchive& inArchive) override {
-		Super::DebugSerialize(inArchive);
-		inArchive.PushProperty("ButtonState", *(StringID)m_State);
+	void DebugSerialize(PropertyArchive& archive) override {
+		Super::DebugSerialize(archive);
+		archive.PushProperty("ButtonState", *(StringID)state_);
 	}
 
 protected:
-	Button(const ButtonEventFunc& inEventCallback)
-		: m_State(State::Normal)
-		, m_EventCallback(inEventCallback) 
+	Button(const ButtonEventFunc& eventCallback)
+		: state_(State::Normal)
+		, eventCallback_(eventCallback) 
 	{}
 	friend class ButtonBuilder;
 
 private:
-	State           m_State;
-	ButtonEventFunc m_EventCallback;
+	State           state_;
+	ButtonEventFunc eventCallback_;
 };
 
 class ButtonBuilder {
 public:
 
-	auto& SizeFixed(float2 inSize) { container.SizeFixed(inSize); return *this; }	
+	auto& SizeFixed(float2 size) { container.SizeFixed(size); return *this; }	
 	auto& SizeExpanded(bool bHorizontal = true, bool bVertical = true) { container.SizeExpanded(); return *this; }	
-	auto& SizeMode(AxisMode inMode) { container.SizeMode(inMode); return *this;  }
-	auto& StyleClass(StringID inStyleName) { styleClass = inStyleName; return *this; }
+	auto& SizeMode(AxisMode mode) { container.SizeMode(mode); return *this;  }
+	auto& StyleClass(StringID styleName) { styleClass = styleName; return *this; }
 	auto& ClipContent(bool bClip) { container.ClipContent(bClip); return *this; }
 	auto& AlignContent(Alignment x, Alignment y) { alignX = x; alignY = y; return *this; }
-	auto& Text(const std::string& inText) { text = inText; return *this; }
-	auto& Tooltip(const std::string& inText) { tooltipText = inText; return *this; }
-	auto& OnPress(const ButtonEventFunc& inCallback) { callback = inCallback; return *this; }
-	auto& Child(std::unique_ptr<Widget>&& inChild) { child = std::move(inChild); return *this; }
+	auto& Text(const std::string& text) { this->text = text; return *this; }
+	auto& Tooltip(const std::string& text) { tooltipText = text; return *this; }
+	auto& OnPress(const ButtonEventFunc& callback) { this->callback = callback; return *this; }
+	auto& Child(std::unique_ptr<Widget>&& child) { this->child = std::move(child); return *this; }
 
 	std::unique_ptr<Button> New(); 
 
@@ -296,65 +280,6 @@ inline ButtonBuilder Button::Build() { return {}; }
 
 
 
-
-
-
-// class WindowBuilder;
-// /*
-//  * A container that could be used as a root widget
-//  * E.g. a background root widget resized to the underlying os window
-//  * Can be customized to add resizing borders, title bar, menu bar (header), status bar (footer), close button
-//  */
-// class Window: public Controller {
-// 	WIDGET_CLASS(Window, Controller)
-// public:
-// 	static WindowBuilder Build();
-
-// 	void Translate(float2 inOffset) {
-// 		FindChildOfClass<LayoutWidget>()->Translate(inOffset);
-// 	}
-
-// 	void Focus() {
-// 		Application::Get()->BringToFront(this);
-// 	}
-// };
-
-// /*
-//  * Helper to configure a window procedurally
-//  */
-// class WindowBuilder {
-// public:
-
-// 	auto& DefaultFloat() { return *this; }
-// 	auto& ID(const std::string& inID) { id = inID; return *this; }
-// 	auto& Style(const std::string& inStyle) { style = inStyle; return *this; }
-// 	auto& Position(Point inPos) { pos = inPos; return *this; }
-// 	auto& Position(float inX, float inY) { pos = {inX, inY}; return *this; }
-// 	auto& Size(float2 inSize) { size = inSize; return *this; }
-// 	auto& Size(float inX, float inY) { size = {inX, inY}; return *this; }
-// 	auto& Title(const std::string& inText) { titleText = inText; return *this; }
-// 	auto& Popup(const PopupBuilderFunc& inBuilder) { popupBuilder = inBuilder; return *this; }
-
-// 	auto& Children(std::vector<Widget*>&& inChildren) { 
-// 		children.insert(children.end(), inChildren.begin(), inChildren.end()); 
-// 		return *this; 
-// 	}
-
-// 	Window* New();
-
-// private:
-// 	std::string                  id;
-// 	StringID                     style = "FloatWindow";
-// 	Point                        pos;
-// 	float2                       size = {100, 100};
-// 	std::string					 titleText = "Window";
-// 	PopupBuilderFunc			 popupBuilder;
-// 	mutable std::vector<Widget*> children;
-// };
-
-// inline WindowBuilder Window::Build() { return {}; }
-
-
 /*-------------------------------------------------------------------------------------------------*/
 //										FLEXIBLE
 /*-------------------------------------------------------------------------------------------------*/
@@ -366,25 +291,25 @@ class Flexible: public SingleChildWidget {
 	DEFINE_CLASS_META(Flexible, SingleChildWidget)
 public:
 
-	static auto New(float inFlexFactor, std::unique_ptr<Widget>&& inChild) {
-		return std::make_unique<Flexible>(inFlexFactor, std::move(inChild));
+	static auto New(float flexFactor, std::unique_ptr<Widget>&& child) {
+		return std::make_unique<Flexible>(flexFactor, std::move(child));
 	}
 
-	Flexible(float inFlexFactor, std::unique_ptr<Widget>&& inWidget) 
+	Flexible(float flexFactor, std::unique_ptr<Widget>&& widget) 
 		: Super("")
-		, m_FlexFactor(inFlexFactor) {
-		Parent(std::move(inWidget));
+		, flexFactor_(flexFactor) {
+		Parent(std::move(widget));
 	}
 
-	void DebugSerialize(PropertyArchive& inArchive) override {
-		Super::DebugSerialize(inArchive);
-		inArchive.PushProperty("FlexFactor", m_FlexFactor);
+	void DebugSerialize(PropertyArchive& archive) override {
+		Super::DebugSerialize(archive);
+		archive.PushProperty("FlexFactor", flexFactor_);
 	}
 
-	float GetFlexFactor() const { return m_FlexFactor; }
+	float GetFlexFactor() const { return flexFactor_; }
 
 private:
-	float m_FlexFactor;
+	float flexFactor_;
 };
 
 
@@ -427,20 +352,19 @@ public:
 
 	static FlexboxBuilder Build();
 
-	float2 OnLayout(const ParentLayoutEvent& inEvent) override;
-	bool OnEvent(IEvent* inEvent) override;
-	void DebugSerialize(PropertyArchive& inArchive) override;
+	float2 OnLayout(const LayoutConstraints& event) override;
+	void DebugSerialize(PropertyArchive& archive) override;
 
-	ContentDirection GetDirection() const { return m_Direction; }
-
-private:
-	void LayOutChildren(const ParentLayoutEvent& inEvent);
+	ContentDirection GetDirection() const { return direction_; }
 
 private:
-	ContentDirection m_Direction;
-	JustifyContent   m_JustifyContent;
-	Alignment        m_Alignment;
-	OverflowPolicy   m_OverflowPolicy;
+	void LayOutChildren(const LayoutConstraints& event);
+
+private:
+	ContentDirection direction_;
+	JustifyContent   justifyContent_;
+	Alignment        alignment_;
+	OverflowPolicy   overflowPolicy_;
 };
 
 DEFINE_ENUM_TOSTRING_2(ContentDirection, Column, Row)
@@ -478,8 +402,8 @@ public:
 	
 	template<typename ...T> 
 		requires (std::derived_from<T, Widget> && ...)
-	FlexboxBuilder& Children(std::unique_ptr<T>&& ... inChild) { 
-		(children.push_back(std::move(inChild)), ...);
+	FlexboxBuilder& Children(std::unique_ptr<T>&& ... child) { 
+		(children.push_back(std::move(child)), ...);
 		return *this; 
 	}
 
@@ -504,9 +428,6 @@ inline FlexboxBuilder Flexbox::Build() { return {}; }
 
 
 
-
-
-
 /*
 * Aligns a child inside the parent if parent is bigger that child
 */
@@ -514,30 +435,30 @@ class Aligned: public SingleChildLayoutWidget {
 	WIDGET_CLASS(Aligned, SingleChildLayoutWidget)
 public:
 
-	static auto New(Alignment inHorizontal, Alignment inVertical, std::unique_ptr<Widget>&& inChild) {
-		return std::make_unique<Aligned>(inHorizontal, inVertical, std::move(inChild));
+	static auto New(Alignment horizontal, Alignment vertical, std::unique_ptr<Widget>&& child) {
+		return std::make_unique<Aligned>(horizontal, vertical, std::move(child));
 	}
 
-	Aligned(Alignment inHorizontal, Alignment inVertical, std::unique_ptr<Widget>&& inWidget) 
+	Aligned(Alignment horizontal, Alignment vertical, std::unique_ptr<Widget>&& widget) 
 		: Super("", axisModeExpand) 
-		, m_Horizontal(inHorizontal)
-		, m_Vertical(inVertical) {
-		Parent(std::move(inWidget));
+		, horizontal_(horizontal)
+		, vertical_(vertical) {
+		Parent(std::move(widget));
 		SetAxisMode(axisModeFixed);
 	}
 
-	float2 OnLayout(const ParentLayoutEvent& inEvent) override {
+	float2 OnLayout(const LayoutConstraints& event) override {
 		auto* parent = FindParentOfClass<LayoutWidget>();
 		auto parentAxisMode = parent ? parent->GetAxisMode() : axisModeExpand;
-		SetOrigin(inEvent.constraints.TL() + GetLayoutStyle()->margins.TL());
+		SetOrigin(event.rect.TL() + GetLayoutStyle()->margins.TL());
 
 		for(auto axis: Axes2D) {
 			if(parentAxisMode[axis] == AxisMode::Expand || parentAxisMode[axis] == AxisMode::Fixed) {
-				SetSize(axis, inEvent.constraints.Size()[axis]);
+				SetSize(axis, event.rect.Size()[axis]);
 			}
 		}
 		if(auto* child = FindChildOfClass<LayoutWidget>()) {
-			const auto childSize = child->OnLayout(inEvent);
+			const auto childSize = child->OnLayout(event);
 			
 			for(auto axis: Axes2D) {
 				if(parentAxisMode[axis] == AxisMode::Shrink) {
@@ -549,59 +470,16 @@ public:
 		return GetOuterSize();
 	}
 
-	// TODO: deprecated
-	bool OnEvent(IEvent* inEvent) override {
-		
-		if(auto* layoutEvent = inEvent->As<ParentLayoutEvent>()) {
-			auto parentAxisMode = layoutEvent->parent->GetAxisMode();
-
-			for(auto axis: Axes2D) {
-				if(parentAxisMode[axis] == AxisMode::Expand) {
-					SetSize(axis, layoutEvent->constraints.Size()[axis]);
-				}
-			}			
-			SetOrigin(layoutEvent->constraints.TL());
-
-			if(auto* child = Super::FindChildOfClass<LayoutWidget>()) {
-				DispatchLayoutToChildren();
-				Align(child);
-			}
-			return true;
-		}
-
-		if(auto* childEvent = inEvent->As<ChildLayoutEvent>()) {
-			auto* parent = FindParentOfClass<LayoutWidget>();
-			auto childOuterSize = childEvent->child->GetOuterSize();
-			
-			if(!parent) {
-				SetSize(childOuterSize);
-				return true;
-			}
-			auto parentAxisMode = parent->GetAxisMode();
-			auto childAxisMode = childEvent->child->GetAxisMode();
-
-			for(auto axis: Axes2D) {
-				if(parentAxisMode[axis] == AxisMode::Shrink) {
-					SetSize(axis, childOuterSize[axis]);
-				}
-			}
-			Align(childEvent->child);
-			DispatchLayoutToParent();
-			return true;
-		}
-		return Super::OnEvent(inEvent);
-	}
-
 private:
 
-	void Align(LayoutWidget* inChild) {
+	void Align(LayoutWidget* child) {
 		const auto innerSize      = GetSize();
-		const auto childMargins   = inChild->GetLayoutStyle()->margins;
-		const auto childOuterSize = inChild->GetSize() + childMargins.Size();
+		const auto childMargins   = child->GetLayoutStyle()->margins;
+		const auto childOuterSize = child->GetSize() + childMargins.Size();
 		Point      childPos;
 
 		for(auto axis: Axes2D) {
-			auto alignment = axis == Axis::Y ? m_Vertical : m_Horizontal;
+			auto alignment = axis == Axis::Y ? vertical_ : horizontal_;
 
 			if(alignment == Alignment::Center) {
 				childPos[axis] = (innerSize[axis] - childOuterSize[axis]) * 0.5f;
@@ -609,88 +487,16 @@ private:
 				childPos[axis] = innerSize[axis] - childOuterSize[axis];
 			}
 		}
-		inChild->SetOrigin(childPos + childMargins.TL());
+		child->SetOrigin(childPos + childMargins.TL());
 	}
 
 private:
-	Alignment m_Horizontal;
-	Alignment m_Vertical;
+	Alignment horizontal_;
+	Alignment vertical_;
 };
 
 
 
-
-
-
-
-
-// /*-------------------------------------------------------------------------------------------------*/
-// //										GUIDELINE
-// /*-------------------------------------------------------------------------------------------------*/
-
-// 	/*
-// 	* A line that can be moved by the user
-// 	* Calls a callback when dragged
-// 	* Moving should be handled externally
-// 	*/
-// 	class Guideline: public LayoutWidget {
-// 		WIDGET_CLASS(Guideline, LayoutWidget)
-// 	public:
-// 		// @param float Delta - a dragged amount in one axis
-// 		using OnDraggedFunc = VoidFunction<MouseDragEvent*>;
-
-// 		Guideline(bool bIsVertical, OnDraggedFunc inCallback, Widget* inParent, WidgetSlot inSlot = defaultWidgetSlot);
-// 		void SetCallback(OnDraggedFunc inCallback) { m_Callback = inCallback; }
-// 		bool OnEvent(IEvent* inEvent) override;
-
-// 	public:
-// 		void DebugSerialize(Debug::PropertyArchive& inArchive) override;
-
-// 	private:
-// 		Axis			m_MainAxis;
-// 		StringID		m_State;
-// 		OnDraggedFunc	m_Callback;
-// 	};
-
-
-// /*-------------------------------------------------------------------------------------------------*/
-// //										SPLITBOX
-// /*-------------------------------------------------------------------------------------------------*/
-
-// 	/*
-// 	* A container that has 3 children: First, Second and Separator
-// 	* The user can drag the Separator to resize First and Second children
-// 	* It's expanded on both axes
-// 	* Children must also be expanded on both axes
-// 	*/
-// 	class SplitBox: public Container {
-// 		DEFINE_CLASS_META(SplitBox, Container)
-// 	public:
-
-// 		constexpr static inline WidgetSlot FirstSlot{1};
-// 		constexpr static inline WidgetSlot SecondSlot{2};
-
-// 		SplitBox(bool bHorizontal, Widget* inParent, WidgetSlot inSlot = defaultWidgetSlot);
-
-// 		bool OnEvent(IEvent* inEvent) override;
-// 		bool DispatchToChildren(IEvent* inEvent) override;
-// 		void DebugSerialize(Debug::PropertyArchive& inArchive) override;
-// 		VisitResult VisitChildren(const WidgetVisitor& inVisitor, bool bRecursive) override;
-
-// 		void OnSeparatorDragged(MouseDragEvent* inDragEvent);
-// 		void SetSplitRatio(float inRatio);
-
-// 	private:
-
-// 		void UpdateLayout();
-
-// 	private:
-// 		std::unique_ptr<Guideline>		m_First;
-// 		std::unique_ptr<Guideline>		m_Second;
-// 		std::unique_ptr<Guideline>		m_Separator;
-// 		Axis							m_MainAxis;
-// 		float							m_SplitRatio;
-// 	};
 class TooltipPortal;
 
 struct TooltipBuildContext {
@@ -704,9 +510,9 @@ using TooltipBuilderFunc = std::function<std::unique_ptr<Widget>(const TooltipBu
  * Builds a simple text tooltip
  */
 struct TextTooltipBuilder {
-	TextTooltipBuilder& Text(const std::string& inText) { text = inText; return *this; }
+	TextTooltipBuilder& Text(const std::string& text) { this->text = text; return *this; }
 	TextTooltipBuilder& ClipText(bool bClip) { bClipText = bClip; return *this; }
-	TextTooltipBuilder& StyleClass(StringID inStyleName) { styleClass = inStyleName; return *this; }
+	TextTooltipBuilder& StyleClass(StringID styleName) { styleClass = styleName; return *this; }
 
 	std::unique_ptr<Widget> New() {
 		return Container::Build()
@@ -730,11 +536,11 @@ class TooltipPortal: public MouseRegion {
 	WIDGET_CLASS(TooltipPortal, MouseRegion)
 public:
 
-	static auto New(const TooltipBuilderFunc& inBuilder, std::unique_ptr<Widget>&& inChild) {
-		return std::make_unique<TooltipPortal>(inBuilder, std::move(inChild));
+	static auto New(const TooltipBuilderFunc& builder, std::unique_ptr<Widget>&& child) {
+		return std::make_unique<TooltipPortal>(builder, std::move(child));
 	}
 
-	TooltipPortal(const TooltipBuilderFunc& inBuilder, std::unique_ptr<Widget>&& inChild)
+	TooltipPortal(const TooltipBuilderFunc& builder, std::unique_ptr<Widget>&& child)
 		: MouseRegion(MouseRegionConfig{
 			.onMouseLeave = [this]() { OnMouseLeave(); },
 			.onMouseHover = [this](const auto& e) { OnMouseHover(e); }, 
@@ -742,8 +548,8 @@ public:
 			.bHandleHoverAlways = true,
 			.bHandleButtonAlways = true}
 		)
-		, m_Builder(inBuilder) {
-		Parent(std::move(inChild));
+		, builder_(builder) {
+		Parent(std::move(child));
 	}
 
 	void DebugSerialize(PropertyArchive& ar) override {
@@ -754,7 +560,7 @@ public:
 	}
 
 private:
-	void OnMouseButton(const MouseButtonEvent& inEvent) {
+	void OnMouseButton(const MouseButtonEvent& event) {
 		CloseTooltip();
 		if(sharedState.timerHandle) {
 			Application::Get()->RemoveTimer(sharedState.timerHandle);
@@ -763,14 +569,14 @@ private:
 		sharedState.bDisabled = true;
 	}
 
-	void OnMouseHover(const HoverEvent& inEvent) {
+	void OnMouseHover(const HoverEvent& event) {
 		constexpr unsigned delayMs = 500;
 
 		// FIXME: doesn't work properly on rebuild
 		const bool bOverlapping = sharedState.portal && sharedState.portal != this;
 		// If this tooltip area covers another tooltip area
 		// For example a tab and a tab close button with different tooltips
-		if(bOverlapping && inEvent.bHoverEnter) {
+		if(bOverlapping && event.bHoverEnter) {
 			// Reset state and close tooltip
 			if(sharedState.timerHandle) {
 				Application::Get()->RemoveTimer(sharedState.timerHandle);
@@ -783,7 +589,7 @@ private:
 		const bool bStateClean = !sharedState.bDisabled && !sharedState.widget && !sharedState.timerHandle;
 
 		if(bStateClean) {
-			const auto timerCallback = [this]() -> bool {
+			const auto timerCallback = [this]()->bool {
 				OpenTooltip();
 				return false;
 			};
@@ -806,7 +612,7 @@ private:
 
 	void OpenTooltip() {
 		auto ctx           = Application::Get()->GetState();
-		auto widget 	   = m_Builder(TooltipBuildContext{ctx.mousePosGlobal, this});
+		auto widget 	   = builder_(TooltipBuildContext{ctx.mousePosGlobal, this});
 		sharedState.widget = widget.get();
 		auto* layout       = LayoutWidget::FindNearest(sharedState.widget);
 		Assertf(layout, "Tooltip widget {} has no LayoutWidget child, so it won't be visible.", sharedState.widget->GetDebugID());
@@ -835,7 +641,7 @@ private:
 	};
 	static inline State sharedState{};
 
-	TooltipBuilderFunc m_Builder;
+	TooltipBuilderFunc builder_;
 };
 
 
@@ -860,70 +666,69 @@ using PopupMenuItemOnPressFunc = std::function<void()>;
 // Created by the user inside the builder callback
 // Owned by PopupState
 class PopupMenuItem: public WidgetState {
-	STATE_CLASS(PopupMenuItem, WidgetState)
+	WIDGET_CLASS(PopupMenuItem, WidgetState)
 public:
-	PopupMenuItem(const std::string&              inText,
-				  const std::string&              inShortcut,
-				  const PopupMenuItemOnPressFunc& inOnPress)
-		: m_Text(inText)
-		, m_Shortcut(inShortcut)
-		, m_OnPress(inOnPress)
-		, m_Parent(nullptr)
-		, m_Index(0)
+	PopupMenuItem(const std::string&              text,
+				  const std::string&              shortcut,
+				  const PopupMenuItemOnPressFunc& onPress)
+		: text_(text)
+		, shortcut_(shortcut)
+		, onPress_(onPress)
+		, parent_(nullptr)
+		, index_(0)
 	{}
 
-	void Bind(PopupState* inParent, u32 inIndex) { m_Parent = inParent; m_Index = inIndex; }
-
+	void Bind(PopupState* parent, u32 index) { parent_ = parent; index_ = index; }
 	std::unique_ptr<Widget> Build() override;
 
 private:
-	std::string              m_Text;
-	std::string              m_Shortcut;
-	PopupMenuItemOnPressFunc m_OnPress;
-	PopupState*              m_Parent;
-	u32 					 m_Index;
+	std::string              text_;
+	std::string              shortcut_;
+	PopupMenuItemOnPressFunc onPress_;
+	PopupState*              parent_;
+	u32 					 index_;
 };
 
 // Opens a submenu
 class PopupSubmenuItem: public WidgetState {
-	STATE_CLASS(PopupSubmenuItem, WidgetState)
+	WIDGET_CLASS(PopupSubmenuItem, WidgetState)
 public:
-	PopupSubmenuItem(const std::string&      inText,
-				     const PopupBuilderFunc& inBuilder)
-		: m_Text(inText)
-		, m_Builder(inBuilder)
-		, m_Parent(nullptr)
-		, m_Index(0)
+	PopupSubmenuItem(const std::string&      text,
+				     const PopupBuilderFunc& builder)
+		: text_(text)
+		, builder_(builder)
+		, parent_(nullptr)
+		, index_(0)
 	{}
 
-	void Bind(PopupState* inParent, u32 inIndex) { m_Parent = inParent; m_Index = inIndex; }
+	void Bind(PopupState* parent, u32 index) { parent_ = parent; index_ = index; }
 	std::unique_ptr<Widget> Build() override;
-	const PopupBuilderFunc& GetBuilder() const { return m_Builder; }
+	const PopupBuilderFunc& GetBuilder() const { return builder_; }
 
 private:
-	std::string      m_Text;
-	PopupState*      m_Parent;
-	u32              m_Index;
-	PopupBuilderFunc m_Builder;
+	std::string      text_;
+	PopupState*      parent_;
+	u32              index_;
+	PopupBuilderFunc builder_;
 };
 
 /*
 * TODO: Add collisions and positioning. Mayve use LayouNotifications and ScreenCollider that uses callbacks
-* Contains and builds a list of user provided menu items in the inBuilder function
+* Contains and builds a list of user provided menu items in the builder function
 * Owner is a PopupPortal or another PopupState of the previous popup
 */
 class PopupState: public WidgetState {
-	STATE_CLASS(PopupState, WidgetState)
+	WIDGET_CLASS(PopupState, WidgetState)
 public:
 
-	PopupState(const PopupBuilderFunc& inBuilder, PopupPortal* inOwner, Point inPos)
-		: m_Portal(inOwner) 
-		, m_Pos(inPos) {
+	PopupState(const PopupBuilderFunc& builder, PopupPortal* owner, Point pos)
+		: portal_(owner) 
+		, pos_(pos) {
 
-		m_Items = inBuilder(PopupOpenContext{});
+		items_ = builder(PopupOpenContext{});
 		u32 index = 0;
 
-		for(auto& item: m_Items) {
+		for(auto& item: items_) {
 			if(auto* i = item->As<PopupMenuItem>()) {
 				i->Bind(this, index);
 			} else if(auto* i = item->As<PopupSubmenuItem>()) {
@@ -935,20 +740,26 @@ public:
 		}
 	}
 
-	PopupState(const PopupBuilderFunc& inBuilder, PopupState* inOwner, Point inPos)
-	 	: PopupState(inBuilder, (PopupPortal*)nullptr, inPos) {
-		m_PreviousPopup = inOwner;
+	PopupState(const PopupBuilderFunc& builder, PopupState* owner, Point pos)
+	 	: PopupState(builder, (PopupPortal*)nullptr, pos) {
+		previousPopup_ = owner;
+	}
+
+	~PopupState() {
+		if(timerHandle_) {
+			Application::Get()->RemoveTimer(timerHandle_);
+		}
 	}
 
 	std::unique_ptr<Widget> Build() override {
 		std::vector<std::unique_ptr<Widget>> out;
 		u32 index = 0;
 
-		for(auto& item: m_Items) {
+		for(auto& item: items_) {
 			out.push_back(StatefulWidget::New(item.get()));
 		}
 		auto body = Container::Build()
-			.PositionFloat(m_Pos)
+			.PositionFloat(pos_)
 			.SizeMode({AxisMode::Fixed, AxisMode::Shrink})
 			.Size(float2{300, 0})
 			.ID("PopupBody")
@@ -961,7 +772,7 @@ public:
 				.New())
 			.New();
 		// Container with the size of the screen to capture all mouse events
-		if(m_PreviousPopup) {
+		if(previousPopup_) {
 			return body;
 		} else {
 			return MouseRegion::Build()
@@ -977,14 +788,28 @@ public:
 		}
 	}
 
-	void OnItemHovered(u32 inItemIndex, bool bEnter) {
-		// TODO: Open submenu here
+	void OnItemHovered(u32 itemIndex, bool bEnter) {
+		constexpr auto timerDelayMs = 500;
+		if(bEnter) {
+			auto timerCallback = [this, index = itemIndex]()->bool {
+				Assert(index < items_.size());		
+				if(auto* item = items_[index]->As<PopupSubmenuItem>()) {
+					OpenSubmenu(*item, index);
+				} else {
+					CloseSubmenu();
+				}
+				return false;
+			};
+			timerHandle_ = Application::Get()->AddTimer(this, timerCallback, timerDelayMs);
+		} else {
+			Application::Get()->RemoveTimer(timerHandle_);
+		}
 	}
 
-	void OnItemPressed(u32 inItemIndex) { 
-		Assert(inItemIndex < m_Items.size());		
-		if(auto* item = m_Items[inItemIndex]->As<PopupSubmenuItem>()) {
-			OpenSubmenu(*item, inItemIndex);
+	void OnItemPressed(u32 itemIndex) { 
+		Assert(itemIndex < items_.size());		
+		if(auto* item = items_[itemIndex]->As<PopupSubmenuItem>()) {
+			OpenSubmenu(*item, itemIndex);
 		} else {
 			Close(); 
 		}
@@ -994,34 +819,35 @@ public:
 
 private:
 
-	void OpenSubmenu(PopupSubmenuItem& inItem, u32 inItemIndex) {
-		if(m_NextPopup && m_NextPopupItemIndex != inItemIndex) {
-			m_NextPopup.reset();
+	void OpenSubmenu(PopupSubmenuItem& item, u32 itemIndex) {
+		if(nextPopup_ && nextPopupItemIndex_ != itemIndex) {
+			nextPopup_.reset();
 		}
-		if(!m_NextPopup) {
-			auto* layoutWidget = inItem.GetWidget()->FindChildOfClass<LayoutWidget>();
+		if(!nextPopup_) {
+			auto* layoutWidget = item.GetWidget()->FindChildOfClass<LayoutWidget>();
 			auto  rectGlobal = layoutWidget->GetRectGlobal();
-			m_NextPopup = std::make_unique<PopupState>(inItem.GetBuilder(), this, rectGlobal.TR());
-			m_NextPopupItemIndex = inItemIndex;
-			Application::Get()->Parent(StatefulWidget::New(m_NextPopup.get()));
+			nextPopup_ = std::make_unique<PopupState>(item.GetBuilder(), this, rectGlobal.TR());
+			nextPopupItemIndex_ = itemIndex;
+			Application::Get()->Parent(StatefulWidget::New(nextPopup_.get()));
 		}
 	}
 
 	void CloseSubmenu() {
-		if(m_NextPopup) {
-			m_NextPopup.reset();
+		if(nextPopup_) {
+			nextPopup_.reset();
 		}
 	}
 
 private:
-	Point 					    m_Pos;
+	TimerHandle  				timerHandle_{};
+	Point 					    pos_;
 	// Either a PopupPortal or another Popup is our owner
-	PopupPortal*                m_Portal = nullptr;
-	PopupState*                 m_PreviousPopup = nullptr;
-	std::unique_ptr<PopupState> m_NextPopup;
-	u32							m_NextPopupItemIndex = 0;
+	PopupPortal*                portal_ = nullptr;
+	PopupState*                 previousPopup_ = nullptr;
+	std::unique_ptr<PopupState> nextPopup_;
+	u32							nextPopupItemIndex_ = 0;
 	// Items provided by the user
-	std::vector<std::unique_ptr<WidgetState>> m_Items;
+	std::vector<std::unique_ptr<WidgetState>> items_;
 };
 
 
@@ -1045,47 +871,47 @@ public:
 
 public:
 
-	static auto New(const PopupBuilderFunc&	inBuilder, std::unique_ptr<Widget>&& inChild) {
-		return std::make_unique<PopupPortal>(inBuilder, std::move(inChild));
+	static auto New(const PopupBuilderFunc&	builder, std::unique_ptr<Widget>&& child) {
+		return std::make_unique<PopupPortal>(builder, std::move(child));
 	}
 
-	PopupPortal(const PopupBuilderFunc&	inBuilder, std::unique_ptr<Widget>&& inChild)
+	PopupPortal(const PopupBuilderFunc&	builder, std::unique_ptr<Widget>&& child)
 		: MouseRegion(MouseRegionConfig{
 			.onMouseButton = [this](const auto& e) { OnMouseButton(e); },
 			.bHandleHoverAlways = true,
 		})
-		, m_Builder(inBuilder) {
-		Parent(std::move(inChild));
+		, builder_(builder) {
+		Parent(std::move(child));
 	}
 	
-	void OnMouseButton(const MouseButtonEvent& inEvent) {
-		if(inEvent.button == MouseButton::ButtonRight && !inEvent.bPressed) {
+	void OnMouseButton(const MouseButtonEvent& event) {
+		if(event.button == MouseButton::ButtonRight && !event.bPressed) {
 			OpenPopup();
 		}
 	}
 	
 	// Can be called by the user to create a popup
 	void OpenPopup() {
-		if(!m_Popup) {
+		if(!popup_) {
 			auto pos = Application::Get()->GetState().mousePosGlobal;
-			m_Popup = std::make_unique<PopupState>(m_Builder, this, pos);
-			Application::Get()->Parent(StatefulWidget::New(m_Popup.get()));
+			popup_ = std::make_unique<PopupState>(builder_, this, pos);
+			Application::Get()->Parent(StatefulWidget::New(popup_.get()));
 		}
 	}
 
 	void ClosePopup() {
-		if(m_Popup) {
-			m_Popup.reset();
+		if(popup_) {
+			popup_.reset();
 		}
 	}
 
-	bool IsOpened() const { return !m_Popup; }
+	bool IsOpened() const { return !popup_; }
 
 private:
 	// The state is owned by us but the stateful widgets that uses this state
 	// is owned by the Application
-	std::unique_ptr<PopupState> m_Popup;
-	PopupBuilderFunc            m_Builder;
+	std::unique_ptr<PopupState> popup_;
+	PopupBuilderFunc            builder_;
 };
 
 
@@ -1095,15 +921,16 @@ private:
 inline std::unique_ptr<UI::Widget> UI::PopupMenuItem::Build() {
 	// TODO: use Container instead of Button and change the style on rebuild
 	return MouseRegion::Build()
-		.OnMouseEnter([this]() { m_Parent->OnItemHovered(m_Index, true); })
-		.OnMouseLeave([this]() { m_Parent->OnItemHovered(m_Index, false); })
+		.OnMouseEnter([this]() { parent_->OnItemHovered(index_, true); })
+		.OnMouseLeave([this]() { parent_->OnItemHovered(index_, false); })
+		.HandleHoverAlways()
 		.Child(Button::Build()
 			.StyleClass("PopupMenuItem") 
 			.SizeMode({AxisMode::Expand, AxisMode::Shrink})
 			.OnPress([this](const ButtonEvent& e) {
 				if(e.button == MouseButton::ButtonLeft && !e.bPressed) {
-					this->m_OnPress();
-					this->m_Parent->OnItemPressed(m_Index); 
+					this->onPress_();
+					this->parent_->OnItemPressed(index_); 
 				}
 			})
 			.Child(Flexbox::Build()
@@ -1111,12 +938,12 @@ inline std::unique_ptr<UI::Widget> UI::PopupMenuItem::Build() {
 				.Children(
 					Flexible::New(7, 
 						Aligned::New(Alignment::Start, Alignment::Start, 
-							TextBox::New(m_Text)
+							TextBox::New(text_)
 						)
 					),
 					Flexible::New(3, 
 						Aligned::New(Alignment::End, Alignment::Start, 
-							TextBox::New(m_Shortcut)
+							TextBox::New(shortcut_)
 						)
 					)
 				)
@@ -1129,14 +956,15 @@ inline std::unique_ptr<UI::Widget> UI::PopupMenuItem::Build() {
 
 inline std::unique_ptr<UI::Widget> UI::PopupSubmenuItem::Build() {
 	return MouseRegion::Build()
-		.OnMouseEnter([this]() { m_Parent->OnItemHovered(m_Index, true); })
-		.OnMouseLeave([this]() { m_Parent->OnItemHovered(m_Index, false); })
+		.OnMouseEnter([this]() { parent_->OnItemHovered(index_, true); })
+		.OnMouseLeave([this]() { parent_->OnItemHovered(index_, false); })
+		.HandleHoverAlways()
 		.Child(Button::Build()
 			.StyleClass("PopupMenuItem") 
 			.SizeMode({AxisMode::Expand, AxisMode::Shrink})
 			.OnPress([this](const ButtonEvent& e) {
 				if(e.button == MouseButton::ButtonLeft && !e.bPressed) {
-					this->m_Parent->OnItemPressed(m_Index); 
+					this->parent_->OnItemPressed(index_); 
 				}
 			})
 			.Child(Flexbox::Build()
@@ -1144,7 +972,7 @@ inline std::unique_ptr<UI::Widget> UI::PopupSubmenuItem::Build() {
 				.Children(
 					Flexible::New(7, 
 						Aligned::New(Alignment::Start, Alignment::Start, 
-							TextBox::New(m_Text)
+							TextBox::New(text_)
 						)
 					),
 					Flexible::New(3, 
@@ -1161,10 +989,10 @@ inline std::unique_ptr<UI::Widget> UI::PopupSubmenuItem::Build() {
 }
 	
 inline void UI::PopupState::Close() { 
-	if(m_Portal) {
-		m_Portal->ClosePopup(); 
-	} else if(m_PreviousPopup) {
-		m_PreviousPopup->Close();
+	if(portal_) {
+		portal_->ClosePopup(); 
+	} else if(previousPopup_) {
+		previousPopup_->Close();
 	} else {
 		Assertm(false, "PopupState has no owner.");
 	}

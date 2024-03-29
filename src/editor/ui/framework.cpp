@@ -50,23 +50,23 @@ public:
 	using TimerHandle = void*;
 
 	struct Timer {
-		WeakPtr<Widget>	Widget;
-		TimerCallback	Callback;
-		u64				PeriodMs;
-		TimePoint		TimePoint;
+		WeakPtr<Object>	object;
+		TimerCallback	callback;
+		u64				periodMs;
+		TimePoint		timePoint;
 	};
 
 public:
 
-	TimerHandle AddTimer(Widget* inWidget, const TimerCallback& inCallback, u64 inPeriodMs) {
-		m_Timers.emplace_back(Timer(inWidget->GetWeakAs<Widget>(), inCallback, inPeriodMs, Now()));
-		return (TimerHandle)&m_Timers.back();
+	TimerHandle AddTimer(Object* object, const TimerCallback& callback, u64 periodMs) {
+		timers_.emplace_back(Timer(object->GetWeak(), callback, periodMs, Now()));
+		return (TimerHandle)&timers_.back();
 	}
 
-	void		RemoveTimer(TimerHandle inHandle) {
-		for(auto it = m_Timers.begin(); it != m_Timers.end(); ++it) {
-			if(&*it == inHandle) {
-				m_Timers.erase(it);
+	void		RemoveTimer(TimerHandle handle) {
+		for(auto it = timers_.begin(); it != timers_.end(); ++it) {
+			if(&*it == handle) {
+				timers_.erase(it);
 				break;
 			}
 		}
@@ -74,24 +74,24 @@ public:
 
 	// Ticks timers and calls callbacks
 	void		Tick() {
-		if(m_Timers.empty()) return;
+		if(timers_.empty()) return;
 
 		const auto now = Now();
 		std::vector<std::list<Timer>::const_iterator> pendingDelete;
 
-		for(auto it = m_Timers.begin(); it != m_Timers.end(); ++it) {
+		for(auto it = timers_.begin(); it != timers_.end(); ++it) {
 			auto& timer = *it;
 
-			if(!timer.Widget) {
+			if(!timer.object) {
 				pendingDelete.push_back(it);
 				continue;
 			}
 
-			if(DurationMs(timer.TimePoint, now) >= timer.PeriodMs) {
-				const auto bContinue = timer.Callback();
+			if(DurationMs(timer.timePoint, now) >= timer.periodMs) {
+				const auto bContinue = timer.callback();
 
 				if(bContinue) {
-					timer.TimePoint = now;
+					timer.timePoint = now;
 				} else {
 					pendingDelete.push_back(it);
 				}
@@ -99,11 +99,11 @@ public:
 		}
 
 		for(auto& it : pendingDelete) {
-			m_Timers.erase(it);
+			timers_.erase(it);
 		}
 	}
 
-	size_t		Size() const { return m_Timers.size(); }
+	size_t Size() const { return timers_.size(); }
 
 private:
 
@@ -116,7 +116,7 @@ private:
 	TimePoint Now() { return std::chrono::high_resolution_clock::now(); }
 
 private:
-	std::list<Timer> m_Timers;
+	std::list<Timer> timers_;
 };
 
 
@@ -131,124 +131,124 @@ class VerticalTextDrawer {
 	constexpr static inline auto indent = 15.f;
 public:
 
-	VerticalTextDrawer(DrawList* inDrawList, Point inCursor, Color inColor)
-		: m_DrawList(inDrawList)
-		, m_Cursor(inCursor)
-		, m_Color(inColor)
-		, m_Indent(0) {}
+	VerticalTextDrawer(DrawList* drawList, Point cursor, Color color)
+		: drawList_(drawList)
+		, cursor_(cursor)
+		, color_(color)
+		, indent_(0) {}
 
-	void DrawText(const std::string& inText) {
-		m_DrawList->DrawText(m_Cursor + float2(m_Indent, 0.f), m_Color, inText);
-		m_Cursor += cursorOffset;
+	void DrawText(const std::string& text) {
+		drawList_->DrawText(cursor_ + float2(indent_, 0.f), color_, text);
+		cursor_ += cursorOffset;
 	}
 
-	void DrawText(std::string_view inText) {
-		m_DrawList->DrawText(m_Cursor + float2(m_Indent, 0.f), m_Color, inText.data());
-		m_Cursor += cursorOffset;
+	void DrawText(std::string_view text) {
+		drawList_->DrawText(cursor_ + float2(indent_, 0.f), color_, text.data());
+		cursor_ += cursorOffset;
 	}
 
-	void DrawText(const char* inText) {
-		m_DrawList->DrawText(m_Cursor + float2(m_Indent, 0.f), m_Color, inText);
-		m_Cursor += cursorOffset;
+	void DrawText(const char* text) {
+		drawList_->DrawText(cursor_ + float2(indent_, 0.f), color_, text);
+		cursor_ += cursorOffset;
 	}
 
 	template<typename ...ArgTypes>
-	void DrawTextF(const std::format_string<ArgTypes...> inFormat, ArgTypes... inArgs) {
-		m_DrawList->DrawText(m_Cursor + float2(m_Indent, 0.f), m_Color, std::format(inFormat, std::forward<ArgTypes>(inArgs)...));
-		m_Cursor += cursorOffset;
+	void DrawTextF(const std::format_string<ArgTypes...> format, ArgTypes... args) {
+		drawList_->DrawText(cursor_ + float2(indent_, 0.f), color_, std::format(format, std::forward<ArgTypes>(args)...));
+		cursor_ += cursorOffset;
 	}
 
-	void PushIndent() { m_Indent += indent; }
-	void PopIndent() { m_Indent -= indent; }
+	void PushIndent() { indent_ += indent; }
+	void PopIndent() { indent_ -= indent; }
 
 private:
-	Point		m_Cursor;
-	DrawList*   m_DrawList;
-	Color		m_Color;
-	float		m_Indent;
+	Point		cursor_;
+	DrawList*   drawList_;
+	Color		color_;
+	float		indent_;
 };
 
 
 
 class CanvasImpl final: public Canvas {
 public:
-	CanvasImpl(DrawList* inDrawList)
-		: drawList(inDrawList) {}
+	CanvasImpl(DrawList* drawList)
+		: drawList(drawList) {}
 
-	void DrawBox(Rect inRect, const BoxStyle* inStyle) override {
-		if(inStyle->opacity == 0.f) return;
-		inRect = Transform(inRect);
+	void DrawBox(Rect rect, const BoxStyle* style) override {
+		if(style->opacity == 0.f) return;
+		rect = Transform(rect);
 		Rect backgroundRect;
 		Rect borderRect;
 
-		if(inStyle->borderAsOutline) {
-			backgroundRect = inRect;
-			borderRect = Rect(backgroundRect).Expand(inStyle->borders);
+		if(style->borderAsOutline) {
+			backgroundRect = rect;
+			borderRect = Rect(backgroundRect).Expand(style->borders);
 		} else {
-			borderRect = inRect;
-			backgroundRect = Rect(inRect).Expand(
-				(float)-inStyle->borders.Top,
-				(float)-inStyle->borders.Right,
-				(float)-inStyle->borders.Bottom,
-				(float)-inStyle->borders.Left);
+			borderRect = rect;
+			backgroundRect = Rect(rect).Expand(
+				(float)-style->borders.Top,
+				(float)-style->borders.Right,
+				(float)-style->borders.Bottom,
+				(float)-style->borders.Left);
 		}
 
-		auto borderColor = ColorFloat4(inStyle->borderColor);
-		auto backgroundColor = ColorFloat4(inStyle->backgroundColor);
+		auto borderColor = ColorFloat4(style->borderColor);
+		auto backgroundColor = ColorFloat4(style->backgroundColor);
 
-		borderColor.a *= inStyle->opacity;
-		backgroundColor.a *= inStyle->opacity;
+		borderColor.a *= style->opacity;
+		backgroundColor.a *= style->opacity;
 
-		if(inStyle->borders.Left || inStyle->borders.Right || inStyle->borders.Top || inStyle->borders.Bottom) {
+		if(style->borders.Left || style->borders.Right || style->borders.Top || style->borders.Bottom) {
 
 			if(backgroundColor.a != 1.f) {
-				drawList->DrawRect(borderRect, ColorU32(borderColor), inStyle->rounding, (DrawList::Corner)inStyle->roundingMask);
+				drawList->DrawRect(borderRect, ColorU32(borderColor), style->rounding, (DrawList::Corner)style->roundingMask);
 			} else {
-				drawList->DrawRectFilled(borderRect, ColorU32(borderColor), inStyle->rounding, (DrawList::Corner)inStyle->roundingMask);
+				drawList->DrawRectFilled(borderRect, ColorU32(borderColor), style->rounding, (DrawList::Corner)style->roundingMask);
 			}
 		}
 
-		drawList->DrawRectFilled(backgroundRect, ColorU32(backgroundColor), inStyle->rounding, (DrawList::Corner)inStyle->roundingMask);
+		drawList->DrawRectFilled(backgroundRect, ColorU32(backgroundColor), style->rounding, (DrawList::Corner)style->roundingMask);
 	}
 
-	void DrawRect(Rect inRect, Color inColor, bool bFilled = true) override {
-		inRect = Transform(inRect);
+	void DrawRect(Rect rect, Color color, bool bFilled = true) override {
+		rect = Transform(rect);
 		if(bFilled) {
-			drawList->DrawRectFilled(inRect, ColorU32(inColor));
+			drawList->DrawRectFilled(rect, ColorU32(color));
 		} else {
-			drawList->DrawRect(inRect, ColorU32(inColor));
+			drawList->DrawRect(rect, ColorU32(color));
 		}
 	}
 
-	void DrawText(Point inOrigin, const TextStyle* inStyle, std::string_view inTextView) override {
-		inOrigin = Transform(inOrigin);
-		drawList->DrawText(inOrigin, inStyle->color, inTextView, inStyle->fontSize, inStyle->fontWeightBold, inStyle->fontStyleItalic);
+	void DrawText(Point origin, const TextStyle* style, std::string_view textView) override {
+		origin = Transform(origin);
+		drawList->DrawText(origin, style->color, textView, style->fontSize, style->fontWeightBold, style->fontStyleItalic);
 	}
 
-	void ClipRect(Rect inClipRect) override {
+	void ClipRect(Rect clipRect) override {
 		if(!context.clipRect.Empty()) {
 			drawList->PopClipRect();
 		}	
-		inClipRect = Transform(inClipRect);
-		context.clipRect = inClipRect;
-		drawList->PushClipRect(inClipRect);
+		clipRect = Transform(clipRect);
+		context.clipRect = clipRect;
+		drawList->PushClipRect(clipRect);
 	}
 
-	void DrawClipRect(bool bFilled, Color inColor) {
+	void DrawClipRect(bool bFilled, Color color) {
 		if(!context.clipRect.Empty()) {
 			drawList->PopClipRect();
 
 			if(bFilled) {
-				drawList->DrawRectFilled(context.clipRect, inColor);
+				drawList->DrawRectFilled(context.clipRect, color);
 			} else {
-				drawList->DrawRect(context.clipRect, inColor);
+				drawList->DrawRect(context.clipRect, color);
 			}
 			drawList->PushClipRect(context.clipRect);
 		}
 	}
 
-	void PushTransform(float2 inTransform) {
-		context.transform = inTransform;
+	void PushTransform(float2 transform) {
+		context.transform = transform;
 	}
 
 	void SaveContext() {
@@ -268,12 +268,12 @@ public:
 		contextStack.pop_back();
 	}
 
-	Point Transform(Point inPoint) {
-		return inPoint + cummulativeTransform + context.transform;
+	Point Transform(Point point) {
+		return point + cummulativeTransform + context.transform;
 	}
 
-	Rect Transform(Rect inRect) {
-		return Rect(inRect).Translate(cummulativeTransform + context.transform);
+	Rect Transform(Rect rect) {
+		return Rect(rect).Translate(cummulativeTransform + context.transform);
 	}
 
 private:
@@ -299,8 +299,8 @@ public:
 		stack.reserve(10);
 	}
 
-	void Push(Widget* inItem) {
-		stack.push_back(inItem->GetWeak());
+	void Push(Widget* item) {
+		stack.push_back(item->GetWeak());
 	}
 
 	void ForEach(const std::function<void(Widget*)>& fn) {
@@ -310,18 +310,18 @@ public:
 		}
 	}
 
-	constexpr void Remove(Widget* inItem) {
+	constexpr void Remove(Widget* item) {
 		for(auto it = stack.begin(); it != stack.end(); ++it) {
-			if(*it == inItem) {
+			if(*it == item) {
 				stack.erase(it);
 				break;
 			}
 		}
 	}
 
-	constexpr bool Contains(Widget* inItem) {
+	constexpr bool Contains(Widget* item) {
 		for(auto it = stack.begin(); it != stack.end(); ++it) {
-			if(*it == inItem) {
+			if(*it == item) {
 				return true;
 			}
 		}
@@ -374,16 +374,16 @@ public:
 			.StyleClass(names::debugOverlayWindowID)
 			.ClipContent(true)
 			.PositionFloat({5, 5})
-			.Child(TextBox::New(text))
+			.Child(TextBox::New(text_))
 			.New();
 	}
 
-	void SetText(const std::string& inText) {
-		text = inText;
+	void SetText(const std::string& text) {
+		text_ = text;
 		MarkNeedsRebuild();
 	}
 
-	std::string text;
+	std::string text_;
 };
 
 
@@ -402,50 +402,49 @@ public:
 		g_Renderer = CreateRendererDX12();
 		g_Renderer->Init(g_OSWindow);
 
-		m_Theme.reset(new Theme());
+		theme_.reset(new Theme());
 
-		auto& debugOverlayStyle = m_Theme->Add(names::debugOverlayWindowID);
+		auto& debugOverlayStyle = theme_->Add(names::debugOverlayWindowID);
 		debugOverlayStyle.Add<LayoutStyle>().Margins(5, 5).Paddings(5, 5);
 		debugOverlayStyle.Add<BoxStyle>().FillColor("#454545dd").Rounding(4);
 
 		RebuildFonts();
-		m_DebugOverlay = std::make_unique<DebugOverlayWindow>();
-		Parent(StatefulWidget::New(m_DebugOverlay.get()), Layer::Overlay);
+		debugOverlay_ = std::make_unique<DebugOverlayWindow>();
+		Parent(StatefulWidget::New(debugOverlay_.get()), Layer::Overlay);
 
 		g_OSWindow->SetOnCursorMoveCallback([](float x, float y) { g_Application->DispatchMouseMoveEvent({x, y}); });
-		g_OSWindow->SetOnMouseButtonCallback([](KeyCode inButton, bool bPressed) { g_Application->DispatchMouseButtonEvent(inButton, bPressed); });
-		g_OSWindow->SetOnMouseScrollCallback([](float inScroll) { g_Application->DispatchMouseScrollEvent(inScroll); });
-		g_OSWindow->SetOnWindowResizedCallback([](float2 inWindowSize) { g_Application->DispatchOSWindowResizeEvent(inWindowSize); });
-		g_OSWindow->SetOnKeyboardButtonCallback([](KeyCode inButton, bool bPressed) { g_Application->DispatchKeyEvent(inButton, bPressed); });
-		g_OSWindow->SetOnCharInputCallback([](wchar_t inCharacter) { g_Application->DispatchCharInputEvent(inCharacter); });
+		g_OSWindow->SetOnMouseButtonCallback([](KeyCode button, bool bPressed) { g_Application->DispatchMouseButtonEvent(button, bPressed); });
+		g_OSWindow->SetOnMouseScrollCallback([](float scroll) { g_Application->DispatchMouseScrollEvent(scroll); });
+		g_OSWindow->SetOnWindowResizedCallback([](float2 windowSize) { g_Application->DispatchOSWindowResizeEvent(windowSize); });
+		g_OSWindow->SetOnKeyboardButtonCallback([](KeyCode button, bool bPressed) { g_Application->DispatchKeyEvent(button, bPressed); });
+		g_OSWindow->SetOnCharInputCallback([](wchar_t character) { g_Application->DispatchCharInputEvent(character); });
 
 		DispatchOSWindowResizeEvent(g_OSWindow->GetSize());
 	}
 
-	void DispatchMouseMoveEvent(Point inMousePosGlobal) {
-		const auto mousePosGlobal = inMousePosGlobal;
-		const auto mouseDelta = mousePosGlobal - m_MousePosGlobal;
-		m_MousePosGlobal = mousePosGlobal;
+	void DispatchMouseMoveEvent(Point mousePosGlobal) {
+		const auto mouseDelta = mousePosGlobal - mousePosGlobal_;
+		mousePosGlobal_ = mousePosGlobal;
 
 		MouseDragEvent mouseMoveEvent;
-		mouseMoveEvent.mousePosOnCaptureLocal = m_MousePosOnCaptureGlobal;
+		mouseMoveEvent.mousePosOnCaptureLocal = mousePosOnCaptureGlobal_;
 		mouseMoveEvent.mousePosLocal = mousePosGlobal;
 		mouseMoveEvent.mouseDelta = mouseDelta;
-		mouseMoveEvent.mouseButtonsPressedBitField = m_MouseButtonsPressedBitField;
+		mouseMoveEvent.mouseButtonsPressedBitField = mouseButtonsPressedBitField_;
 
 		if(mousePosGlobal == NOPOINT) {
 			auto e = HoverEvent::LeaveEvent();
-			m_HoveredWidgets.ForEach([&](Widget* inWidget) {
-				inWidget->OnEvent(&e);
+			hoveredWidgets_.ForEach([&](Widget* widget) {
+				widget->OnEvent(&e);
 			});
 			return;
 		} 
 		
-		if(!m_CapturingWidgets.Empty()) {
-			m_CapturingWidgets.ForEach([&](Widget* w) {
-				const auto mouseDeltaFromInitial = mousePosGlobal - m_MousePosOnCaptureGlobal;
+		if(!capturingWidgets_.Empty()) {
+			capturingWidgets_.ForEach([&](Widget* w) {
+				const auto mouseDeltaFromInitial = mousePosGlobal - mousePosOnCaptureGlobal_;
 				// Convert global to local using hit test data
-				const auto* parentHitData = m_LastHitStack.Find(w->FindParentOfClass<LayoutWidget>());
+				const auto* parentHitData = lastHitStack_.Find(w->FindParentOfClass<LayoutWidget>());
 				const auto  mousePosLocal = parentHitData
 					? parentHitData->hitPosLocal + mouseDeltaFromInitial
 					: mousePosGlobal;
@@ -464,10 +463,10 @@ public:
 		HitTestEvent	hitTest;
 		auto&			hitStack = hitTest.hitStack;
 		hitTest.hitPosGlobal = mousePosGlobal;
-		m_HoveredWindow = nullptr;
+		hoveredWindow_ = nullptr;
 		bool bHasPopups = false;
 
-		for(auto it = m_WidgetStack.rbegin(); it != m_WidgetStack.rend(); ++it) {
+		for(auto it = widgetStack_.rbegin(); it != widgetStack_.rend(); ++it) {
 			auto& [widget, layer] = *it;
 
 			if(layer == Layer::Overlay) {
@@ -484,12 +483,36 @@ public:
 			}
 			if(bHovered) {
 				hoveredWindow = widget.get();
-				m_HoveredWindow = hoveredWindow->GetWeak();		
+				hoveredWindow_ = hoveredWindow->GetWeak();		
 				break;
 			}
 		}
-		WidgetList prevHovered = m_HoveredWidgets;
+		WidgetList prevHovered = hoveredWidgets_;
 		WidgetList newHovered;
+
+		// Dispatch leave events first so that event timeline is consistent for widgets
+		// I.e. if some widget receives a hover enter event it will reveive a hover leave before it's neigboor receives enter
+		{
+			std::vector<Widget*> hoveredWidgets;
+			for(Widget* widget = hitStack.TopWidget(); 
+				widget; 
+				widget = widget->GetParent()) { 
+				hoveredWidgets.push_back(widget);
+			}
+			auto e = HoverEvent::LeaveEvent();
+			std::vector<Widget*> noLongerHoveredWidgets;
+
+			prevHovered.ForEach([&](Widget* widget) {
+				auto contains = std::ranges::find(hoveredWidgets, widget) != hoveredWidgets.end();
+				if(!contains) {
+					widget->OnEvent(&e);
+					noLongerHoveredWidgets.push_back(widget);
+				}
+			});
+			for(auto& w: noLongerHoveredWidgets) {
+				prevHovered.Remove(w);
+			}
+		}
 
 		// Dispatch mouse enter events
 		if(!hitStack.Empty()) {
@@ -510,6 +533,7 @@ public:
 
 				if(widget->OnEvent(&e)) {
 					newHovered.Push(widget);
+					++e.depth;
 
 					if(bPrevHovered)
 						prevHovered.Remove(widget);
@@ -519,53 +543,45 @@ public:
 				}
 			}
 		}
-		// Dispatch leave events to the widgets left in the prevHovered list
-		// These items have not been transfered to the new list wich means they're no longer hovered
-		auto e = HoverEvent::LeaveEvent();
-
-		prevHovered.ForEach([&](Widget* inWidget) {
-			inWidget->OnEvent(&e);
-		});
-		
-		m_HoveredWidgets = newHovered;
-		m_LastHitStack = hitStack;
+		hoveredWidgets_ = newHovered;
+		lastHitStack_ = hitStack;
 	}
 
-	Point GetLocalPosForWidget(Widget* inWidget) {
-		auto out = m_MousePosGlobal;
+	Point GetLocalPosForWidget(Widget* widget) {
+		auto out = mousePosGlobal_;
 		
-		if(auto* layoutParent = inWidget->FindParentOfClass<LayoutWidget>()) {
-			if(auto* hitData = m_LastHitStack.Find(layoutParent)) {
+		if(auto* layoutParent = widget->FindParentOfClass<LayoutWidget>()) {
+			if(auto* hitData = lastHitStack_.Find(layoutParent)) {
 				out = hitData->hitPosLocal;
 			}
 		}
 		return out;
 	}
 
-	void DispatchMouseButtonEvent(KeyCode inButton, bool bPressed) {
+	void DispatchMouseButtonEvent(KeyCode button, bool bPressed) {
 
-		bPressed ? ++m_MouseButtonHeldNum : --m_MouseButtonHeldNum;
-		bPressed ? m_MouseButtonsPressedBitField |= (MouseButtonMask)inButton
-			: m_MouseButtonsPressedBitField &= ~(MouseButtonMask)inButton;
+		bPressed ? ++mouseButtonHeldNum_ : --mouseButtonHeldNum_;
+		bPressed ? mouseButtonsPressedBitField_ |= (MouseButtonMask)button
+			: mouseButtonsPressedBitField_ &= ~(MouseButtonMask)button;
 
   		// When pressed first time from default
-		if(bPressed && m_MouseButtonHeldNum == 1) {
-			m_PressedMouseButton = (MouseButton)inButton;
+		if(bPressed && mouseButtonHeldNum_ == 1) {
+			pressedMouseButton_ = (MouseButton)button;
 
 			MouseButtonEvent event;
-			event.mousePosGlobal = m_MousePosGlobal;
-			event.mousePosLocal = m_MousePosGlobal;
+			event.mousePosGlobal = mousePosGlobal_;
+			event.mousePosLocal = mousePosGlobal_;
 			event.bPressed = bPressed;
-			event.button = (MouseButton)inButton;
+			event.button = (MouseButton)button;
 			bool bHandled = false;
 
-			for(auto it = m_LastHitStack.begin(); it != m_LastHitStack.end(); ++it) {
+			for(auto it = lastHitStack_.begin(); it != lastHitStack_.end(); ++it) {
 				auto& [layoutWidget, pos] = *it;
 				// In case widget has been deleted between events
 				if(!layoutWidget) continue;
-				event.mousePosLocal = m_MousePosGlobal;
+				event.mousePosLocal = mousePosGlobal_;
 
-				if(auto parentIt = it + 1; parentIt != m_LastHitStack.end()) {
+				if(auto parentIt = it + 1; parentIt != lastHitStack_.end()) {
 					event.mousePosLocal = parentIt->hitPosLocal;
 				}
 				auto widget = layoutWidget->GetWeakAs<Widget>();
@@ -582,11 +598,11 @@ public:
 						if(widget->OnEvent(&event)) {
 							// Widget could be deleted on this event
 							if(!widget) break;
-							m_CapturingWidgets.Push(widget.Get());
+							capturingWidgets_.Push(widget.Get());
 							
 							if(!bHandled && !bAlways) {
 								bHandled = true;
-								m_MousePosOnCaptureGlobal = m_MousePosGlobal;
+								mousePosOnCaptureGlobal_ = mousePosGlobal_;
 							}
 						}
 					}
@@ -598,120 +614,119 @@ public:
 			return;
 		}
 
-		if(!m_CapturingWidgets.Empty() && !bPressed && (MouseButton)inButton == m_PressedMouseButton) {
+		if(!capturingWidgets_.Empty() && !bPressed && (MouseButton)button == pressedMouseButton_) {
 			MouseButtonEvent e;
 			e.bPressed = bPressed;
-			e.button = (MouseButton)inButton;
-			e.mousePosGlobal = m_MousePosGlobal;
-			e.mousePosLocal = m_MousePosGlobal;
+			e.button = (MouseButton)button;
+			e.mousePosGlobal = mousePosGlobal_;
+			e.mousePosLocal = mousePosGlobal_;
 
-			m_CapturingWidgets.ForEach([&](Widget* w) {
+			capturingWidgets_.ForEach([&](Widget* w) {
 				if(!w) return;
 				e.mousePosLocal = GetLocalPosForWidget(w);
 				w->OnEvent(&e);
 			});
-			m_CapturingWidgets.Clear();
-			m_MousePosOnCaptureGlobal = NOPOINT;
-			m_PressedMouseButton = MouseButton::None;
+			capturingWidgets_.Clear();
+			mousePosOnCaptureGlobal_ = NOPOINT;
+			pressedMouseButton_ = MouseButton::None;
 		}
 	}
 
-	void	DispatchKeyEvent(KeyCode inButton, bool bPressed) {
+	void DispatchKeyEvent(KeyCode button, bool bPressed) {
 
-		if(inButton == KeyCode::KEY_LEFT_SHIFT) m_ModifiersState[LeftShift] = !m_ModifiersState[LeftShift];
-		if(inButton == KeyCode::KEY_RIGHT_SHIFT) m_ModifiersState[RightShift] = !m_ModifiersState[RightShift];
+		if(button == KeyCode::KEY_LEFT_SHIFT) modifiersState_[LeftShift] = !modifiersState_[LeftShift];
+		if(button == KeyCode::KEY_RIGHT_SHIFT) modifiersState_[RightShift] = !modifiersState_[RightShift];
 
-		if(inButton == KeyCode::KEY_LEFT_CONTROL) m_ModifiersState[LeftControl] = !m_ModifiersState[LeftControl];
-		if(inButton == KeyCode::KEY_RIGHT_CONTROL) m_ModifiersState[RightControl] = !m_ModifiersState[RightControl];
+		if(button == KeyCode::KEY_LEFT_CONTROL) modifiersState_[LeftControl] = !modifiersState_[LeftControl];
+		if(button == KeyCode::KEY_RIGHT_CONTROL) modifiersState_[RightControl] = !modifiersState_[RightControl];
 
-		if(inButton == KeyCode::KEY_LEFT_ALT) m_ModifiersState[LeftAlt] = !m_ModifiersState[LeftAlt];
-		if(inButton == KeyCode::KEY_RIGHT_ALT) m_ModifiersState[RightAlt] = !m_ModifiersState[RightAlt];
+		if(button == KeyCode::KEY_LEFT_ALT) modifiersState_[LeftAlt] = !modifiersState_[LeftAlt];
+		if(button == KeyCode::KEY_RIGHT_ALT) modifiersState_[RightAlt] = !modifiersState_[RightAlt];
 
-		if(inButton == KeyCode::KEY_CAPS_LOCK) m_ModifiersState[CapsLock] = !m_ModifiersState[CapsLock];
+		if(button == KeyCode::KEY_CAPS_LOCK) modifiersState_[CapsLock] = !modifiersState_[CapsLock];
 
-		if(inButton == KeyCode::KEY_P && bPressed) {
+		if(button == KeyCode::KEY_P && bPressed) {
 
-			for(auto windowIt = m_WidgetStack.rbegin(); windowIt != m_WidgetStack.rend(); ++windowIt) {
+			for(auto windowIt = widgetStack_.rbegin(); windowIt != widgetStack_.rend(); ++windowIt) {
 				auto* window = windowIt->widget.get();
 				LogWidgetTree(window);
 			}
 			return;
 		} 
 		
-		if(inButton == KeyCode::KEY_D && bPressed) {
-			m_bDrawDebugInfo = !m_bDrawDebugInfo;
-			m_DebugOverlay->SetVisibility(m_bDrawDebugInfo);
+		if(button == KeyCode::KEY_D && bPressed) {
+			bDrawDebugInfo_ = !bDrawDebugInfo_;
+			debugOverlay_->SetVisibility(bDrawDebugInfo_);
 			return;
 		}
 
-		if(inButton == KeyCode::KEY_L && bPressed) {
-			m_bDrawDebugLayout = !m_bDrawDebugLayout;
+		if(button == KeyCode::KEY_L && bPressed) {
+			bDrawDebugLayout_ = !bDrawDebugLayout_;
 			return;
 		}
 		
-		if(inButton == KeyCode::KEY_C && bPressed) {
-			m_bDrawDebugClipRects = !m_bDrawDebugClipRects;
+		if(button == KeyCode::KEY_C && bPressed) {
+			bDrawDebugClipRects_ = !bDrawDebugClipRects_;
 			return;
 		}
 	}
 
-	void	DispatchMouseScrollEvent(float inScroll) {}
+	void DispatchMouseScrollEvent(float scroll) {}
 
-	void	DispatchOSWindowResizeEvent(float2 inWindowSize) {
+	void DispatchOSWindowResizeEvent(float2 windowSize) {
 		// Ignore minimized state for now
-		if(inWindowSize == float2()) {
+		if(windowSize == float2()) {
 			return;
 		}
-		ParentLayoutEvent layoutEvent;
-		layoutEvent.constraints = Rect(inWindowSize);
+		LayoutConstraints layoutEvent;
+		layoutEvent.rect = Rect(windowSize);
 
-		for(auto& [window, layer] : m_WidgetStack) {
+		for(auto& [window, layer] : widgetStack_) {
 			UpdateLayout(window.get());
 		}
-		g_Renderer->ResizeFramebuffers(inWindowSize);
+		g_Renderer->ResizeFramebuffers(windowSize);
 	}
 
-	void	DispatchCharInputEvent(wchar_t inChar) {}
+	void DispatchCharInputEvent(wchar_t ch) {}
 
-	void	LogWidgetTree(Widget* inWindow) {
+	void LogWidgetTree(Widget* window) {
 		PropertyArchive archive;
 		DebugLogEvent onDebugLog;
 		onDebugLog.archive = &archive;
 
-		inWindow->OnEvent(&onDebugLog);
+		window->OnEvent(&onDebugLog);
 
 		std::deque<PropertyArchive::ObjectID> parentIDStack;
 		std::stringstream ss;
 
-		auto printIndent = [&](size_t inIndent) {
-			if(!inIndent) return;
+		auto printIndent = [&](size_t indent) {
+			if(!indent) return;
 			ss << "    ";
-			--inIndent;
+			--indent;
 
-			for(; inIndent; --inIndent) {
+			for(; indent; --indent) {
 				ss << "|   ";
 			}
 		};
 
-		auto visitor = [&](PropertyArchive::Object& inObject)->bool {
-			const auto parentID = inObject.m_Parent ? inObject.m_Parent->m_ObjectID : 0;
+		auto visitor = [&](PropertyArchive::Object& object)->bool {
+			const auto parentID = object.parent_ ? object.parent_->objectID_ : 0;
 
 			if(!parentID) {
 				parentIDStack.clear();
-
 			} else if(parentID != parentIDStack.back()) {
 				// Unwind intil the parent is found
 				for(auto stackParentID = parentIDStack.back();
 					stackParentID != parentID;
 					parentIDStack.pop_back(), stackParentID = parentIDStack.back());
 			}
-			parentIDStack.push_back(inObject.m_ObjectID);
+			parentIDStack.push_back(object.objectID_);
 			auto indent = parentIDStack.size();
 
 			printIndent(indent); ss << '\n';
-			printIndent(indent - 1); ss << "|-> " << inObject.m_DebugName << ":\n";
+			printIndent(indent - 1); ss << "|-> " << object.debugName_ << ":\n";
 
-			for(auto& property : inObject.m_Properties) {
+			for(auto& property : object.properties_) {
 				printIndent(indent);
 				ss << std::format("{}: {}", property.Name, property.Value) << '\n';
 			}
@@ -722,9 +737,9 @@ public:
 	}
 
 	// Rebuild font of the theme if needed
-	void	RebuildFonts() {
+	void RebuildFonts() {
 		std::vector<Font*> fonts;
-		m_Theme->RasterizeFonts(&fonts);
+		theme_->RasterizeFonts(&fonts);
 
 		for(auto& font : fonts) {
 			if(font->NeedsRebuild()) {
@@ -739,10 +754,10 @@ public:
 		}
 	}
 
-	std::string PrintAncestorTree(Widget* inWidget) {
+	std::string PrintAncestorTree(Widget* widget) {
 		std::string out;
 		PropertyArchive ar;
-		for(Widget* w = inWidget; w; w = w->GetParent()) {
+		for(Widget* w = widget; w; w = w->GetParent()) {
 			ar.PushObject(w->GetDebugID(), w, nullptr);
 			w->DebugSerialize(ar);
 		}
@@ -752,33 +767,33 @@ public:
 	}
 
 	void PrintPropertyArchive(const PropertyArchive& ar, util::StringBuilder* sb) {
-		for(auto it = ar.m_RootObjects.rbegin(); it != ar.m_RootObjects.rend(); ++it) {
+		for(auto it = ar.rootObjects_.rbegin(); it != ar.rootObjects_.rend(); ++it) {
 			auto& object = *it;
-			sb->Line(object->m_DebugName);
+			sb->Line(object->debugName_);
 			sb->PushIndent();
 
-			for(auto& property : object->m_Properties) {
+			for(auto& property : object->properties_) {
 				sb->Line("{}: {}", property.Name, property.Value);
 			}
 			sb->PopIndent();
 		}
 	}
 
-	void	PrintHitStack(util::StringBuilder& sb) {
+	void PrintHitStack(util::StringBuilder& sb) {
 		PropertyArchive ar;
 
-		for(auto& hitData : m_LastHitStack) {
+		for(auto& hitData : lastHitStack_) {
 			if(!hitData.widget) continue;
 			ar.PushObject(hitData.widget->GetDebugID(), *hitData.widget, nullptr);
 			hitData.widget->DebugSerialize(ar);
 		}
 
-		for(auto it = ar.m_RootObjects.rbegin(); it != ar.m_RootObjects.rend(); ++it) {
+		for(auto it = ar.rootObjects_.rbegin(); it != ar.rootObjects_.rend(); ++it) {
 			auto& object = *it;
-			sb.Line(object->m_DebugName);
+			sb.Line(object->debugName_);
 			sb.PushIndent();
 
-			for(auto& property : object->m_Properties) {
+			for(auto& property : object->properties_) {
 				sb.Line("{}: {}", property.Name, property.Value);
 			}
 			sb.PopIndent();
@@ -786,34 +801,34 @@ public:
 	}
 
 	// Update cached widgets for mouse capture and hovering
-	void	ResetState() {
-		m_HoveredWindow = nullptr;
-		m_HoveredWidgets.Clear();
-		m_CapturingWidgets.Clear();
-		m_bResetState = true;
+	void ResetState() {
+		hoveredWindow_ = nullptr;
+		hoveredWidgets_.Clear();
+		capturingWidgets_.Clear();
+		bResetState_ = true;
 	}
 	
 	// We will iterate a subtree manually and handle nesting and visibility
 	// Possibly opens a possibility to cache draw commands
 	// Also we will handle clip rects nesting
-	void	DrawWindow(Widget* inWindow, DrawList* inRendererDrawlist, Theme* inTheme) {
-		CanvasImpl canvas(inRendererDrawlist);
+	void DrawWindow(Widget* window, DrawList* rendererDrawlist, Theme* theme) {
+		CanvasImpl canvas(rendererDrawlist);
 
 		DrawEvent drawEvent;
 		drawEvent.canvas = &canvas;
-		drawEvent.theme = inTheme;
+		drawEvent.theme = theme;
 
 		std::function<VisitResult(Widget*)> drawFunc;
 		// Draw children recursively using DFS
-		drawFunc = [&](Widget* inWidget) {
-			inWidget->OnEvent(&drawEvent);
+		drawFunc = [&](Widget* widget) {
+			widget->OnEvent(&drawEvent);
 
-			if(m_bDrawDebugClipRects) {
+			if(bDrawDebugClipRects_) {
 				canvas.DrawClipRect(false, colors::red);
 			}
-			if(auto* layout = inWidget->As<LayoutWidget>()) {
-				if(m_bDrawDebugLayout){
-					if(m_LastHitStack.TopWidget() == layout) {
+			if(auto* layout = widget->As<LayoutWidget>()) {
+				if(bDrawDebugLayout_){
+					if(lastHitStack_.TopWidget() == layout) {
 						canvas.DrawRect(layout->GetRect().Expand(-1), colors::green.MultiplyAlpha(0.3f), true);
 					} else {
 						canvas.DrawRect(layout->GetRect().Expand(-1), colors::green, false);
@@ -821,20 +836,20 @@ public:
 				}
 				canvas.PushTransform(layout->GetTransform());
 				canvas.SaveContext();
-				inWidget->VisitChildren(drawFunc, false);
+				widget->VisitChildren(drawFunc, false);
 				canvas.RestoreContext();
 			} else {
-				inWidget->VisitChildren(drawFunc, false);
+				widget->VisitChildren(drawFunc, false);
 			}
 			return visitResultContinue;
 		};
-		drawFunc(inWindow);
+		drawFunc(window);
 	}
 
-	void UpdateLayout(Widget* inWidget) {
+	void UpdateLayout(Widget* widget) {
 		LayoutWidget* layoutWidget = nullptr;
 
-		for(Widget* w = inWidget->GetParent(); w; w = w->GetParent()) {
+		for(Widget* w = widget->GetParent(); w; w = w->GetParent()) {
 			if(auto* l = w->As<LayoutWidget>()) {
 				const auto axisMode = l->GetAxisMode();
 				const auto isLayoutDependsOnChildren =
@@ -847,20 +862,20 @@ public:
 			}
 		}
 		if(!layoutWidget) {
-			layoutWidget = LayoutWidget::FindNearest(inWidget);
+			layoutWidget = LayoutWidget::FindNearest(widget);
 		}
 		if(!layoutWidget) {
 			return;
 		}
 		// Update layout of children recursively starting from this widget
-		ParentLayoutEvent e;
+		LayoutConstraints e;
 		const bool isRoot = layoutWidget->FindParentOfClass<LayoutWidget>() == nullptr;
 
 		if(isRoot) {
-			e.constraints = Rect(float2(0), g_OSWindow->GetSize());
+			e.rect = Rect(float2(0), g_OSWindow->GetSize());
 		} else {
 			const auto layoutInfo = *layoutWidget->GetLayoutStyle();
-			e.constraints = Rect(
+			e.rect = Rect(
                 layoutWidget->GetOrigin() - layoutInfo.margins.Size(),
                 layoutWidget->GetSize() + layoutInfo.margins.Size()
 			);
@@ -924,7 +939,7 @@ public:
 			return visitResultSkipChildren;
 		};
 
-		for(auto& widget: m_DirtyWidgets) {
+		for(auto& widget: dirtyWidgets_) {
 			if(widget) {
 				build(widget.Get());
 			}
@@ -933,7 +948,7 @@ public:
 
 public:
 
-	bool	Tick() final {
+	bool Tick() final {
 		OPTICK_FRAME("UI_Tick");
 		const auto frameStartTimePoint = std::chrono::high_resolution_clock::now();
 
@@ -943,9 +958,9 @@ public:
 			RebuildFonts();
 		}
 
-		if(m_bResetState) {
-			DispatchMouseMoveEvent(m_MousePosGlobal);
-			m_bResetState = false;
+		if(bResetState_) {
+			DispatchMouseMoveEvent(mousePosGlobal_);
+			bResetState_ = false;
 		}
 
 		{
@@ -953,52 +968,52 @@ public:
 			if(!g_OSWindow->PollEvents()) {
 				return false;
 			}
-			m_Timers.Tick();
+			timers_.Tick();
 		}
 
 		// Rebuild
 		{
-			if(!m_DirtyWidgets.empty()) {
+			if(!dirtyWidgets_.empty()) {
 				BuildDirty();	
 			}
 		}
 
 		// Update layout
 		{
-			for(auto& widget: m_DirtyWidgets) {
+			for(auto& widget: dirtyWidgets_) {
 				if(widget) {
 					UpdateLayout(widget.Get());
 				}
 			}
-			m_DirtyWidgets.clear();
+			dirtyWidgets_.clear();
 		}
 
-		if(m_bDrawDebugInfo) {
+		if(bDrawDebugInfo_) {
 			std::string str;
 			auto sb = util::StringBuilder(&str);
 
-			sb.Line("Frame time: {:5.2f}ms", m_LastFrameTimeMs);
-			sb.Line("Opened window count: {}", m_WidgetStack.size());
-			sb.Line("Timers count: {}", m_Timers.Size());
-			sb.Line("Hovered window: {}", m_HoveredWindow ? m_HoveredWindow->GetDebugID() : "");
-			sb.Line("Hovered widget: {}", !m_HoveredWidgets.Empty() ? m_HoveredWidgets.Print() : "");
-			sb.Line("Mouse pos local: {}", m_HoveredWidgets.Top() ? GetLocalPosForWidget(m_HoveredWidgets.Top()) : m_MousePosGlobal);
-			sb.Line("Mouse pos global: {}", m_MousePosGlobal == NOPOINT ? "npos" : std::format("{}", m_MousePosGlobal));
-			sb.Line("Capturing mouse widgets: {}", !m_CapturingWidgets.Empty() ? m_CapturingWidgets.Print() : "");
+			sb.Line("Frame time: {:5.2f}ms", lastFrameTimeMs_);
+			sb.Line("Opened window count: {}", widgetStack_.size());
+			sb.Line("Timers count: {}", timers_.Size());
+			sb.Line("Hovered window: {}", hoveredWindow_ ? hoveredWindow_->GetDebugID() : "");
+			sb.Line("Hovered widget: {}", !hoveredWidgets_.Empty() ? hoveredWidgets_.Print() : "");
+			sb.Line("Mouse pos local: {}", hoveredWidgets_.Top() ? GetLocalPosForWidget(hoveredWidgets_.Top()) : mousePosGlobal_);
+			sb.Line("Mouse pos global: {}", mousePosGlobal_ == NOPOINT ? "npos" : std::format("{}", mousePosGlobal_));
+			sb.Line("Capturing mouse widgets: {}", !capturingWidgets_.Empty() ? capturingWidgets_.Print() : "");
 			sb.Line();
 
-			if(m_HoveredWindow) {
-				sb.Line("{} Hit stack: ", m_HoveredWindow->GetDebugID());
+			if(hoveredWindow_) {
+				sb.Line("{} Hit stack: ", hoveredWindow_->GetDebugID());
 				sb.PushIndent();
 				PrintHitStack(sb);
 			}
-			m_DebugOverlay->SetText(str);
+			debugOverlay_->SetText(str);
 		}
 
 		// Draw views
 		g_Renderer->ResetDrawLists();
 		auto* frameDrawList = g_Renderer->GetFrameDrawList();
-		frameDrawList->PushFont(m_Theme->GetDefaultFont(), g_DefaultFontSize);
+		frameDrawList->PushFont(theme_->GetDefaultFont(), g_DefaultFontSize);
 		{
 			OPTICK_EVENT("Drawing UI");
 
@@ -1006,92 +1021,92 @@ public:
 			// canvas.RendererDrawList = frameDrawList;
 			// DrawEvent drawEvent;
 			// drawEvent.canvas = &canvas;
-			// drawEvent.theme = m_Theme.get();
+			// drawEvent.theme = theme_.get();
 
-			for(auto& [window, layer] : m_WidgetStack) {
-				DrawWindow(window.get(), frameDrawList, m_Theme.get());
+			for(auto& [window, layer] : widgetStack_) {
+				DrawWindow(window.get(), frameDrawList, theme_.get());
 			}
 		}
 		const auto frameEndTimePoint = std::chrono::high_resolution_clock::now();
 
-		++m_FrameNum;
-		m_LastFrameTimeMs = std::chrono::duration_cast<std::chrono::microseconds>(frameEndTimePoint - frameStartTimePoint).count() / 1000.f;
+		++frameNum_;
+		lastFrameTimeMs_ = std::chrono::duration_cast<std::chrono::microseconds>(frameEndTimePoint - frameStartTimePoint).count() / 1000.f;
 
 		g_Renderer->RenderFrame(true);
 		return true;
 	}
 	
-	std::unique_ptr<Widget> Orphan(Widget* inWidget) override {
+	std::unique_ptr<Widget> Orphan(Widget* widget) override {
 		// Remove child without deletion
-		for(auto it = m_WidgetStack.begin(); it != m_WidgetStack.end(); ++it) {
-			if(it->widget.get() == inWidget) {
+		for(auto it = widgetStack_.begin(); it != widgetStack_.end(); ++it) {
+			if(it->widget.get() == widget) {
 				auto out = std::move(it->widget);
-				m_WidgetStack.erase(it);
+				widgetStack_.erase(it);
 				return out;
 			}
 		}
 		return {};
 	}
 	
-	void RequestRebuild(StatefulWidget* inWidget) override {
+	void RequestRebuild(StatefulWidget* widget) override {
 		// Ancestors of the widget should be scheduled after
-		// for(auto it = m_DirtyWidgets.begin(); it != m_DirtyWidgets.end(); ++it) {
+		// for(auto it = dirtyWidgets_.begin(); it != dirtyWidgets_.end(); ++it) {
 		// 	auto& w = *it;
-		// 	for(auto* parent = inWidget->GetParent(); parent; parent = parent->GetParent()) {
+		// 	for(auto* parent = widget->GetParent(); parent; parent = parent->GetParent()) {
 		// 		if(parent == w) {
-		// 			m_DirtyWidgets.insert(it, inWidget);
+		// 			dirtyWidgets_.insert(it, widget);
 		// 			return;
 		// 		}
 		// 	}
 		// }
-		m_DirtyWidgets.push_back(inWidget->GetWeak());
+		dirtyWidgets_.push_back(widget->GetWeak());
 	}
 
-	void BringToFront(Widget* inWidget) override {
-		using Iterator = decltype(m_WidgetStack)::iterator;
+	void BringToFront(Widget* widget) override {
+		using Iterator = decltype(widgetStack_)::iterator;
 		auto found = false;
 		// Bring the child just below the overlay layer		
-		for(auto it = m_WidgetStack.begin(); it != m_WidgetStack.end(); ++it) {
-			if(!found && it->widget.get() == inWidget) {
+		for(auto it = widgetStack_.begin(); it != widgetStack_.end(); ++it) {
+			if(!found && it->widget.get() == widget) {
 				found = true;
 			} 
 			if (found) {
 				auto nextItem = ++Iterator(it);
-				if(nextItem != m_WidgetStack.end() && nextItem->layer != Layer::Overlay) {
+				if(nextItem != widgetStack_.end() && nextItem->layer != Layer::Overlay) {
 					std::swap(it->widget, nextItem->widget);
 				}
 			}			
 		}
 	}
 
-	void Parent(std::unique_ptr<Widget>&& inWidget, Layer inLayer) override {
-		auto* widget = inWidget.get();
+	void Parent(std::unique_ptr<Widget>&& widget, Layer layer) override {
+		auto* w = widget.get();
 		// Insert the widget based on layer
 		// Call OnParented()
-		if(inLayer == Layer::Overlay) {
-			m_WidgetStack.emplace_back(RootWidget(std::move(inWidget), inLayer));
+		if(layer == Layer::Overlay) {
+			widgetStack_.emplace_back(RootWidget(std::move(widget), layer));
 
-		} else if(inLayer == Layer::Background) {
-			m_WidgetStack.emplace_front(RootWidget(std::move(inWidget), inLayer));
+		} else if(layer == Layer::Background) {
+			widgetStack_.emplace_front(RootWidget(std::move(widget), layer));
 
 		} else {
-			for(auto it = m_WidgetStack.begin(); it != m_WidgetStack.end(); ++it) {
+			for(auto it = widgetStack_.begin(); it != widgetStack_.end(); ++it) {
 				// Insert the window before overlays
 				if(it->layer == Layer::Overlay) {
-					m_WidgetStack.insert(it, RootWidget(std::move(inWidget), inLayer));
+					widgetStack_.insert(it, RootWidget(std::move(widget), layer));
 					break;
 				}
 			}
 		}
-		widget->OnParented(this);
-		auto* statefulChild = widget->As<StatefulWidget>() 
-			? widget->As<StatefulWidget>() 
-			: widget->FindChildOfClass<StatefulWidget>();
+		w->OnParented(this);
+		auto* statefulChild = w->As<StatefulWidget>() 
+			? w->As<StatefulWidget>() 
+			: w->FindChildOfClass<StatefulWidget>();
 
 		if(statefulChild) {
 			RequestRebuild(statefulChild);	
 		} else {
-			UpdateLayout(widget);
+			UpdateLayout(w);
 		}
 	}
 
@@ -1099,83 +1114,83 @@ public:
 		return false;
 	}
 
-	void	Shutdown() final {}
+	void Shutdown() final {}
 
 	Theme* GetTheme() final {
-		Assertm(m_Theme, "A theme should be set before creating widgets");
-		return m_Theme.get();
+		Assertm(theme_, "A theme should be set before creating widgets");
+		return theme_.get();
 	}
 
-	void	SetTheme(Theme* inTheme) final {
+	void SetTheme(Theme* theme) final {
 		// If already has a theme, merge two themes overriding existing
-		if(m_Theme) {
-			m_Theme->Merge(inTheme);
+		if(theme_) {
+			theme_->Merge(theme);
 		} else {
-			m_Theme.reset(inTheme);
+			theme_.reset(theme);
 		}
 		// Add our default font size
-		m_Theme->GetDefaultFont()->RasterizeFace(g_DefaultFontSize);
+		theme_->GetDefaultFont()->RasterizeFace(g_DefaultFontSize);
 		RebuildFonts();
 	}
 
 	FrameState GetFrameStateImpl() {
 		auto state = FrameState();
-		state.keyModifiersState = m_ModifiersState;
-		state.mouseButtonHeldNum = m_MouseButtonHeldNum;
-		state.mouseButtonsPressedBitField = m_MouseButtonsPressedBitField;
-		state.mousePosGlobal = m_MousePosGlobal;
-		state.mousePosOnCaptureGlobal = m_MousePosOnCaptureGlobal;
+		state.keyModifiersState = modifiersState_;
+		state.mouseButtonHeldNum = mouseButtonHeldNum_;
+		state.mouseButtonsPressedBitField = mouseButtonsPressedBitField_;
+		state.mousePosGlobal = mousePosGlobal_;
+		state.mousePosOnCaptureGlobal = mousePosOnCaptureGlobal_;
 		state.windowSize = g_OSWindow->GetSize();
-		state.theme = m_Theme.get();
+		state.theme = theme_.get();
 		return state;
 	}
 
-	TimerHandle	AddTimer(Widget* inWidget, const TimerCallback& inCallback, u64 inPeriodMs) override {
-		return m_Timers.AddTimer(inWidget, inCallback, inPeriodMs);
+	TimerHandle	AddTimer(Object* object, const TimerCallback& callback, u64 periodMs) override {
+		return timers_.AddTimer(object, callback, periodMs);
 	}
 
-	void RemoveTimer(TimerHandle inHandle) override {
-		m_Timers.RemoveTimer(inHandle);
+	void RemoveTimer(TimerHandle handle) override {
+		timers_.RemoveTimer(handle);
 	}
 
 private:
 
 	// Handle to the rendering job completion event
 	// We will wait for it before kicking new rendering job
-	JobSystem::EventRef		m_RenderingJobEventRef;
+	JobSystem::EventRef		renderingJobEventRef_;
 
-	u64						m_FrameNum = 0;
-	float					m_LastFrameTimeMs = 0;
+	u64						frameNum_ = 0;
+	float					lastFrameTimeMs_ = 0;
 	
 	// Whether the native window is minimized
-	bool					m_bMinimized = false;
-	bool					m_bResetState = false;
+	bool					bMinimized_ = false;
+	bool					bResetState_ = false;
 
 	// Position of the mouse cursor when button has been pressed
-	Point					m_MousePosOnCaptureGlobal;
-	Point					m_MousePosGlobal;
+	Point					mousePosOnCaptureGlobal_;
+	Point					mousePosGlobal_;
 
 	// Number of buttons currently held
-	u8						m_MouseButtonHeldNum = 0;
+	u8						mouseButtonHeldNum_ = 0;
 	// We allow only one button to be pressed simultaniously
-	MouseButton				m_PressedMouseButton = MouseButton::None;
-	MouseButtonMask			m_MouseButtonsPressedBitField = MouseButtonMask::None;
-	KeyModifiersArray		m_ModifiersState{false};
+	MouseButton				pressedMouseButton_ = MouseButton::None;
+	MouseButtonMask			mouseButtonsPressedBitField_ = MouseButtonMask::None;
+	KeyModifiersArray		modifiersState_{false};
 
 	// Layout widgets that are hit by mouse cursor
-	HitStack				m_LastHitStack;
-	// WeakPtr<Widget>			m_HoveredWidget;
-	WidgetList				m_HoveredWidgets;
-	WidgetList				m_CapturingWidgets;
-	WeakPtr<Widget>			m_HoveredWindow;
+	HitStack				lastHitStack_;
+	// WeakPtr<Widget>			hoveredWidget_;
+	WidgetList				hoveredWidgets_;
+	WidgetList				capturingWidgets_;
+	WeakPtr<Widget>			hoveredWindow_;
 	
 	// Draw hitstack and mouse pos
 	std::unique_ptr<DebugOverlayWindow>	
-							m_DebugOverlay;
+							debugOverlay_;
 
-	bool					m_bDrawDebugInfo = true;
-	bool					m_bDrawDebugLayout = false;
-	bool					m_bDrawDebugClipRects = false;
+	bool					bDrawDebugInfo_ = true;
+	bool					bDrawDebugLayout_ = false;
+	bool					bDrawDebugClipRects_ = false;
 
 	// Stack of windows, bottom are background windows and top are overlay windows
 	// Other windows in the middle
@@ -1183,22 +1198,22 @@ private:
 		std::unique_ptr<Widget> widget;
 		Layer 					layer;
 	};
-	std::list<RootWidget>	m_WidgetStack;
+	std::list<RootWidget>	widgetStack_;
 
 	// Widgets which state has been changed and need rebuilding
 	// FIXME: It should contain only one widget from a branch
 	// Only the topmost ancestor, because when the topmost is rebuild 
 	// another widgets will be updated too, and pointers will become stale
 	// We will use a weakptr as a workaround
-	std::vector<WeakPtr<StatefulWidget>> m_DirtyWidgets;
+	std::vector<WeakPtr<StatefulWidget>> dirtyWidgets_;
 
-	TimerList				m_Timers;
-	std::unique_ptr<Theme>	m_Theme;
+	TimerList				timers_;
+	std::unique_ptr<Theme>	theme_;
 
 };
 
-UI::Application* UI::Application::Create(std::string_view inWindowTitle, u32 inWidth, u32 inHeight) {
-	if(!g_OSWindow) { g_OSWindow = INativeWindow::createWindow(inWindowTitle, inWidth, inHeight); }
+UI::Application* UI::Application::Create(std::string_view windowTitle, u32 width, u32 height) {
+	if(!g_OSWindow) { g_OSWindow = INativeWindow::createWindow(windowTitle, width, height); }
 	if(!g_Application) g_Application = new ApplicationImpl();
 	g_Application->Init();
 	return g_Application;

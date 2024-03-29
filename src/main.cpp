@@ -102,7 +102,7 @@ namespace std {
 /// Draws a tree of directories in the specified folder
 // Each tree node can be opened, dragged, deleted and created
 class FilesystemView: public WidgetState {
-	STATE_CLASS(FilesystemView, WidgetState)
+	WIDGET_CLASS(FilesystemView, WidgetState)
 public:
 
 	FilesystemView(const std::path& dir) {
