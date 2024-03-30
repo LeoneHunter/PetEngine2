@@ -88,8 +88,8 @@ public:
 	}
 
 protected:
-	Container(StringID styleName)
-		: Super(styleName, axisModeShrink) 
+	Container(StringID styleName, bool notifyOnLayout = false)
+		: Super(styleName, axisModeShrink, notifyOnLayout) 
 	{}
 	friend class ContainerBuilder;
 
@@ -107,13 +107,14 @@ public:
 	auto& Size(float2 inSize) { size = inSize; return *this; }
 	auto& SizeExpanded() { axisMode = axisModeExpand; bSizeFixed = false; return *this; }	
 	auto& PositionFloat(Point inPos) { pos = inPos; bPosFloat = true; return *this; }
+	auto& NotifyOnLayoutUpdate() { bNotifyOnLayout = true; return *this; }
 	auto& BoxStyle(StringID inStyleName) { boxStyleName = inStyleName; return *this; }
 	auto& StyleClass(StringID inStyleName) { styleClass = inStyleName; return *this; }
 	auto& ClipContent(bool bClip = true) { bClipContent = bClip; return *this; }
 	auto& Child(std::unique_ptr<Widget>&& inChild) { child = std::move(inChild); return *this; }
 
 	std::unique_ptr<Container> New() {
-		std::unique_ptr<Container> out(new Container(styleClass));
+		std::unique_ptr<Container> out(new Container(styleClass, bNotifyOnLayout));
 		out->SetID(id);
 		out->SetSize(size);
 		out->bClip_ = bClipContent;
@@ -138,6 +139,7 @@ private:
 	u8                      bSizeFixed : 1   = false;
 	u8                      bPosFloat : 1    = false;
 	u8                      bClipContent : 1 = false;
+	u8						bNotifyOnLayout:1 = false;
 	float2                  size;
 	Point                   pos;
 	AxisMode                axisMode = axisModeShrink;
@@ -466,6 +468,7 @@ public:
 				}
 			}
 			Align(child);
+			child->OnPostLayout();
 		}
 		return GetOuterSize();
 	}
@@ -758,19 +761,31 @@ public:
 		for(auto& item: items_) {
 			out.push_back(StatefulWidget::New(item.get()));
 		}
-		auto body = Container::Build()
-			.PositionFloat(pos_)
-			.SizeMode({AxisMode::Fixed, AxisMode::Shrink})
-			.Size(float2{300, 0})
-			.ID("PopupBody")
-			.StyleClass("Popup")
-			.Child(Flexbox::Build()
-				.DirectionColumn()
-				.ExpandCrossAxis(true)
-				.ExpandMainAxis(false)
-				.Children(std::move(out))
-				.New())
-			.New();
+		auto body = EventListener::New(
+			[this](IEvent* event) {
+				auto* e = event->As<LayoutNotification>();
+				if(e && e->depth == 0) {
+					this->PositionPopup(*e);
+					return true;
+				}
+				return false;	
+			}, 
+			Container::Build()
+				.PositionFloat(pos_)
+				.NotifyOnLayoutUpdate()
+				.SizeMode({AxisMode::Fixed, AxisMode::Shrink})
+				.Size(float2{300, 0})
+				.ID("PopupBody")
+				.StyleClass("Popup")
+				.Child(Flexbox::Build()
+					.DirectionColumn()
+					.ExpandCrossAxis(true)
+					.ExpandMainAxis(false)
+					.Children(std::move(out))
+					.New())
+				.New()
+		);
+
 		// Container with the size of the screen to capture all mouse events
 		if(previousPopup_) {
 			return body;
@@ -836,6 +851,34 @@ private:
 		if(nextPopup_) {
 			nextPopup_.reset();
 		}
+	}
+
+	// Update position here because for now this functionality is used only by Popup
+	void PositionPopup(LayoutNotification& notification) {
+		auto  viewportSize = Application::Get()->GetState().windowSize;
+		auto* target = notification.source;
+		auto  targetRectGlobal = target->GetRectGlobal();
+		Point finalPos = targetRectGlobal.min;
+
+		if(previousPopup_) {
+			auto* menuButton = previousPopup_->GetWidget()->FindChildOfClass<LayoutWidget>();
+			auto  menuButtonRectGlobal = menuButton->GetRectGlobal();
+
+			if(targetRectGlobal.Right() > viewportSize.x) {
+				finalPos.x = menuButtonRectGlobal.TL().x - targetRectGlobal.Width();
+				finalPos.x = math::Clamp(finalPos.x, 0.f);
+			}
+		} else {
+			if(targetRectGlobal.Right() > viewportSize.x) {
+				finalPos.x = viewportSize.x - targetRectGlobal.Width();
+				finalPos.x = math::Clamp(finalPos.x, 0.f);
+			}
+		}
+		if(targetRectGlobal.Bottom() > viewportSize.y) {
+			finalPos.y = viewportSize.y - targetRectGlobal.Height();
+			finalPos.y = math::Clamp(finalPos.y, 0.f);
+		}
+		target->SetOrigin(finalPos);
 	}
 
 private:

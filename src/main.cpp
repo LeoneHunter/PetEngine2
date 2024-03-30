@@ -264,8 +264,6 @@ private:
 	std::vector<std::unique_ptr<Node>> nodes;
 };
 
-
-
 int main(int argc, char* argv[]) {
 
 	const auto commandLine = std::vector<std::string>(argv, argv + argc);

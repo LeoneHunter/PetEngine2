@@ -136,8 +136,8 @@ public:
 		bool bMaximize = false;
 		const auto windowMaxWidth = GetSystemMetrics(SM_CXSCREEN);
 		const auto windowMaxHeight = GetSystemMetrics(SM_CYSCREEN);
-		const auto windowWidth = Math::Clamp((int)inWidth, 100, windowMaxWidth);
-		const auto windowHeight = Math::Clamp((int)inHeight, 100, windowMaxHeight);
+		const auto windowWidth = math::Clamp((int)inWidth, 100, windowMaxWidth);
+		const auto windowHeight = math::Clamp((int)inHeight, 100, windowMaxHeight);
 		const auto windowPosX = (windowMaxWidth - windowWidth) / 2;
 		const auto windowPosY = (windowMaxHeight - windowHeight) / 2;
 

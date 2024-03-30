@@ -168,13 +168,13 @@ struct ColorFloat4 {
 		, a(inColor.GetComponentAsFloat(ColorU32::A)) {}
 
 	constexpr ColorFloat4(float inVal)
-		: r(Math::Clamp(inVal, 0.f, 1.f)), g(Math::Clamp(inVal, 0.f, 1.f)), b(Math::Clamp(inVal, 0.f, 1.f)), a(1.0f) {}
+		: r(math::Clamp(inVal, 0.f, 1.f)), g(math::Clamp(inVal, 0.f, 1.f)), b(math::Clamp(inVal, 0.f, 1.f)), a(1.0f) {}
 
 	constexpr ColorFloat4(float inR, float inG, float inB, float inA = 1.f)
-		: r(Math::Clamp(inR, 0.f, 1.f)), g(Math::Clamp(inG, 0.f, 1.f)), b(Math::Clamp(inB, 0.f, 1.f)), a(Math::Clamp(inA, 0.f, 1.f)) {}
+		: r(math::Clamp(inR, 0.f, 1.f)), g(math::Clamp(inG, 0.f, 1.f)), b(math::Clamp(inB, 0.f, 1.f)), a(math::Clamp(inA, 0.f, 1.f)) {}
 
 	constexpr ColorFloat4(const Vec4& inFloat4)
-		: r(Math::Clamp(inFloat4.x, 0.f, 1.f)), g(Math::Clamp(inFloat4.y, 0.f, 1.f)), b(Math::Clamp(inFloat4.z, 0.f, 1.f)), a(Math::Clamp(inFloat4.w, 0.f, 1.f)) {}
+		: r(math::Clamp(inFloat4.x, 0.f, 1.f)), g(math::Clamp(inFloat4.y, 0.f, 1.f)), b(math::Clamp(inFloat4.z, 0.f, 1.f)), a(math::Clamp(inFloat4.w, 0.f, 1.f)) {}
 
 	constexpr ColorFloat4(std::string_view inHexColor)
 		: r(0.0f), g(0.0f), b(0.0f), a(1.0f) {

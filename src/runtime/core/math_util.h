@@ -611,7 +611,7 @@ struct Circle {
 
 
 
-namespace Math {
+namespace math {
 
 	constexpr float dot(const float2& inVecLeft, const float2& inVecRight) {
 		float2 tmp(inVecLeft * inVecRight);
@@ -697,7 +697,7 @@ namespace Math {
 		float2 cornerClosest;
 		inRect.ClosestPoint(inCircle.center, cornerClosest);
 		auto distance = inCircle.center - cornerClosest;
-		return Math::dot(distance, distance) <= inCircle.radius * inCircle.radius;
+		return math::dot(distance, distance) <= inCircle.radius * inCircle.radius;
 	}
 
 	template<typename T>
@@ -711,15 +711,15 @@ namespace Math {
 		auto m = p0 + p1 - b.min - b.max;
 
 		// Try world coordinate axes as separating axes
-		float adx = Math::Abs(d.x);
-		if(Math::Abs(m.x) > e.x + adx) return false;
+		float adx = math::Abs(d.x);
+		if(math::Abs(m.x) > e.x + adx) return false;
 		float ady = std::abs(d.y);
-		if(Math::Abs(m.y) > e.y + ady) return false;
+		if(math::Abs(m.y) > e.y + ady) return false;
 		// Add in an epsilon term to counteract arithmetic errors when segment is
 		// (near) parallel to a coordinate axis (see text for detail)
 		adx += EPSILON; ady += EPSILON;
 		// Try cross products of segment direction vector with coordinate axes
-		if(Math::Abs(m.x * d.y - m.y * d.x) > e.x * ady + e.y * adx) return false;
+		if(math::Abs(m.x * d.y - m.y * d.x) > e.x * ady + e.y * adx) return false;
 		// No separating axis found; segment must be overlapping AABB
 		return true;
 	}
@@ -741,8 +741,8 @@ constexpr void Rect::BuildFromPoints(point_type inP0, point_type inP1) {
 	const bool bInvertX = inP1.x < inP0.x;
 	const bool bInvertY = inP1.y < inP0.y;
 
-	const auto rectWidth = Math::Abs(inP1.x - inP0.x);
-	const auto rectHeight = Math::Abs(inP1.y - inP0.y);
+	const auto rectWidth = math::Abs(inP1.x - inP0.x);
+	const auto rectHeight = math::Abs(inP1.y - inP0.y);
 
 	min = inP0;
 	max = inP1;

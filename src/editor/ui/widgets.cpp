@@ -94,7 +94,7 @@ void UI::Flexbox::DebugSerialize(PropertyArchive& ar) {
 }
 
 float2 Flexbox::OnLayout(const LayoutConstraints& event) {
-	Super::HandleParentLayoutEvent(&event);
+	Super::OnLayout(event);
 	LayOutChildren(event);
 	return GetOuterSize();
 }
@@ -190,7 +190,7 @@ void UI::Flexbox::LayOutChildren(const LayoutConstraints& event) {
 		}
 		return visitResultContinue;
 	});
-	float mainAxisFlexibleSpace = Math::Clamp(innerMainAxisSize - fixedChildrenSizeMainAxis, 0.f);
+	float mainAxisFlexibleSpace = math::Clamp(innerMainAxisSize - fixedChildrenSizeMainAxis, 0.f);
 
 	// Check for overflow
 	/// TODO use min size from theme here
@@ -210,7 +210,7 @@ void UI::Flexbox::LayOutChildren(const LayoutConstraints& event) {
 			if(childData.mainAxisSize < 0.f) {
 				childData.mainAxisSize = mainAxisFlexibleSpace * childData.mainAxisSize / totalFlexFactor;
 				/// TODO Child size shouldn't be less then Child.GetMinSize()
-				childData.mainAxisSize = Math::Clamp(childData.mainAxisSize, 0.f);
+				childData.mainAxisSize = math::Clamp(childData.mainAxisSize, 0.f);
 			}
 		}
 	}
@@ -293,7 +293,7 @@ void UI::Flexbox::LayOutChildren(const LayoutConstraints& event) {
 			widgetSize = childData.child->GetOuterSize();
 		}
 		mainAxisCursor += constraints[mainAxisIndex];
-		maxChildSizeCrossAxis = Math::Max(maxChildSizeCrossAxis, widgetSize[crossAxisIndex]);
+		maxChildSizeCrossAxis = math::Max(maxChildSizeCrossAxis, widgetSize[crossAxisIndex]);
 
 		if(bJustifyContent 
 		   && justifyContent_ == JustifyContent::SpaceBetween 
@@ -330,6 +330,7 @@ void UI::Flexbox::LayOutChildren(const LayoutConstraints& event) {
 		}		
 		const auto margins = childData.child->GetLayoutStyle()->margins;
 		childData.child->SetOrigin(pos + margins.TL());
+		childData.child->OnPostLayout();
 	}	
 }
 

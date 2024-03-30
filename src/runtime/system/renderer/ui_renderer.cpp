@@ -105,8 +105,8 @@ public:
 	}
 
 	void DrawLine(const float2& inStart, const float2& inEnd, ColorU32 inColor, float inThickness) final {
-		const auto p1 = Math::Round(inStart);
-		const auto p2 = Math::Round(inEnd);
+		const auto p1 = math::Round(inStart);
+		const auto p2 = math::Round(inEnd);
 		//const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w * m_Alpha);
 		
 		m_ImDrawList->AddLine(p1, p2, inColor.MultiplyAlpha(m_Alpha), inThickness);
@@ -139,8 +139,8 @@ public:
 			return DrawErrorRect(inRect.min, inRect.max);
 		}
 
-		const auto min = Math::Round(inRect.min);
-		const auto max = Math::Round(inRect.max);
+		const auto min = math::Round(inRect.min);
+		const auto max = math::Round(inRect.max);
 		//const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w * m_Alpha);
 
 		ImDrawListFlags cornerMask = 0;
@@ -172,8 +172,8 @@ public:
 			return DrawErrorRect(inMin, inMax);
 		}
 
-		const auto min = Math::Round(inMin);
-		const auto max = Math::Round(inMax);
+		const auto min = math::Round(inMin);
+		const auto max = math::Round(inMax);
 		//const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w * m_Alpha);
 
 		ImDrawListFlags cornerMask = 0;
@@ -208,15 +208,15 @@ public:
 		if (!inTextureHandle) {
 			return;
 		}
-		const auto min = Math::Round(inRect.min);
-		const auto max = Math::Round(inRect.max);
+		const auto min = math::Round(inRect.min);
+		const auto max = math::Round(inRect.max);
 
 		m_ImDrawList->AddImage(inTextureHandle, min, max, inUVMin, inUVMax, ImColor(inTintColor));
 	}
 
 	void PushClipRect(const Rect& inRect) final {
-		const auto min = Math::Round(inRect.min);
-		const auto max = Math::Round(inRect.max);
+		const auto min = math::Round(inRect.min);
+		const auto max = math::Round(inRect.max);
 		//DrawRect(inRect.min, inRect.max, Color("#f2277c"), 0.f, 1.f);
 		m_ImDrawList->PushClipRect(min, max, true);
 	}
@@ -258,7 +258,7 @@ public:
 		m_FontFaceStack.push(slice);
 	}
 
-	void SetAlpha(float inAlpha) final { m_Alpha = Math::Clamp(inAlpha, 0.f, 1.f); }
+	void SetAlpha(float inAlpha) final { m_Alpha = math::Clamp(inAlpha, 0.f, 1.f); }
 
 	ImDrawData* GetDrawData() const { return m_ImDrawData.get(); }
 
@@ -284,7 +284,7 @@ private:
 
 	template<typename CHAR_T>
 	void DrawTextExt(const float2& inPos, ColorU32 inColor, const std::basic_string_view<CHAR_T>&inText, uint8 inFontSize, bool bBold, bool bItalic) {
-		const auto pos = Math::Round(inPos);
+		const auto pos = math::Round(inPos);
 		//const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w * m_Alpha);
 
 		if(inColor.IsTransparent() || inText.empty()) {

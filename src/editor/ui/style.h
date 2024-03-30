@@ -104,7 +104,7 @@ public:
 
 	// Whole item opacity. From 0.f to 1.f
 	BoxStyle& Opacity(float inOpacityNorm) {
-		opacity = Math::Clamp(inOpacityNorm, 0.f, 1.f);
+		opacity = math::Clamp(inOpacityNorm, 0.f, 1.f);
 		return *this;
 	}
 

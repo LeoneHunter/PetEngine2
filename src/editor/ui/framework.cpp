@@ -849,8 +849,8 @@ public:
 	void UpdateLayout(Widget* widget) {
 		LayoutWidget* layoutWidget = nullptr;
 
-		for(Widget* w = widget->GetParent(); w; w = w->GetParent()) {
-			if(auto* l = w->As<LayoutWidget>()) {
+		for(Widget* ancestor = widget->GetParent(); ancestor; ancestor = ancestor->GetParent()) {
+			if(auto* l = ancestor->As<LayoutWidget>()) {
 				const auto axisMode = l->GetAxisMode();
 				const auto isLayoutDependsOnChildren =
 					axisMode.x == AxisMode::Shrink || axisMode.y == AxisMode::Shrink;
@@ -881,6 +881,7 @@ public:
 			);
 		}
 		layoutWidget->OnLayout(e);
+		layoutWidget->OnPostLayout();
 	}
 
 	void BuildDirty() {

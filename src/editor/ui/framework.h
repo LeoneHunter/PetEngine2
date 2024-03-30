@@ -191,6 +191,7 @@ namespace UI {
 		System, 	// Draw, MouseMove, MouseButton, KeyboardKey
 		Layout, 	// HitTest, ParentLayout, ChildLayout, Hover
 		Callback,
+		Notification
 	};
 
 	// Mask to check pressed buttons
@@ -302,6 +303,8 @@ namespace UI {
 	};
 
 
+	// Custom dynamic cast
+	#define EVENT_CLASS(className, superClassName) DEFINE_CLASS_META(className, superClassName)
 
 	/*
 	* Interface to widget tree events
@@ -310,7 +313,6 @@ namespace UI {
 	class IEvent {
 		DEFINE_ROOT_CLASS_META(IEvent)
 	public:
-
 		virtual void Log() {};
 		virtual ~IEvent() = default;
 		// Whether this event should be dispatched to all widgets
@@ -324,8 +326,16 @@ namespace UI {
 		std::string GetDebugID() { return std::format("[{}: {:x}]", GetClassName(), (uintptr_t)this & 0xffff); }
 	};
 
-	// Custom dynamic cast
-	#define EVENT_CLASS(className, superClassName) DEFINE_CLASS_META(className, superClassName)
+	/*
+	* Events dispatched up the tree
+	*/
+	class Notification: public IEvent {
+		EVENT_CLASS(Notification, IEvent)
+	public:
+		virtual EventCategory GetCategory() const override { return EventCategory::Notification; }
+
+		u32 depth = 0;
+	};
 
 	/*
 	* Request to draw a widget debug data
@@ -376,11 +386,18 @@ namespace UI {
 			, rect(rect)
 		{}
 
-		EventCategory	GetCategory() const override { return EventCategory::Layout; }
+		EventCategory GetCategory() const override { return EventCategory::Layout; }
 
 		// TODO: Deprecated
-		LayoutWidget*	parent;
-		Rect			rect;
+		LayoutWidget* parent;
+		Rect rect;
+	};
+
+	class LayoutNotification final: public Notification {
+		EVENT_CLASS(LayoutNotification, Notification)
+	public:
+		LayoutWidget* source = nullptr;
+		Rect          rectLocal;
 	};
 
 	/*
@@ -708,6 +725,15 @@ namespace UI {
 
 		bool DispatchToParent(IEvent* event) { if(parent_) { return parent_->OnEvent(event); } return false; }		
 
+		void DispatchNotification(Notification* notification) {
+			for(auto* ancestor = parent_; ancestor; ancestor = ancestor->GetParent()) {
+				auto handled = ancestor->OnEvent(notification);
+				if(handled) {
+					++notification->depth;
+				}
+			}
+		}
+
 	public:
 
 		StringID GetID() const { return id_; }
@@ -958,12 +984,7 @@ namespace UI {
 				}
 				return false;
 			} 
-			if(auto* log = event->As<DebugLogEvent>()) {
-				log->archive->PushObject(GetDebugID(), this, GetParent());
-				DebugSerialize(*log->archive);
-				return true;
-			} 
-			return false;
+			return Super::OnEvent(event);
 		};
 
 		void DebugSerialize(PropertyArchive& archive) override {
@@ -1065,64 +1086,38 @@ namespace UI {
 
 		// Returns size after layout is performed
 		virtual float2 OnLayout(const LayoutConstraints& event) { 
-			Assertf(false, "The widget of class {} should override OnLayout() method", GetClassName());
-		}
-
-	public:
-		// Helper
-		void DispatchLayoutToParent(int axis = 2) {
-			auto parent = FindParentOfClass<LayoutWidget>();
-			if(!parent) return;
-
-			ChildLayoutEvent onChild;
-			onChild.child = this;
-			onChild.size = size_;
-			onChild.subtype = ChildLayoutEvent::OnChanged;
-
-			if(axis == 2) {
-				onChild.bAxisChanged = {true, true};
-			} else {
-				onChild.bAxisChanged[axis] = true;
-			}
-			parent->OnEvent(&onChild);
-		}
-
-		void NotifyParentOnVisibilityChanged() {
-			auto parent = FindParentOfClass<LayoutWidget>();
-			if(!parent) return;
-
-			ChildLayoutEvent onChild;
-			onChild.child = this;
-			onChild.size = size_;
-			onChild.subtype = ChildLayoutEvent::OnVisibility;
-			parent->OnEvent(&onChild);
-		}
-
-		// Helper to update our size to parent when ParentLayout event comes
-		// May be redirected from subclasses
-		// @return true if our size has actually changed
-		bool HandleParentLayoutEvent(const LayoutConstraints* event) {
-			const auto prevSize = GetSize();
 			const auto margins = GetLayoutStyle()->margins;
 
 			if(!bFloatLayout_) {
-				SetOrigin(event->rect.TL() + margins.TL());
+				SetOrigin(event.rect.TL() + margins.TL());
 			}
 			for(auto axis: Axes2D) {
 				if(GetAxisMode()[axis] == AxisMode::Expand) {
-					SetSize(axis, event->rect.Size()[axis] - margins.Size()[axis]);
+					SetSize(axis, event.rect.Size()[axis] - margins.Size()[axis]);
 				}
 			}
-			return GetSize() != prevSize;
+			return GetOuterSize();
+		}
+
+		// Should be called by subclasses at the end of their OnLayout()
+		void OnPostLayout() {
+			if(bNotifyOnUpdate_) {
+				LayoutNotification e;
+				e.rectLocal = GetRect();
+				e.source = this;
+				DispatchNotification(&e);
+			}
 		}
 
 	protected:
 		LayoutWidget(const LayoutStyle* style = nullptr,
 					 AxisMode			axisMode = axisModeShrink,
+					 bool 				notifyOnUpdate = false,
 					 const std::string& id = {})
 			: Widget(id) 
 			, bHidden_(false)
 			, bFloatLayout_(false)
+			, bNotifyOnUpdate_(notifyOnUpdate)
 			, axisMode_(axisModeFixed)
 			, layoutStyle_(style) {
 			SetAxisMode(axisMode);
@@ -1131,6 +1126,8 @@ namespace UI {
 	private:
 		u8					bHidden_:1;
 		u8					bFloatLayout_:1;
+		// Send notifications to ancestors when updated
+		u8					bNotifyOnUpdate_:1;
 		AxisMode			axisMode_;
 		// Position in pixels relative to parent origin
 		Point				origin_;
@@ -1226,6 +1223,7 @@ namespace UI {
 
 			if(auto* layoutWidget = FindChildOfClass<LayoutWidget>()) {
 				const auto childOuterSize = layoutWidget->OnLayout(e);
+				layoutWidget->OnPostLayout();
 
 				for(auto axis: Axes2D) {
 					if(GetAxisMode()[axis] == AxisMode::Shrink) {
@@ -1329,9 +1327,11 @@ namespace UI {
 	protected:	
 		SingleChildLayoutWidget(StringID 			styleName,
 								AxisMode			axisMode = axisModeShrink,
+								bool				notifyOnUpdate = false,
 								const std::string&	id = {})
 			: LayoutWidget(Application::Get()->GetTheme()->Find(styleName)->FindOrDefault<LayoutStyle>(), 
 						   axisMode, 
+						   notifyOnUpdate,
 						   id)
 			, child_()
 		{}
@@ -1434,8 +1434,9 @@ namespace UI {
 	protected:
 		MultiChildLayoutWidget(const LayoutStyle* style = nullptr,
 							   AxisMode 		  axisMode = axisModeShrink,
+							   bool				  notifyOnUpdate = false,
 							   const std::string& id = {})
-			: LayoutWidget(style, axisMode, id)
+			: LayoutWidget(style, axisMode, notifyOnUpdate, id)
 			, children_() 
 		{}
 
@@ -1555,6 +1556,41 @@ namespace UI {
 	};
 
 	inline MouseRegionBuilder MouseRegion::Build() { return {}; }
+
+
+
+
+
+
+
+	using EventCallback = std::function<bool(IEvent*)>;
+
+	/*
+	* TODO: maybe rename into NotificationListener and separate notificatoins and events
+	* Calls the user provided callback when an event is received
+	*/
+	class EventListener: public SingleChildWidget {
+		WIDGET_CLASS(EventListener, SingleChildWidget)
+	public:
+
+		static auto New(const EventCallback& callback, std::unique_ptr<Widget>&& child) {
+			auto out = std::make_unique<EventListener>();
+			out->callback_ = callback;
+			out->Parent(std::move(child));
+			return out;
+		}
+
+		bool OnEvent(IEvent* event) override {
+			if(callback_) {
+				return callback_(event);
+			}
+			return false;
+		}
+
+	private:
+		EventCallback callback_;
+	};
+
 
 }
 
