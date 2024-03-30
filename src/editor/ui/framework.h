@@ -1084,6 +1084,15 @@ namespace UI {
 	
 	public:
 
+		virtual bool OnHitTest(HitTestEvent& event) {
+			auto hitPosLocalSpace = event.GetLastHitPos();
+			if(GetRect().Contains(hitPosLocalSpace)) {
+				event.PushItem(this, hitPosLocalSpace - GetOrigin());
+				return true;
+			}
+			return false;
+		}
+
 		// Returns size after layout is performed
 		virtual float2 OnLayout(const LayoutConstraints& event) { 
 			const auto margins = GetLayoutStyle()->margins;
@@ -1581,10 +1590,10 @@ namespace UI {
 		}
 
 		bool OnEvent(IEvent* event) override {
-			if(callback_) {
-				return callback_(event);
+			if(callback_ && callback_(event)) {
+				return true;
 			}
-			return false;
+			return Super::OnEvent(event);
 		}
 
 	private:

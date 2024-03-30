@@ -49,10 +49,12 @@ void SetDarkTheme() {
 		s.Add<LayoutStyle>("Normal").Margins(0).Paddings(5);
 		s.Add<LayoutStyle>("Hovered", "Normal");
 		s.Add<LayoutStyle>("Pressed", "Normal");
+		s.Add<LayoutStyle>("Opened", "Normal");
 
 		s.Add<BoxStyle>("Normal").FillColor(frameColor).Borders(0).Rounding(4);
 		s.Add<BoxStyle>("Hovered", "Normal").FillColor(hoveredColor);
-		s.Add<BoxStyle>("Pressed", "Normal").FillColor(hoveredColor);
+		s.Add<BoxStyle>("Pressed", "Hovered");
+		s.Add<BoxStyle>("Opened", "Hovered");
 	}
 	{
 		auto& s = theme->Add("Tooltip");
@@ -167,12 +169,12 @@ public:
 					.SizeMode({AxisMode::Fixed, AxisMode::Expand})
 					.Size({300, 0})
 					.ClipContent()
-					.Child(Flexbox::Build()
-						.DirectionColumn()
-						.ExpandCrossAxis()
-						.Children(std::move(out))
-						.New()
-					)
+					// .Child(Flexbox::Build()
+					// 	.DirectionColumn()
+					// 	.ExpandCrossAxis()
+					// 	.Children(std::move(out))
+					// 	.New()
+					// )
 					.New()
 				)
 		);

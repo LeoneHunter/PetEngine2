@@ -19,20 +19,14 @@ using PopupBuilderFunc = std::function<std::vector<std::unique_ptr<WidgetState>>
 
 // Common state enums
 // Used by button like widgets
-struct State {
-	static State Normal;
-	static State Hovered;
-	static State Pressed;
-
-	constexpr operator StringID() { return str; }
-
-private:
-	constexpr State(StringID str): str(str) {}
-	StringID str;
+struct StateEnum {
+	static inline const StringID Normal{"Normal"};
+	static inline const StringID Hovered{"Hovered"};
+	static inline const StringID Pressed{"Pressed"};
+	static inline const StringID Opened{"Opened"};
+	static inline const StringID Selected{"Selected"};
 };
-inline State State::Normal{"Normal"};
-inline State State::Hovered{"Hovered"};
-inline State State::Pressed{"Pressed"};
+
 
 
 /*
@@ -193,12 +187,12 @@ public:
 		if(auto* hoverEvent = event->As<HoverEvent>()) {
 			// Change state and style
 			if(hoverEvent->bHoverEnter) {
-				state_ = State::Hovered;
-				FindChildOfClass<Container>()->SetBoxStyleName(State::Hovered);
+				state_ = StateEnum::Hovered;
+				FindChildOfClass<Container>()->SetBoxStyleName(StateEnum::Hovered);
 
 			} else if(hoverEvent->bHoverLeave) {
-				state_ = State::Normal;
-				FindChildOfClass<Container>()->SetBoxStyleName(State::Normal);
+				state_ = StateEnum::Normal;
+				FindChildOfClass<Container>()->SetBoxStyleName(StateEnum::Normal);
 			}
 			return true;
 		}
@@ -206,18 +200,18 @@ public:
 			if(mouseButtonEvent->button == MouseButton::ButtonLeft) {
 				
 				if(mouseButtonEvent->bPressed) {
-					state_ = State::Pressed;
-					FindChildOfClass<Container>()->SetBoxStyleName(State::Pressed);
+					state_ = StateEnum::Pressed;
+					FindChildOfClass<Container>()->SetBoxStyleName(StateEnum::Pressed);
 
 				} else {
 					auto* container = FindChildOfClass<Container>(); 
 
 					if(container->GetRect().Contains(mouseButtonEvent->mousePosLocal)) {
-						state_ = State::Hovered;
-						container->SetBoxStyleName(State::Hovered);
+						state_ = StateEnum::Hovered;
+						container->SetBoxStyleName(StateEnum::Hovered);
 					} else {
-						state_ = State::Normal;
-						container->SetBoxStyleName(State::Normal);
+						state_ = StateEnum::Normal;
+						container->SetBoxStyleName(StateEnum::Normal);
 					}
 				}
 				if(eventCallback_) {
@@ -238,13 +232,13 @@ public:
 
 protected:
 	Button(const ButtonEventFunc& eventCallback)
-		: state_(State::Normal)
+		: state_(StateEnum::Normal)
 		, eventCallback_(eventCallback) 
 	{}
 	friend class ButtonBuilder;
 
 private:
-	State           state_;
+	StringID        state_;
 	ButtonEventFunc eventCallback_;
 };
 
@@ -636,13 +630,13 @@ private:
 private:
 	// We use static shared state because there's no point in 
 	//     having multipler tooltips visible at once
-	struct State {
+	struct StateEnum {
 		TooltipPortal*  portal{};
 		TimerHandle 	timerHandle{};
 		Widget* 		widget = nullptr;
 		bool			bDisabled = false;
 	};
-	static inline State sharedState{};
+	static inline StateEnum sharedState{};
 
 	TooltipBuilderFunc builder_;
 };
@@ -702,13 +696,17 @@ public:
 		, builder_(builder)
 		, parent_(nullptr)
 		, index_(0)
+		, state_(StateEnum::Normal)
 	{}
 
 	void Bind(PopupState* parent, u32 index) { parent_ = parent; index_ = index; }
 	std::unique_ptr<Widget> Build() override;
 	const PopupBuilderFunc& GetBuilder() const { return builder_; }
+	void SetOpen(bool isOpen) { isOpen_ = isOpen; }
 
 private:
+	StringID		 state_;
+	bool			 isOpen_;
 	std::string      text_;
 	PopupState*      parent_;
 	u32              index_;
@@ -785,7 +783,6 @@ public:
 					.New())
 				.New()
 		);
-
 		// Container with the size of the screen to capture all mouse events
 		if(previousPopup_) {
 			return body;
@@ -842,6 +839,7 @@ private:
 			auto* layoutWidget = item.GetWidget()->FindChildOfClass<LayoutWidget>();
 			auto  rectGlobal = layoutWidget->GetRectGlobal();
 			nextPopup_ = std::make_unique<PopupState>(item.GetBuilder(), this, rectGlobal.TR());
+			item.SetOpen(true);
 			nextPopupItemIndex_ = itemIndex;
 			Application::Get()->Parent(StatefulWidget::New(nextPopup_.get()));
 		}
@@ -849,7 +847,10 @@ private:
 
 	void CloseSubmenu() {
 		if(nextPopup_) {
+			auto& item = items_[nextPopupItemIndex_];
+			item->As<PopupSubmenuItem>()->SetOpen(false);
 			nextPopup_.reset();
+			nextPopupItemIndex_ = 0;
 		}
 	}
 
@@ -901,7 +902,7 @@ class PopupPortal: public MouseRegion {
 	WIDGET_CLASS(PopupPortal, MouseRegion)
 public:
 
-	struct State {
+	struct StateEnum {
 		static inline StringID Normal{"Normal"};
 		static inline StringID Opened{"Opened"};
 	};
@@ -999,17 +1000,25 @@ inline std::unique_ptr<UI::Widget> UI::PopupMenuItem::Build() {
 
 inline std::unique_ptr<UI::Widget> UI::PopupSubmenuItem::Build() {
 	return MouseRegion::Build()
-		.OnMouseEnter([this]() { parent_->OnItemHovered(index_, true); })
-		.OnMouseLeave([this]() { parent_->OnItemHovered(index_, false); })
-		.HandleHoverAlways()
-		.Child(Button::Build()
+		.OnMouseEnter([this]() { 
+			parent_->OnItemHovered(index_, true); 
+			state_ = StateEnum::Hovered; 
+			//MarkNeedsRebuild();
+		})
+		.OnMouseLeave([this]() { 
+			parent_->OnItemHovered(index_, false); 
+			state_ = StateEnum::Normal; 
+			//MarkNeedsRebuild();
+		})
+		.OnMouseButton([this](const MouseButtonEvent& e) { 
+			if(e.button == MouseButton::ButtonLeft && !e.bPressed) {
+				this->parent_->OnItemPressed(index_); 
+			}
+		})
+		.Child(Container::Build()
 			.StyleClass("PopupMenuItem") 
+			.BoxStyle(isOpen_ ? StateEnum::Opened : state_)
 			.SizeMode({AxisMode::Expand, AxisMode::Shrink})
-			.OnPress([this](const ButtonEvent& e) {
-				if(e.button == MouseButton::ButtonLeft && !e.bPressed) {
-					this->parent_->OnItemPressed(index_); 
-				}
-			})
 			.Child(Flexbox::Build()
 				.DirectionRow()
 				.Children(

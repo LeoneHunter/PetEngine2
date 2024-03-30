@@ -476,12 +476,21 @@ public:
 			} else if(bHasPopups) {
 				continue;
 			}
-			auto bHovered = false;
-
-			if(auto* layoutWidget = LayoutWidget::FindNearest(widget.get())) {
-				bHovered = layoutWidget->OnEvent(&hitTest);
-			}
-			if(bHovered) {
+			// Hittest widgets
+			WidgetVisitor visitor;
+			visitor = [&](Widget* child) {
+				if(auto* layoutWidget = child->As<LayoutWidget>()) {
+					if(layoutWidget->OnHitTest(hitTest)) {
+						layoutWidget->VisitChildren(visitor);
+						return visitResultExit;
+					}
+					return visitResultContinue;
+				}
+				return child->VisitChildren(visitor);
+			};
+			widget->VisitChildren(visitor);
+			
+			if(!hitTest.hitStack.Empty()) {
 				hoveredWindow = widget.get();
 				hoveredWindow_ = hoveredWindow->GetWeak();		
 				break;
