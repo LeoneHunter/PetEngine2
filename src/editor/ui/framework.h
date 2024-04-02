@@ -104,7 +104,13 @@ public:
 	void PushProperty(std::string_view name, const std::string& property) {
 		Assertm(cursorObject_, "PushObject() should be called first");
 		Assert(!name.empty());
-		cursorObject_->PushProperty(name, property);
+		cursorObject_->PushProperty(name, std::format("{}", property));
+	}
+	
+	void PushStringProperty(std::string_view name, const std::string& property) {
+		Assertm(cursorObject_, "PushObject() should be called first");
+		Assert(!name.empty());
+		cursorObject_->PushProperty(name, std::format("\"{}\"", property));
 	}
 
 	template<typename Enum> 
@@ -644,11 +650,6 @@ namespace UI {
 	class Object {
 		DEFINE_ROOT_CLASS_META(Object)
 	public:
-
-		Object() = default;	
-		Object(const Object&) = delete;
-		Object& operator=(const Object&) = delete;
-
 		virtual ~Object() { if(refCounter_) { refCounter_->OnDestructed(); } }
 
 		template<class T>
@@ -666,12 +667,15 @@ namespace UI {
 		// [MyWidgetClassName: <4 bytes of adress> "MyObjectID"]
 		std::string GetDebugID() const; 
 
+	protected:
+		Object() = default;	
+		Object(const Object&) = delete;
+		Object& operator=(const Object&) = delete;
+
 	private:
 		// Used for custom WeakPtr to this
 		util::RefCounter* refCounter_ = nullptr;
 	};
-
-
 
 	/*
 	* Base class for ui components
@@ -713,6 +717,13 @@ namespace UI {
 			}
 			return false;
 		};
+		
+		// Update this widget configuration with the new one
+		// Protected copy constructor should be provided
+		// Called after rebuild during diffing the trees
+		// Only widgets that can be referenced and containt some internal state should override this
+		// @return false - no need to update this widget, just replace
+		virtual bool UpdateWith(const Widget* newWidget) { return false; }
 
 		virtual void DebugSerialize(PropertyArchive& archive) {}
 
@@ -777,6 +788,12 @@ namespace UI {
 			, parent_(nullptr)
 		{}
 
+		// Must call super
+		// TODO: maybe if ids are different do not update
+		void CopyConfiguration(const Widget& other) {
+			id_ = other.id_;
+		}
+
 	private:
 		// Optional user defined ID
 		StringID			id_;
@@ -806,7 +823,12 @@ namespace UI {
 			}
 			return {};
 		}
-		NODISCARD std::unique_ptr<Widget> OrphanChild() { return Orphan(GetChild()); }
+		NODISCARD std::unique_ptr<Widget> OrphanChild() { 
+			if(GetChild()) {
+				return Orphan(GetChild());
+			}
+			return {};
+		}
 
 		bool DispatchToChildren(IEvent* event) {
 			if(child_) {
@@ -854,6 +876,9 @@ namespace UI {
 	class StatefulWidget;
 
 	/*
+	* Contains high level user defined state but subclassing it
+	* A ui is a representation of this state
+	* When the state becomes dirty a Build() is called to update the ui representation of the data
 	*/
 	class WidgetState: public Object {
 		WIDGET_CLASS(WidgetState, Object)
@@ -875,6 +900,7 @@ namespace UI {
 			MarkNeedsRebuild();
 		}
 
+		// TODO: rework this, maybe just return nullptr on rebuild
 		bool IsVisible() { return isVisible_; }
 
 		// Called after build
@@ -893,6 +919,8 @@ namespace UI {
 	private:
 		bool isVisible_ = true;
 		bool needsRebuild_ = true;
+		// TODO: maybe use a WeakPtr here because if we forget to 
+		// rebind a new widget during rebuild, this will point to the deleted old widget
 		StatefulWidget* widget_ = nullptr;
 	};
 
@@ -918,6 +946,12 @@ namespace UI {
 			if(state_) {
 				state_->SetWidget(nullptr);
 			}
+		}
+
+		void DebugSerialize(PropertyArchive& archive) override {
+			Super::DebugSerialize(archive);
+			archive.PushProperty("State", state_ ? state_->GetDebugID() : "null");
+			archive.PushProperty("Dirty", state_ ? state_->needsRebuild_ : false);
 		}
 
 		void MarkNeedsRebuild() {
@@ -989,11 +1023,12 @@ namespace UI {
 
 		void DebugSerialize(PropertyArchive& archive) override {
 			Super::DebugSerialize(archive);
-			archive.PushProperty("IsVisible", !bHidden_);
-			archive.PushProperty("IsFloatLayout", (bool)bFloatLayout_);
+			archive.PushProperty("Visible", !bHidden_);
+			archive.PushProperty("FloatLayout", (bool)bFloatLayout_);
 			archive.PushProperty("AxisMode", std::format("{}", axisMode_));
 			archive.PushProperty("Origin", origin_);
 			archive.PushProperty("Size", size_);
+			archive.PushStringProperty("LayoutStyleSelector", layoutStyle_ ? *layoutStyle_->name : "null");
 		}
 
 		Point TransformLocalToGlobal(Point localPos) const override {
@@ -1130,6 +1165,14 @@ namespace UI {
 			, axisMode_(axisModeFixed)
 			, layoutStyle_(style) {
 			SetAxisMode(axisMode);
+		}
+
+		void CopyConfiguration(const LayoutWidget& other) {
+			Super::CopyConfiguration(other);
+			bFloatLayout_ = other.bFloatLayout_;
+			bNotifyOnUpdate_ = other.bNotifyOnUpdate_;
+			axisMode_ = other.axisMode_;
+			layoutStyle_ = other.layoutStyle_;
 		}
 
 	private:
@@ -1521,6 +1564,51 @@ namespace UI {
 			return Super::OnEvent(event);
 		}
 
+		bool UpdateWith(const Widget* newWidget) override {
+			Assertf(GetClass() == MouseRegion::GetStaticClass(), "UpdateWith() must be overriden in subclasses, "
+					"otherwise during widget rebuilding and diffing only superclass part will be updated, which leads to ub. "
+					"This widget class is '{}'.",
+					GetClassName());
+			if(auto* w = newWidget->As<MouseRegion>()) {
+				CopyConfiguration(*w);
+				return true;
+			}
+			return false;
+		}
+		
+		void DebugSerialize(PropertyArchive& archive) override {
+			Super::DebugSerialize(archive);
+			archive.PushProperty("AlwaysReceiveHover", config_.bHandleHoverAlways);
+			archive.PushProperty("AlwaysReceiveButton", config_.bHandleButtonAlways);
+
+			std::string str;
+			if(config_.onMouseEnter) {
+				str.append("onMouseEnter");
+				str.append(" | ");
+			}
+			if(config_.onMouseHover) {
+				str.append("onMouseHover");
+				str.append(" | ");
+			}
+			if(config_.onMouseLeave) {
+				str.append("onMouseLeave");
+				str.append(" | ");
+			}
+			if(config_.onMouseButton) {
+				str.append("onMouseButton");
+				str.append(" | ");
+			}
+			if(config_.onMouseDrag) {
+				str.append("onMouseDrag");
+				str.append(" | ");
+			}
+			// Delete " | " at the end
+			if(!str.empty() && str.back() == ' ') {
+				str = str.substr(0, str.size() - 3);
+			}
+			archive.PushProperty("Callbacks", str);
+		}
+
 		bool ShouldAlwaysReceiveHover() const { return config_.bHandleHoverAlways; }
 		bool ShouldAlwaysReceiveButton() const { return config_.bHandleButtonAlways; }
 
@@ -1528,6 +1616,12 @@ namespace UI {
 		MouseRegion(const MouseRegionConfig& config) 
 			: config_(config)
 		{}
+
+		void CopyConfiguration(const MouseRegion& other) {
+			Super::CopyConfiguration(other);
+			config_ = other.config_;
+		}
+
 		friend class MouseRegionBuilder;
 	
 	private:	
@@ -1617,7 +1711,7 @@ struct std::formatter<UI::AxisMode, char> {
 
 	template<class FmtContext>
 	FmtContext::iterator format(const UI::AxisMode& axisMode, FmtContext& ctx) const {
-		const auto out = std::format("({}:{})", 
+		const auto out = std::format("{}:{}", 
 			axisMode.x == UI::AxisMode::Expand ? "Expand" : axisMode.x == UI::AxisMode::Shrink ? "Shrink" : "Fixed",
 			axisMode.y == UI::AxisMode::Expand ? "Expand" : axisMode.y == UI::AxisMode::Shrink ? "Shrink" : "Fixed");
 		return std::ranges::copy(std::move(out), ctx.out()).out;
@@ -1625,7 +1719,7 @@ struct std::formatter<UI::AxisMode, char> {
 };
 
 inline std::string UI::Object::GetDebugID() const {
-	if(auto* w = this->As<Widget>(); !w->GetID().Empty()) {
+	if(auto* w = this->As<Widget>(); w && !w->GetID().Empty()) {
 		return std::format("[{}: {:x} \"{}\"]", GetClassName(), (uintptr_t)this & 0xffff, w->GetID());
 	} else {
 		return std::format("[{}: {:x}]", GetClassName(), (uintptr_t)this & 0xffff);

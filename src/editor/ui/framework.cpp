@@ -369,6 +369,9 @@ class DebugOverlayWindow: public WidgetState {
 public:
 
 	std::unique_ptr<Widget> Build() {
+		if(!isVisible_) {
+			return {};
+		}
 		return Container::Build()
 			.ID(names::debugOverlayWindowID)
 			.StyleClass(names::debugOverlayWindowID)
@@ -383,6 +386,7 @@ public:
 		MarkNeedsRebuild();
 	}
 
+	bool isVisible_ = true;
 	std::string text_;
 };
 
@@ -665,7 +669,8 @@ public:
 		
 		if(button == KeyCode::KEY_D && bPressed) {
 			bDrawDebugInfo_ = !bDrawDebugInfo_;
-			debugOverlay_->SetVisibility(bDrawDebugInfo_);
+			debugOverlay_->isVisible_ = !debugOverlay_->isVisible_;
+			debugOverlay_->MarkNeedsRebuild();
 			return;
 		}
 
@@ -676,6 +681,11 @@ public:
 		
 		if(button == KeyCode::KEY_C && bPressed) {
 			bDrawDebugClipRects_ = !bDrawDebugClipRects_;
+			return;
+		}
+		
+		if(button == KeyCode::KEY_H && bPressed) {
+			LOGF(Info, "{}", PrintContext());
 			return;
 		}
 	}
@@ -697,6 +707,71 @@ public:
 	}
 
 	void DispatchCharInputEvent(wchar_t ch) {}
+
+	// Prints whole application context into a string
+	std::string PrintContext() {
+		std::string out;
+		auto sb = util::StringBuilder(&out);
+		sb.Line("Application context:\n");
+
+		sb.Line("Opened window count: {}", widgetStack_.size());
+		sb.Line("Timers count: {}", timers_.Size());
+		sb.Line("Hovered window: {}", hoveredWindow_ ? hoveredWindow_->GetDebugID() : "");
+		sb.Line("Hovered widget: {}", !hoveredWidgets_.Empty() ? hoveredWidgets_.Print() : "");
+		sb.Line("Mouse pos local: {}", hoveredWidgets_.Top() ? GetLocalPosForWidget(hoveredWidgets_.Top()) : mousePosGlobal_);
+		sb.Line("Mouse pos global: {}", mousePosGlobal_ == NOPOINT ? "npos" : std::format("{}", mousePosGlobal_));
+		sb.Line("Capturing mouse widgets: {}", !capturingWidgets_.Empty() ? capturingWidgets_.Print() : "");
+		sb.Line();
+		
+		for(auto it = widgetStack_.rbegin(); it != widgetStack_.rend(); ++it) {
+			PropertyArchive archive;
+			DebugLogEvent onDebugLog;
+			onDebugLog.archive = &archive;
+
+			it->widget->OnEvent(&onDebugLog);
+
+			std::deque<PropertyArchive::ObjectID> parentIDStack;
+			std::stringstream ss;
+
+			auto printIndent = [&](size_t indent) {
+				if(!indent) return;
+				ss << "    ";
+				--indent;
+
+				for(; indent; --indent) {
+					ss << "|   ";
+				}
+			};
+
+			auto visitor = [&](PropertyArchive::Object& object)->bool {
+				const auto parentID = object.parent_ ? object.parent_->objectID_ : 0;
+
+				if(!parentID) {
+					parentIDStack.clear();
+				} else if(parentID != parentIDStack.back()) {
+					// Unwind intil the parent is found
+					for(auto stackParentID = parentIDStack.back();
+						stackParentID != parentID;
+						parentIDStack.pop_back(), stackParentID = parentIDStack.back());
+				}
+				parentIDStack.push_back(object.objectID_);
+				auto indent = parentIDStack.size();
+
+				printIndent(indent); ss << '\n';
+				printIndent(indent - 1); ss << "|-> " << object.debugName_ << ":\n";
+
+				for(auto& property : object.properties_) {
+					printIndent(indent);
+					ss << std::format("{}: {}", property.Name, property.Value) << '\n';
+				}
+				return true;
+			};
+			archive.VisitRecursively(visitor);
+			sb.Line(ss.str());
+			sb.Line();
+		}
+		return out;
+	}
 
 	void LogWidgetTree(Widget* window) {
 		PropertyArchive archive;
@@ -742,25 +817,7 @@ public:
 			return true;
 		};
 		archive.VisitRecursively(visitor);
-		LOGF(Verbose, "Widget tree: \n{}", ss.str());
-	}
-
-	// Rebuild font of the theme if needed
-	void RebuildFonts() {
-		std::vector<Font*> fonts;
-		theme_->RasterizeFonts(&fonts);
-
-		for(auto& font : fonts) {
-			if(font->NeedsRebuild()) {
-				Image fontImageAtlas;
-				font->Build(&fontImageAtlas);
-				auto oldTexture = (TextureHandle)font->GetAtlasTexture();
-				TextureHandle fontTexture = g_Renderer->CreateTexture(fontImageAtlas);
-
-				font->SetAtlasTexture(fontTexture);
-				g_Renderer->DeleteTexture(oldTexture);
-			}
-		}
+		LOGF(Info, "Widget tree: \n{}", ss.str());
 	}
 
 	std::string PrintAncestorTree(Widget* widget) {
@@ -771,24 +828,29 @@ public:
 			w->DebugSerialize(ar);
 		}
 		util::StringBuilder sb(&out);
-		PrintPropertyArchive(ar, &sb);
+		sb.Line(PrintPropertyArchive(ar));
 		return out;
 	}
 
-	void PrintPropertyArchive(const PropertyArchive& ar, util::StringBuilder* sb) {
+	std::string PrintPropertyArchive(const PropertyArchive& ar) {
+		std::string out;
+		util::StringBuilder sb(&out);
 		for(auto it = ar.rootObjects_.rbegin(); it != ar.rootObjects_.rend(); ++it) {
 			auto& object = *it;
-			sb->Line(object->debugName_);
-			sb->PushIndent();
+			sb.Line(object->debugName_);
+			sb.PushIndent();
 
 			for(auto& property : object->properties_) {
-				sb->Line("{}: {}", property.Name, property.Value);
+				sb.Line("{}: {}", property.Name, property.Value);
 			}
-			sb->PopIndent();
+			sb.PopIndent();
 		}
+		return out;
 	}
 
-	void PrintHitStack(util::StringBuilder& sb) {
+	std::string PrintHitStack() {
+		std::string out;
+		util::StringBuilder sb(&out);
 		PropertyArchive ar;
 
 		for(auto& hitData : lastHitStack_) {
@@ -807,6 +869,7 @@ public:
 			}
 			sb.PopIndent();
 		}
+		return out;
 	}
 
 	// Update cached widgets for mouse capture and hovering
@@ -817,6 +880,24 @@ public:
 		bResetState_ = true;
 	}
 	
+	// Rebuild font of the theme if needed
+	void RebuildFonts() {
+		std::vector<Font*> fonts;
+		theme_->RasterizeFonts(&fonts);
+
+		for(auto& font : fonts) {
+			if(font->NeedsRebuild()) {
+				Image fontImageAtlas;
+				font->Build(&fontImageAtlas);
+				auto oldTexture = (TextureHandle)font->GetAtlasTexture();
+				TextureHandle fontTexture = g_Renderer->CreateTexture(fontImageAtlas);
+
+				font->SetAtlasTexture(fontTexture);
+				g_Renderer->DeleteTexture(oldTexture);
+			}
+		}
+	}
+
 	// We will iterate a subtree manually and handle nesting and visibility
 	// Possibly opens a possibility to cache draw commands
 	// Also we will handle clip rects nesting
@@ -893,64 +974,169 @@ public:
 		layoutWidget->OnPostLayout();
 	}
 
-	void BuildDirty() {
-		std::function<VisitResult(StatefulWidget*)> build;
-		// TODO: Add "BuildStackTrace" for build debugging
-		// - Widget being requested
-		// - Index of the child being iterated
+	// Recursively calls Build() on requsted widgets in the dirty list
+	// If the widget in the new tree has the same class as position as the widget in the old tree
+	// 		the old widget is updated with the new one and all raw pointers and weak pointers to it remain valid
+	//		also hovered and pressed state is preserved for such widget
+	// TODO:
+	// - Take widget ids into account
+	// - Add "BuildStackTrace" for build debugging
+	// - Index of the child being iterated
+	void RebuildDirtyWidgets() {
+		StatefulWidget* requestedWidget = nullptr;
 
-		// Check if dirty
-		// #1 Call build()
-		// Mount the new tree and keep the old one
-		// Find in the new tree stateful widgets
-		// 		Get the old StatefulWidget from the state of the new one
-		// 		Update the old widget with the new one
-		//		Check if it needs rebuils after update
-		//		If do: goto #1
-		// 		Else: parent the old tree to the new one
-		//	Update layout
+		std::function<void(StatefulWidget*)> build;
 		build = [&](StatefulWidget* widget) {
 			auto* state = widget->GetState();
 
 			if(!state) {
 				auto s = PrintAncestorTree(widget);
-				LOGF(Error, "Stafeful widget without state found during Build. Ancestor tree:\n{}", s);
-				Assert(false);
+				Assertf(state != nullptr, 
+						"Stafeful widget without state found during Build. Ancestor tree:\n{}\nContext:\n{}", 
+						s, 
+						PrintContext());
 			}
+			auto* oldWidget = state->GetWidget();
 
-			if(widget->NeedsRebuild()) {
-				std::unique_ptr<Widget> oldChild = widget->GetChild() ? widget->OrphanChild() : nullptr;
+			if(!widget->NeedsRebuild()) {
+				if(!oldWidget || !oldWidget->GetChild()) {
+					auto ancestors = PrintAncestorTree(widget);
+					Assertf(oldWidget != nullptr, 
+							"A widget with clear state and no old children is found while building the widget {}. Ancestor tree:\n{}\nContext:\n{}", 
+							requestedWidget->GetDebugID(),
+							ancestors,
+							PrintContext());
+				}
+				if(widget != requestedWidget) {
+					std::unique_ptr<Widget> oldChild = oldWidget->OrphanChild();
+					widget->Parent(std::move(oldChild));
+					widget->RebindToState();
+				}
+				return;
+			}
+			// Start diffing the new tree with the old one
+			// There are 3 posible results:
+			// 		Update: The old widget is updated with the new one and stays in the tree
+			// 		Swap: The old widget is swapped with the new one
+			//		Discard: If widget types are different, whole old tree is discarded and replaced with the new one
+			std::function<void(Widget*, Widget*, Widget*)> diff;
+			diff = [&](Widget* oldWidget, Widget* newWidget, Widget* parent) {
+				Widget* newParent = nullptr;
 
-				if(state->IsVisible()) {
-					widget->Parent(widget->Build());	
-					auto* newChild = widget->GetChild();
-					// LOGF(Verbose, "Rebuild the widget {}, old child {}, new child {}", 
-					// 	widget->GetDebugID(), 
-					// 	oldChild ? oldChild->GetDebugID() : "", 
-					// 	newChild->GetDebugID());
-					
-					widget->VisitChildrenRecursively([&build](Widget* child) {
+				if(!newWidget) {
+					std::unique_ptr<Widget> discardWidget = parent->Orphan(oldWidget);
+					return;
+				}
+				if(auto* stateful = newWidget->As<StatefulWidget>()) {
+					build(stateful);	
+					return;
+				}
+				if(!oldWidget) {
+					if(newWidget->GetParent() != parent) {
+						parent->Parent(newWidget->GetParent()->Orphan(newWidget));		
+					}
+					newWidget->VisitChildrenRecursively([&build](Widget* child) {
 						if(auto* w = child->As<StatefulWidget>()) {
-							return build(w);
+							build(w);
 						}
 						return visitResultContinue;
 					});
+					return;
+				}
+				// If we continue diffing children this will own the widget for diff
+				// and will be deleted on the way back
+				std::unique_ptr<Widget> pendingDelete;
+
+				const bool discard = oldWidget->GetClass() != newWidget->GetClass();
+				if(discard) {
+					if(newWidget->GetParent() != parent) {
+						std::unique_ptr<Widget> discardWidget = parent->Orphan(oldWidget);
+						parent->Parent(newWidget->GetParent()->Orphan(newWidget));
+					}
+					return;
+
+				} else if(oldWidget->UpdateWith(newWidget)) {
+					newParent = oldWidget;
+					if(oldWidget->GetParent() != parent) {
+						pendingDelete = std::move(newWidget->GetParent()->Orphan(newWidget));
+						parent->Parent(oldWidget->GetParent()->Orphan(oldWidget));
+					}
+				} else {
+					newParent = newWidget;
+					if(newWidget->GetParent() != parent) {
+						pendingDelete = std::move(oldWidget->GetParent()->Orphan(oldWidget));
+						parent->Parent(newWidget->GetParent()->Orphan(newWidget));
+					}
+				}
+				// Diff children
+				std::vector<Widget*> oldWidgets;
+				std::vector<Widget*> newWidgets;
+
+				oldWidget->VisitChildren([&](Widget* child) {
+					oldWidgets.push_back(child);
+					return visitResultContinue;
+				});
+				newWidget->VisitChildren([&](Widget* child) {
+					newWidgets.push_back(child);
+					return visitResultContinue;
+				});
+
+				for(size_t index = 0; index < newWidgets.size(); ++index) {
+					auto* oldWidget = index < oldWidgets.size() ? oldWidgets[index] : nullptr;
+					diff(oldWidget, newWidgets[index], newParent);
+				}
+				if(parent == oldWidget->GetParent() && oldWidgets.size() > newWidgets.size()) {
+					auto oldWidgetsToDeleteNum = oldWidgets.size() - newWidgets.size();
+
+					for(auto i = oldWidgetsToDeleteNum; i < oldWidgets.size(); ++i) {
+						std::unique_ptr<Widget> toDeleteWidget = parent->Orphan(oldWidgets[i]);
+					}
+				}
+			};
+			
+			std::unique_ptr<Widget> newTree = widget->Build();
+			if(!newTree) {
+				if(widget == requestedWidget) {
+					std::unique_ptr<Widget> discard;
+					discard = widget->OrphanChild();
+				} else {
+					widget->RebindToState();
+				}
+				return;
+			}
+			if(widget == requestedWidget) {
+				std::unique_ptr<Widget> oldChild;
+				oldChild = widget->OrphanChild();
+				widget->Parent(std::move(newTree));
+				auto* newChild = widget->GetChild();
+
+				if(!oldChild) {
+					diff(nullptr, newChild, widget);
+				} else {
+					if(oldChild->GetClass() != newChild->GetClass()) {
+						diff(nullptr, newChild, widget);
+
+					} else if(oldChild->UpdateWith(newChild)) {
+						std::unique_ptr<Widget> discard = widget->OrphanChild();
+						widget->Parent(std::move(oldChild));
+						diff(widget->GetChild(), discard.get(), widget);
+
+					} else {
+						diff(oldChild.get(), newChild, widget);	
+					}
 				}
 			} else {
-				auto* state = widget->GetState();
-				auto* oldWidget = state->GetWidget();
-
-				if(oldWidget) {
-					std::unique_ptr<Widget> oldChild = oldWidget->OrphanChild();
-					widget->Parent(std::move(oldChild));
-				}
+				widget->Parent(std::move(newTree));
+				auto* old = oldWidget ? oldWidget->GetChild() : nullptr;
+				diff(old, widget->GetChild(), widget);
 			}
 			widget->RebindToState();
-			return visitResultSkipChildren;
+			return;
 		};
 
 		for(auto& widget: dirtyWidgets_) {
 			if(widget) {
+				requestedWidget = widget.Get();
 				build(widget.Get());
 			}
 		}
@@ -984,7 +1170,7 @@ public:
 		// Rebuild
 		{
 			if(!dirtyWidgets_.empty()) {
-				BuildDirty();	
+				RebuildDirtyWidgets();	
 			}
 		}
 
@@ -1015,7 +1201,7 @@ public:
 			if(hoveredWindow_) {
 				sb.Line("{} Hit stack: ", hoveredWindow_->GetDebugID());
 				sb.PushIndent();
-				PrintHitStack(sb);
+				sb.Line(PrintHitStack());
 			}
 			debugOverlay_->SetText(str);
 		}

@@ -42,6 +42,22 @@ public:
 	}
 	TextBox(const std::string& text, StringID style = defaultStyleName);
 
+	void DebugSerialize(PropertyArchive& archive) override {
+		Super::DebugSerialize(archive);
+		// Show a text preview of 20 characters in the debug print
+		constexpr auto previewSize = 20;
+		std::string str;
+		if(!text_.empty()) {
+			if(text_.size() > previewSize) {
+				str = text_.substr(0, previewSize);
+				str.append("...");
+			} else {
+				str = text_;
+			}
+		}
+		archive.PushStringProperty("Text", str);
+	}
+
 	bool OnEvent(IEvent* event) override;
 	float2 OnLayout(const LayoutConstraints& event) override;
 
@@ -73,6 +89,13 @@ public:
 			return true;
 		}
 		return Super::OnEvent(event);
+	}
+	
+	void DebugSerialize(PropertyArchive& archive) override {
+		Super::DebugSerialize(archive);
+		archive.PushProperty("Clip", bClip_);
+		archive.PushStringProperty("StyleClass", style_ ? *style_->name_ : "null");
+		archive.PushStringProperty("BoxStyleSelector", *boxStyleName_);
 	}
 
 	// TODO: maybe change on rebuild
@@ -112,6 +135,7 @@ public:
 		out->SetID(id);
 		out->SetSize(size);
 		out->bClip_ = bClipContent;
+		out->boxStyleName_ = boxStyleName;
 
 		if(bSizeFixed) {
 			out->SetAxisMode(axisModeFixed);
@@ -227,7 +251,15 @@ public:
 
 	void DebugSerialize(PropertyArchive& archive) override {
 		Super::DebugSerialize(archive);
-		archive.PushProperty("ButtonState", *(StringID)state_);
+		archive.PushProperty("State", *(StringID)state_);
+	}
+
+	bool UpdateWith(const Widget* newWidget) override {
+		if(auto* w = newWidget->As<Button>()) {
+			CopyConfiguration(*w);
+			return true;
+		}
+		return false;
 	}
 
 protected:
@@ -235,6 +267,12 @@ protected:
 		: state_(StateEnum::Normal)
 		, eventCallback_(eventCallback) 
 	{}
+	
+	void CopyConfiguration(const Button& other) {
+		Super::CopyConfiguration(other);
+		eventCallback_ = other.eventCallback_;
+	}
+
 	friend class ButtonBuilder;
 
 private:
@@ -466,6 +504,24 @@ public:
 		}
 		return GetOuterSize();
 	}
+	
+	void DebugSerialize(PropertyArchive& archive) override {
+		Super::DebugSerialize(archive);
+		archive.PushProperty(
+			"AlignmentHorizontal", 
+			horizontal_ == Alignment::Start 
+				? "Start"
+				: horizontal_ == Alignment::Center 
+					? "Center"
+					: "End");
+		archive.PushProperty(
+			"AlignmentVertical", 
+			vertical_ == Alignment::Start 
+				? "Start"
+				: vertical_ == Alignment::Center 
+					? "Center"
+					: "End");
+	}
 
 private:
 
@@ -552,8 +608,16 @@ public:
 	void DebugSerialize(PropertyArchive& ar) override {
 		Super::DebugSerialize(ar);
 		ar.PushProperty("Timer", (uintptr_t)sharedState.timerHandle);
-		ar.PushProperty("Tooltip", sharedState.widget ? sharedState.widget->GetDebugID() : "nullptr");
-		ar.PushProperty("bDisabled", sharedState.bDisabled);
+		ar.PushProperty("Tooltip", sharedState.widget ? sharedState.widget->GetDebugID() : "null");
+		ar.PushProperty("Disabled", sharedState.bDisabled);
+	}
+
+	bool UpdateWith(const Widget* newWidget) override {
+		if(auto* w = newWidget->As<TooltipPortal>()) {
+			CopyConfiguration(*w);
+			return true;
+		}
+		return false;
 	}
 
 private:
@@ -627,6 +691,11 @@ private:
 		}
 	}
 
+	void CopyConfiguration(const TooltipPortal& other) {
+		//Super::CopyConfiguration(other);
+		builder_ = other.builder_;
+	}
+
 private:
 	// We use static shared state because there's no point in 
 	//     having multipler tooltips visible at once
@@ -693,6 +762,7 @@ public:
 	PopupSubmenuItem(const std::string&      text,
 				     const PopupBuilderFunc& builder)
 		: text_(text)
+		, isOpen_(false)
 		, builder_(builder)
 		, parent_(nullptr)
 		, index_(0)
@@ -702,7 +772,10 @@ public:
 	void Bind(PopupState* parent, u32 index) { parent_ = parent; index_ = index; }
 	std::unique_ptr<Widget> Build() override;
 	const PopupBuilderFunc& GetBuilder() const { return builder_; }
-	void SetOpen(bool isOpen) { isOpen_ = isOpen; }
+	void SetOpen(bool isOpen) { 
+		isOpen_ = isOpen; 
+		MarkNeedsRebuild();
+	}
 
 private:
 	StringID		 state_;
@@ -833,7 +906,7 @@ private:
 
 	void OpenSubmenu(PopupSubmenuItem& item, u32 itemIndex) {
 		if(nextPopup_ && nextPopupItemIndex_ != itemIndex) {
-			nextPopup_.reset();
+			CloseSubmenu();
 		}
 		if(!nextPopup_) {
 			auto* layoutWidget = item.GetWidget()->FindChildOfClass<LayoutWidget>();
@@ -927,6 +1000,14 @@ public:
 		, builder_(builder) {
 		Parent(std::move(child));
 	}
+
+	bool UpdateWith(const Widget* newWidget) override {
+		if(auto* w = newWidget->As<PopupPortal>()) {
+			builder_ = w->builder_;
+			return true;
+		}
+		return false;
+	}
 	
 	void OnMouseButton(const MouseButtonEvent& event) {
 		if(event.button == MouseButton::ButtonRight && !event.bPressed) {
@@ -1003,12 +1084,12 @@ inline std::unique_ptr<UI::Widget> UI::PopupSubmenuItem::Build() {
 		.OnMouseEnter([this]() { 
 			parent_->OnItemHovered(index_, true); 
 			state_ = StateEnum::Hovered; 
-			//MarkNeedsRebuild();
+			MarkNeedsRebuild();
 		})
 		.OnMouseLeave([this]() { 
 			parent_->OnItemHovered(index_, false); 
 			state_ = StateEnum::Normal; 
-			//MarkNeedsRebuild();
+			MarkNeedsRebuild();
 		})
 		.OnMouseButton([this](const MouseButtonEvent& e) { 
 			if(e.button == MouseButton::ButtonLeft && !e.bPressed) {

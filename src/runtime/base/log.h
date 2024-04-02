@@ -13,6 +13,7 @@ enum class Level: u8 {
 	Fatal,
 	Error,
 	Warning,
+	Info,
 	Verbose,
 
 	All = Verbose,
@@ -25,6 +26,7 @@ inline const char* to_string(Level level) {
 		case Level::Fatal: return "Fatal";
 		case Level::Error: return "Error";
 		case Level::Warning: return "Warning";
+		case Level::Info: return "Info";
 		case Level::Verbose: return "Verbose";
 	}
 	return "Unknown";

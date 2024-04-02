@@ -103,7 +103,7 @@ struct std::formatter<Vec2<T>, char> {
 
 	template<class FmtContext>
 	FmtContext::iterator format(Vec2<T> t, FmtContext& ctx) const {
-		const auto text = std::format("({:.1f}, {:.1f})", t.x, t.y);
+		const auto text = std::format("{:.1f} {:.1f}", t.x, t.y);
 		return std::ranges::copy(std::move(text), ctx.out()).out;
 	}
 };
