@@ -226,24 +226,19 @@ public:
 	}
 
 	void ClipRect(Rect clipRect) override {
-		if(!context.clipRect.Empty()) {
-			drawList->PopClipRect();
-		}	
+		Assert(!clipRect.Empty());
 		clipRect = Transform(clipRect);
 		context.clipRect = clipRect;
-		drawList->PushClipRect(clipRect);
+		context.hasClipRect = true;
 	}
 
 	void DrawClipRect(bool bFilled, Color color) {
-		if(!context.clipRect.Empty()) {
-			drawList->PopClipRect();
-
+		if(context.hasClipRect) {
 			if(bFilled) {
 				drawList->DrawRectFilled(context.clipRect, color);
 			} else {
 				drawList->DrawRect(context.clipRect, color);
 			}
-			drawList->PushClipRect(context.clipRect);
 		}
 	}
 
@@ -252,28 +247,43 @@ public:
 	}
 
 	void SaveContext() {
-		contextStack.push_back(context);
+		if(context.hasClipRect) {
+			drawList->PushClipRect(context.clipRect);
+		}
 		cummulativeTransform += context.transform;
+		contextStack.push_back(context);
 		context.transform = {};
 		context.clipRect = {};
+		context.hasClipRect = false;
 	}
 
 	void RestoreContext() {
 		Assert(!contextStack.empty());
-		cummulativeTransform -= contextStack.back().transform;
+		auto& frame = contextStack.back();
+		cummulativeTransform -= frame.transform;
+		context.transform = frame.transform;
 
-		if(!contextStack.back().clipRect.Empty()) {
+		if(frame.hasClipRect) {
+			context.clipRect = frame.clipRect;
+			context.hasClipRect = true;
 			drawList->PopClipRect();
 		}
 		contextStack.pop_back();
 	}
 
+	void ClearContext() {
+		while(!contextStack.empty()) {
+			RestoreContext();
+		}
+		Assert(cummulativeTransform == float2());
+	}
+
 	Point Transform(Point point) {
-		return point + cummulativeTransform + context.transform;
+		return point + cummulativeTransform;
 	}
 
 	Rect Transform(Rect rect) {
-		return Rect(rect).Translate(cummulativeTransform + context.transform);
+		return Rect(rect).Translate(cummulativeTransform);
 	}
 
 private:
@@ -282,6 +292,7 @@ private:
 	struct Context {
 		Point transform;
 		Rect  clipRect;
+		bool  hasClipRect = false;
 	};
 	Context              context;
 	std::vector<Context> contextStack;
@@ -926,14 +937,15 @@ public:
 				}
 				canvas.PushTransform(layout->GetTransform());
 				canvas.SaveContext();
-				widget->VisitChildren(drawFunc, false);
+				widget->VisitChildren(drawFunc);
 				canvas.RestoreContext();
 			} else {
-				widget->VisitChildren(drawFunc, false);
+				widget->VisitChildren(drawFunc);
 			}
 			return visitResultContinue;
 		};
 		drawFunc(window);
+		canvas.ClearContext();
 	}
 
 	void UpdateLayout(Widget* widget) {

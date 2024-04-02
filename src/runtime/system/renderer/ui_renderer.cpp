@@ -217,7 +217,6 @@ public:
 	void PushClipRect(const Rect& inRect) final {
 		const auto min = math::Round(inRect.min);
 		const auto max = math::Round(inRect.max);
-		//DrawRect(inRect.min, inRect.max, Color("#f2277c"), 0.f, 1.f);
 		m_ImDrawList->PushClipRect(min, max, true);
 	}
 
