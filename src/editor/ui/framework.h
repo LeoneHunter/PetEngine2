@@ -379,24 +379,15 @@ namespace UI {
 	* Widgets that are not subclasses of LayoutWidget do not care about these events
 	* Constraints define the area in which a child can position itself and change size
 	*/
-	class LayoutConstraints final: public IEvent {
-		EVENT_CLASS(LayoutConstraints, IEvent)
-	public:
-
-		LayoutConstraints()
-			: parent(nullptr)
-		{}
+	struct LayoutConstraints {
+		LayoutConstraints() = default;
 
 		LayoutConstraints(LayoutWidget*	parent, Rect rect)
 			: parent(parent)
 			, rect(rect)
 		{}
-
-		EventCategory GetCategory() const override { return EventCategory::Layout; }
-
-		// TODO: Deprecated
-		LayoutWidget* parent;
-		Rect rect;
+		LayoutWidget* parent{};
+		Rect          rect;
 	};
 
 	class LayoutNotification final: public Notification {
@@ -1137,6 +1128,11 @@ namespace UI {
 			}
 			for(auto axis: Axes2D) {
 				if(GetAxisMode()[axis] == AxisMode::Expand) {
+					Assertf(!event.parent || event.parent->GetAxisMode()[axis] != AxisMode::Shrink, 
+							"{} axis {} mode is set to AxisMode::Expand while parent's {} axis mode is set to AxisMode::Shrink.",
+							GetDebugID(),
+							axis == Axis::X ? "X" : "Y",
+							event.parent->GetDebugID());
 					SetSize(axis, event.rect.Size()[axis] - margins.Size()[axis]);
 				}
 			}
@@ -1200,7 +1196,6 @@ namespace UI {
 			Assert(widget && !widget->GetParent() && !child_);
 			child_ = std::move(widget);
 			child_->OnParented(this);
-			DispatchLayoutToChildren();
 		}
 
 		NODISCARD std::unique_ptr<Widget> Orphan(Widget* widget) override {
@@ -1284,96 +1279,6 @@ namespace UI {
 				}
 			}
 			return GetSize() + margins.Size();
-		}
-
-	protected:
-
-		// Centers our child when child size changes
-		void CenterChild(ChildLayoutEvent* event) {
-			const auto childSize = event->child->GetSize();
-			const auto position = (Super::GetSize() - childSize) * 0.5f;
-			event->child->SetOrigin(position);
-		}
-
-		// Centers our child when parent layout changes
-		void CenterChild(LayoutConstraints* event) {
-			if(auto* child = Super::FindChildOfClass<LayoutWidget>()) {
-				const auto margins = GetLayoutStyle() ? GetLayoutStyle()->margins : Margins{};
-				const auto childOuterSize = child->GetSize() + margins.Size();
-				const auto float2 = (event->rect.Size() - childOuterSize) * 0.5f;
-				// Pass tight rect to force child position
-				LayoutConstraints onParent(this, Rect(float2, childOuterSize));
-				child->OnEvent(&onParent);
-			}
-		}
-		// Dispatches event to children adding paddings to rect
-		void DispatchLayoutToChildren() {
-			if(!child_) return;
-
-			const auto layoutInfo = GetLayoutStyle();
-			LayoutConstraints layoutEvent;
-			layoutEvent.parent = this;
-			layoutEvent.rect = Rect(layoutInfo->paddings.TL(), GetSize() - layoutInfo->paddings.Size());
-
-			if(auto* layoutWidget = FindChildOfClass<LayoutWidget>()) {
-				//LOGF(Verbose, "Widget {} dispatched parent layout event to child {}", GetDebugID(), layoutWidget->GetDebugID());
-				layoutWidget->OnEvent(&layoutEvent);
-			}
-		}
-
-		/**
-		 * TODO: deprecated
-		 * Helper to update our size based on AxisMode
-		 * @param bUpdateChildOnAdded if true, updates a newly added child
-		 * @return true if our size was changed by the child
-		*/
-		bool HandleChildEvent(const ChildLayoutEvent* event, bool bUpdateChildOnAdded = true) {
-			const auto axisMode = GetAxisMode();
-			const auto prevSize = GetSize();
-			const auto childAxisMode = event->child->GetAxisMode();
-			const auto paddings = GetLayoutStyle() ? GetLayoutStyle()->paddings : Paddings{};
-			const auto paddingsSize = paddings.Size();
-			bool bSizeChanged = false;
-
-			if(event->subtype == ChildLayoutEvent::OnRemoved) {
-				// Default behavior
-				SetSize({0.f, 0.f});
-				bSizeChanged = true;
-
-			} else if(event->subtype == ChildLayoutEvent::OnChanged) {
-				for(auto axis: Axes2D) {
-					if(event->bAxisChanged[axis] && axisMode[axis] == AxisMode::Shrink) {
-						Assertf(childAxisMode[axis] != AxisMode::Expand,
-								"Cannot shrink on a child with expand behavior. Parent and child behaviour should match if parent is shrinked."
-								"Child {}, Parent {}", event->child->GetDebugID(), GetDebugID());
-
-						SetSize(axis, event->size[axis] + paddingsSize[axis]);
-						bSizeChanged = prevSize[axis] != GetSize()[axis];
-					}
-				}
-
-			} else if(event->subtype == ChildLayoutEvent::OnAdded) {
-				for(auto axis: Axes2D) {
-					if(axisMode[axis] == AxisMode::Shrink) {
-						Assertf(childAxisMode[axis] != AxisMode::Expand,
-								"Cannot shrink on a child with expand behavior. Parent and child behaviour should match if parent is shrinked. "
-								"Child: {}, Parent: {}", event->child->GetDebugID(), GetDebugID());
-
-						SetSize(axis, event->size[axis] + paddingsSize[axis]);
-						bSizeChanged = prevSize[axis] != GetSize()[axis];
-					}
-				}
-				// Update child's position based on padding
-				if(bUpdateChildOnAdded) {
-					LayoutConstraints onParent;
-					onParent.rect = Rect(paddings.TL(), GetSize() - paddingsSize);
-					event->child->OnEvent(&onParent);
-				}
-			}
-			if(bSizeChanged){
-				//LOGF(Verbose, "{} has been updated on child event. New size: {}", GetDebugID(), GetSize());
-			}
-			return bSizeChanged;
 		}
 
 	protected:	

@@ -954,10 +954,10 @@ public:
 		for(Widget* ancestor = widget->GetParent(); ancestor; ancestor = ancestor->GetParent()) {
 			if(auto* l = ancestor->As<LayoutWidget>()) {
 				const auto axisMode = l->GetAxisMode();
-				const auto isLayoutDependsOnChildren =
+				const auto layoutDependsOnChildren =
 					axisMode.x == AxisMode::Shrink || axisMode.y == AxisMode::Shrink;
 
-				if(isLayoutDependsOnChildren) {
+				if(!layoutDependsOnChildren) {
 					layoutWidget = l;
 					break;
 				}
@@ -971,14 +971,16 @@ public:
 		}
 		// Update layout of children recursively starting from this widget
 		LayoutConstraints e;
-		const bool isRoot = layoutWidget->FindParentOfClass<LayoutWidget>() == nullptr;
+		auto* parentLayout = layoutWidget->FindParentOfClass<LayoutWidget>();
+		const bool isRoot = parentLayout == nullptr;
 
 		if(isRoot) {
 			e.rect = Rect(float2(0), g_OSWindow->GetSize());
 		} else {
 			const auto layoutInfo = *layoutWidget->GetLayoutStyle();
+			e.parent = parentLayout;
 			e.rect = Rect(
-                layoutWidget->GetOrigin() - layoutInfo.margins.Size(),
+                layoutWidget->GetOrigin() - layoutInfo.margins.TL(),
                 layoutWidget->GetSize() + layoutInfo.margins.Size()
 			);
 		}
@@ -1193,6 +1195,8 @@ public:
 					UpdateLayout(widget.Get());
 				}
 			}
+			// Update hittest
+			DispatchMouseMoveEvent(mousePosGlobal_);
 			dirtyWidgets_.clear();
 		}
 

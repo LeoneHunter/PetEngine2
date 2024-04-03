@@ -88,6 +88,9 @@ public:
 		return x;
 	}
 
+	constexpr static Vec2<T> max() { return {std::numeric_limits<T>::max(), std::numeric_limits<T>::max()}; }
+	constexpr static Vec2<T> min() { return {std::numeric_limits<T>::min(), std::numeric_limits<T>::min()}; }
+
 public:
 	T x;
 	T y;
