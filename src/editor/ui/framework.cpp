@@ -261,11 +261,8 @@ public:
 		Assert(!contextStack.empty());
 		auto& frame = contextStack.back();
 		cummulativeTransform -= frame.transform;
-		context.transform = frame.transform;
 
 		if(frame.hasClipRect) {
-			context.clipRect = frame.clipRect;
-			context.hasClipRect = true;
 			drawList->PopClipRect();
 		}
 		contextStack.pop_back();
