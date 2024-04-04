@@ -150,6 +150,7 @@ public:
 	}
 
 
+// TODO: remove indent
 namespace UI {
 
 	class Object;
@@ -325,7 +326,7 @@ namespace UI {
 		// ignoring the return value
 		// E.g. DrawEvent
 		virtual bool IsBroadcast() const { return false; };
-		virtual EventCategory GetCategory() const = 0;
+		virtual EventCategory GetCategory() const { return EventCategory::Callback; };
 		
 		// Returns a debug identifier of this object
 		// [ClassName: <4 bytes of adress>]
@@ -372,6 +373,14 @@ namespace UI {
 		Point			mousePosLocal;		
 		float2			mouseDelta;
 		MouseButtonMask	mouseButtonsPressedBitField = MouseButtonMask::None;
+	};
+	
+	class MouseScrollEvent final: public IEvent {
+		EVENT_CLASS(MouseScrollEvent, IEvent)
+	public:
+		EventCategory GetCategory() const override { return EventCategory::System; }
+
+		float2 scrollDelta;
 	};
 
 	/*
@@ -774,7 +783,7 @@ namespace UI {
 		}
 
 	protected:
-		Widget(const std::string& id = {})
+		Widget(StringID id)
 			: id_(id)
 			, parent_(nullptr)
 		{}
@@ -882,7 +891,7 @@ namespace UI {
 		WidgetState(const WidgetState&) = delete;
 		WidgetState& operator=(const WidgetState&) = delete;
 
-		virtual std::unique_ptr<Widget> Build() = 0;
+		virtual std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&& child) = 0;
 
 		void MarkNeedsRebuild();
 
@@ -925,12 +934,13 @@ namespace UI {
 		WIDGET_CLASS(StatefulWidget, SingleChildWidget)
 	public:
 
-		static std::unique_ptr<StatefulWidget> New(WidgetState* state) {
-			return std::make_unique<StatefulWidget>(state);
+		static std::unique_ptr<StatefulWidget> New(WidgetState* state, std::unique_ptr<Widget>&& child = {}) {
+			return std::make_unique<StatefulWidget>(state, std::move(child));
 		}
 
-		StatefulWidget(WidgetState* state)
+		StatefulWidget(WidgetState* state, std::unique_ptr<Widget>&& child = {})
 			: state_(state)
+			, child_(std::move(child))
 		{}
 		
 		~StatefulWidget() {
@@ -952,12 +962,24 @@ namespace UI {
 
 		std::unique_ptr<Widget> Build() {
 			Assertf(state_, "{} doesn't have a state.", GetDebugID());
+			// If we are rebuilding this widget we need to provide old [child] into state_.Build()
+			// because on first build it's provided from the owner but on rebuild we need to provide it here
+			const auto isRebuilding = state_->GetWidget() == this;
+			if(isRebuilding && cachedChild_) {
+				child_ = cachedChild_->GetParent()->Orphan(cachedChild_.Get());
+			} else if(child_){
+				cachedChild_ = child_->GetWeak();
+			}
 			state_->needsRebuild_ = false;
-			return state_->Build();
+			return state_->Build(std::move(child_));
 		}
 
 		bool NeedsRebuild() const {
 			Assertf(state_, "{} doesn't have a state.", GetDebugID());
+			// If the child is provided by the owner, we need to force the state rebuild
+			if(child_) {
+				state_->needsRebuild_ = true;
+			}
 			return state_->needsRebuild_;
 		}
 
@@ -976,6 +998,8 @@ namespace UI {
 
 	private:
 		WidgetState* state_;
+		std::unique_ptr<Widget> child_;
+		WeakPtr<Widget> cachedChild_;
 	};
 
 	inline void WidgetState::MarkNeedsRebuild() { 
@@ -1126,7 +1150,7 @@ namespace UI {
 			if(!bFloatLayout_) {
 				SetOrigin(event.rect.TL() + margins.TL());
 			}
-			for(auto axis: Axes2D) {
+			for(auto axis: axes2D) {
 				if(GetAxisMode()[axis] == AxisMode::Expand) {
 					Assertf(!event.parent || event.parent->GetAxisMode()[axis] != AxisMode::Shrink, 
 							"{} axis {} mode is set to AxisMode::Expand while parent's {} axis mode is set to AxisMode::Shrink.",
@@ -1150,11 +1174,11 @@ namespace UI {
 		}
 
 	protected:
-		LayoutWidget(const LayoutStyle* style = nullptr,
-					 AxisMode			axisMode = axisModeShrink,
-					 bool 				notifyOnUpdate = false,
-					 const std::string& id = {})
-			: Widget(id) 
+		LayoutWidget(const LayoutStyle* style          = nullptr,
+					 AxisMode           axisMode       = axisModeShrink,
+					 bool               notifyOnUpdate = false,
+					 StringID           id             = {})
+			: Widget(id)
 			, bHidden_(false)
 			, bFloatLayout_(false)
 			, bNotifyOnUpdate_(notifyOnUpdate)
@@ -1256,7 +1280,7 @@ namespace UI {
 			if(!IsFloatLayout()) {
 				SetOrigin(rect.rect.TL() + margins.TL());
 			}
-			for(auto axis: Axes2D) {
+			for(auto axis: axes2D) {
 				if(GetAxisMode()[axis] == AxisMode::Expand) {
 					SetSize(axis, rect.rect.Size()[axis] - margins.Size()[axis]);
 				}
@@ -1272,27 +1296,26 @@ namespace UI {
 				const auto childOuterSize = layoutWidget->OnLayout(e);
 				layoutWidget->OnPostLayout();
 
-				for(auto axis: Axes2D) {
+				for(auto axis: axes2D) {
 					if(GetAxisMode()[axis] == AxisMode::Shrink) {
 						SetSize(axis, childOuterSize[axis] + layoutInfo.paddings.Size()[axis]);
 					}
 				}
 			}
 			return GetSize() + margins.Size();
-		}
+		}		
 
-	protected:	
-		SingleChildLayoutWidget(StringID 			styleName,
-								AxisMode			axisMode = axisModeShrink,
-								bool				notifyOnUpdate = false,
-								const std::string&	id = {})
-			: LayoutWidget(Application::Get()->GetTheme()->Find(styleName)->FindOrDefault<LayoutStyle>(), 
-						   axisMode, 
+	protected:
+		SingleChildLayoutWidget(StringID styleName,
+								AxisMode axisMode       = axisModeShrink,
+								bool     notifyOnUpdate = false,
+								StringID id             = {})
+			: LayoutWidget(Application::Get()->GetTheme()->Find(styleName)->FindOrDefault<LayoutStyle>(),
+						   axisMode,
 						   notifyOnUpdate,
 						   id)
-			, child_()
-		{}
-	
+			, child_() {}
+
 	public:
 		std::unique_ptr<Widget> child_;
 	};
@@ -1412,12 +1435,16 @@ namespace UI {
 	using MouseButtonEventCallback = std::function<void(const MouseButtonEvent&)>;
 	using MouseDragEventCallback = std::function<void(const MouseDragEvent&)>;
 
+	// Must return true if wants to consume event
+	using MouseScrollEventCallback = std::function<bool(const MouseScrollEvent&)>;
+
 	struct MouseRegionConfig {
 		MouseEnterEventCallback  onMouseEnter;
 		MouseLeaveEventCallback  onMouseLeave;
 		MouseHoverEventCallback  onMouseHover;
 		MouseButtonEventCallback onMouseButton;
 		MouseDragEventCallback   onMouseDrag;
+		MouseScrollEventCallback onMouseScroll;
 		// Whether to handle events even if other MouseRegion widget 
 		//     has already handled the event
 		bool					 bHandleHoverAlways = false;
@@ -1466,6 +1493,12 @@ namespace UI {
 				}
 				return config_.onMouseDrag || config_.onMouseButton;
 			}
+			if(auto* scrollEvent = event->As<MouseScrollEvent>()) {
+				if(config_.onMouseScroll) {
+					return config_.onMouseScroll(*scrollEvent);
+				}
+				return false;
+			}
 			return Super::OnEvent(event);
 		}
 
@@ -1507,6 +1540,10 @@ namespace UI {
 				str.append("onMouseDrag");
 				str.append(" | ");
 			}
+			if(config_.onMouseScroll) {
+				str.append("onMouseScroll");
+				str.append(" | ");
+			}
 			// Delete " | " at the end
 			if(!str.empty() && str.back() == ' ') {
 				str = str.substr(0, str.size() - 3);
@@ -1536,14 +1573,15 @@ namespace UI {
 	class MouseRegionBuilder {
 	public:
 
-		MouseRegionBuilder& OnMouseButton(const MouseButtonEventCallback& c) { config_.onMouseButton = c; return *this; }
-		MouseRegionBuilder& OnMouseDrag(const MouseDragEventCallback& c) { config_.onMouseDrag = c; return *this; }
-		MouseRegionBuilder& OnMouseEnter(const MouseEnterEventCallback& c) { config_.onMouseEnter = c; return *this; }
-		MouseRegionBuilder& OnMouseLeave(const MouseLeaveEventCallback& c) { config_.onMouseLeave = c; return *this; }
-		MouseRegionBuilder& OnMouseHover(const MouseHoverEventCallback& c) { config_.onMouseHover = c; return *this; }
-		MouseRegionBuilder& HandleHoverAlways(bool b = true) { config_.bHandleHoverAlways = b; return *this; }
-		MouseRegionBuilder& HandleButtonAlways(bool b = true) { config_.bHandleButtonAlways = b; return *this; }
-		MouseRegionBuilder& Child(std::unique_ptr<Widget>&& child) { child_ = std::move(child); return *this; }
+		auto& OnMouseButton(const MouseButtonEventCallback& c) { config_.onMouseButton = c; return *this; }
+		auto& OnMouseDrag(const MouseDragEventCallback& c) { config_.onMouseDrag = c; return *this; }
+		auto& OnMouseEnter(const MouseEnterEventCallback& c) { config_.onMouseEnter = c; return *this; }
+		auto& OnMouseLeave(const MouseLeaveEventCallback& c) { config_.onMouseLeave = c; return *this; }
+		auto& OnMouseHover(const MouseHoverEventCallback& c) { config_.onMouseHover = c; return *this; }
+		auto& OnMouseScroll(const MouseScrollEventCallback& c) { config_.onMouseScroll = c; return *this; }
+		auto& HandleHoverAlways(bool b = true) { config_.bHandleHoverAlways = b; return *this; }
+		auto& HandleButtonAlways(bool b = true) { config_.bHandleButtonAlways = b; return *this; }
+		auto& Child(std::unique_ptr<Widget>&& child) { child_ = std::move(child); return *this; }
 
 		std::unique_ptr<MouseRegion> New() { 
 			Assertf([&]() {

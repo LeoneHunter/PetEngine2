@@ -3,3 +3,8 @@
 #include "framework.h"
 #include "style.h"
 #include "widgets.h"
+#include "scroll_view.h"
+#include "button.h"
+#include "tooltip.h"
+#include "popup.h"
+#include "containers.h"

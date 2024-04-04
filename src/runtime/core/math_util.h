@@ -33,7 +33,7 @@ enum class Axis{ X, Y };
 constexpr Axis operator! (Axis inAxis) { return inAxis == Axis::X ? Axis::Y : Axis::X; }
 constexpr Axis InvertAxis(Axis inAxis) { return inAxis == Axis::X ? Axis::Y : Axis::X; }
 // For easy iteration
-constexpr std::array<Axis, 2> Axes2D{Axis::X, Axis::Y};
+constexpr std::array<Axis, 2> axes2D{Axis::X, Axis::Y};
 
 /**
  * Stores vector of 2 values

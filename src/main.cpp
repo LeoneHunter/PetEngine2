@@ -32,6 +32,31 @@ void SetDarkTheme() {
 		s.Add<BoxStyle>("Pressed", "Normal").FillColor("#909090");
 	}
 	{
+		auto& s = theme->Add("ScrollbarContainer");
+		s.Add<LayoutStyle>().Margins(0).Paddings(0);
+		s.Add<BoxStyle>().Rounding(0).Opacity(0.f);
+	}
+	{
+		auto& s = theme->Add("ScrollbarTrack");
+		s.Add<LayoutStyle>("Normal").Margins(0).Paddings(0);
+		s.Add<LayoutStyle>("Hovered", "Normal");
+		s.Add<LayoutStyle>("Pressed", "Normal");
+
+		s.Add<BoxStyle>("Normal").FillColor("#353535").Borders(1).Rounding(0);
+		s.Add<BoxStyle>("Hovered", "Normal");
+		s.Add<BoxStyle>("Pressed", "Normal");
+	}
+	{
+		auto& s = theme->Add("ScrollbarThumb");
+		s.Add<LayoutStyle>("Normal").Margins(0).Paddings(0);
+		s.Add<LayoutStyle>("Hovered", "Normal");
+		s.Add<LayoutStyle>("Pressed", "Normal");
+
+		s.Add<BoxStyle>("Normal").FillColor("#505050").Borders(0).Rounding(0);
+		s.Add<BoxStyle>("Hovered", "Normal").FillColor("#707070");
+		s.Add<BoxStyle>("Pressed", "Normal").FillColor("#909090");
+	}
+	{
 		auto& s = theme->Add("FloatWindow");
 		s.Add<LayoutStyle>().Margins(5, 5).Paddings(0);
 		s.Add<BoxStyle>().FillColor("#303030").Rounding(6);	
@@ -107,7 +132,8 @@ class FilesystemView: public WidgetState {
 	WIDGET_CLASS(FilesystemView, WidgetState)
 public:
 
-	FilesystemView(const std::path& dir) {
+	FilesystemView(const std::path& dir) 
+		: scrollViewState_(false, true) {
 		SetRootDirectory(dir);
 		auto theme = Application::Get()->GetTheme();	
 		const auto frameColor = Color::FromHex("#303030");
@@ -128,7 +154,7 @@ public:
 		}
 	}
 
-	std::unique_ptr<Widget> Build() override {
+	std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&&) override {
 		std::vector<std::unique_ptr<Widget>> out;
 		std::function<void(Node&)> build;
 
@@ -169,12 +195,15 @@ public:
 					.SizeMode({AxisMode::Fixed, AxisMode::Expand})
 					.Size({300, 0})
 					.ClipContent()
-					.Child(Flexbox::Build()
-						.DirectionColumn()
-						.ExpandCrossAxis()
-						.Children(std::move(out))
-						.New()
-					)
+					.Child(StatefulWidget::New(
+						&scrollViewState_,
+						Flexbox::Build()
+							.DirectionColumn()
+							.ExpandCrossAxis()
+							.ExpandMainAxis(false)
+							.Children(std::move(out))
+							.New()
+					))
 					.New()
 				)
 		);
@@ -236,7 +265,7 @@ public:
 			, filename(filename)
 		{}
 
-		std::unique_ptr<Widget> Build() override {
+		std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&&) override {
 			return Button::Build()
 				.SizeMode({AxisMode::Expand, AxisMode::Shrink})
 				.StyleClass("FilesystemNode")
@@ -264,6 +293,7 @@ private:
 	std::path root;
 	// Node tree stored in breadth first order
 	std::vector<std::unique_ptr<Node>> nodes;
+	ScrollViewState scrollViewState_;
 };
 
 int main(int argc, char* argv[]) {

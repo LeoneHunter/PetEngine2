@@ -344,7 +344,8 @@ public:
 		const StyleType* out = nullptr;
 
 		for(auto& style: styles_) {
-			if(style->IsA<StyleType>() && (inName == style->name || inName.Empty())) {
+			if(style->IsA<StyleType>() 
+			   && (inName == style->name || inName.Empty() || name_.Empty())) {
 				out = style->As<StyleType>();
 				break;
 			}

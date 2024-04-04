@@ -1,5 +1,6 @@
 #include "framework.h"
 #include "widgets.h"
+#include "containers.h"
 #include "runtime/platform/native_window.h"
 #include "runtime/system/renderer/ui_renderer.h"
 #include "runtime/system/job_dispatcher.h"
@@ -272,7 +273,11 @@ public:
 		while(!contextStack.empty()) {
 			RestoreContext();
 		}
-		Assert(cummulativeTransform == float2());
+		Assert(float2(std::round(cummulativeTransform.x), std::round(cummulativeTransform.y)) == float2());
+	}
+
+	bool HasClipRect() const {
+		return context.hasClipRect;
 	}
 
 	Point Transform(Point point) {
@@ -376,7 +381,7 @@ private:
 class DebugOverlayWindow: public WidgetState {
 public:
 
-	std::unique_ptr<Widget> Build() {
+	std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&&) {
 		if(!isVisible_) {
 			return {};
 		}
@@ -452,7 +457,12 @@ public:
 			return;
 		} 
 		
+		// If we're update the hittest after rebuild, delta will be 0.0 so ingore mouse drags
+		// TODO: Dispatch drag events if delta is above some threshold
 		if(!capturingWidgets_.Empty()) {
+			if(mouseDelta == float2(0.f)) {
+				return;
+			}
 			capturingWidgets_.ForEach([&](Widget* w) {
 				const auto mouseDeltaFromInitial = mousePosGlobal - mousePosOnCaptureGlobal_;
 				// Convert global to local using hit test data
@@ -698,7 +708,21 @@ public:
 		}
 	}
 
-	void DispatchMouseScrollEvent(float scroll) {}
+	void DispatchMouseScrollEvent(float scroll) {
+		if (!hoveredWindow_) {
+			return;
+		}
+		MouseScrollEvent e;
+		e.scrollDelta = {0.f, scroll};
+
+		for(Widget* widget = lastHitStack_.TopWidget(); widget; widget = widget->GetParent()) {
+			if(auto* mouseRegion = widget->As<MouseRegion>()) {
+				if(mouseRegion->OnEvent(&e)) {
+					return;
+				}
+			}
+		}
+	}
 
 	void DispatchOSWindowResizeEvent(float2 windowSize) {
 		// Ignore minimized state for now
@@ -867,7 +891,7 @@ public:
 			hitData.widget->DebugSerialize(ar);
 		}
 
-		for(auto it = ar.rootObjects_.rbegin(); it != ar.rootObjects_.rend(); ++it) {
+		for(auto it = ar.rootObjects_.begin(); it != ar.rootObjects_.end(); ++it) {
 			auto& object = *it;
 			sb.Line(object->debugName_);
 			sb.PushIndent();
@@ -919,12 +943,16 @@ public:
 		std::function<VisitResult(Widget*)> drawFunc;
 		// Draw children recursively using DFS
 		drawFunc = [&](Widget* widget) {
-			widget->OnEvent(&drawEvent);
-
-			if(bDrawDebugClipRects_) {
-				canvas.DrawClipRect(false, colors::red);
-			}
 			if(auto* layout = widget->As<LayoutWidget>()) {
+				widget->OnEvent(&drawEvent);
+
+				if(bDrawDebugClipRects_ && canvas.HasClipRect()) {
+					if(lastHitStack_.TopWidget() == layout) {
+						canvas.DrawClipRect(true, colors::red.MultiplyAlpha(0.3f));
+					} else {
+						canvas.DrawClipRect(false, colors::red);
+					}
+				}
 				if(bDrawDebugLayout_){
 					if(lastHitStack_.TopWidget() == layout) {
 						canvas.DrawRect(layout->GetRect().Expand(-1), colors::green.MultiplyAlpha(0.3f), true);
@@ -1020,7 +1048,9 @@ public:
 				}
 				if(widget != requestedWidget) {
 					std::unique_ptr<Widget> oldChild = oldWidget->OrphanChild();
-					widget->Parent(std::move(oldChild));
+					if(oldChild) {
+						widget->Parent(std::move(oldChild));
+					}
 					widget->RebindToState();
 				}
 				return;
@@ -1187,14 +1217,17 @@ public:
 
 		// Update layout
 		{
-			for(auto& widget: dirtyWidgets_) {
+			// Copy because widgets can request rebuild in UpdateLayout()
+			auto pendingUpdateLayout = dirtyWidgets_;
+			dirtyWidgets_.clear();
+
+			for(auto& widget: pendingUpdateLayout) {
 				if(widget) {
 					UpdateLayout(widget.Get());
 				}
 			}
 			// Update hittest
 			DispatchMouseMoveEvent(mousePosGlobal_);
-			dirtyWidgets_.clear();
 		}
 
 		if(bDrawDebugInfo_) {
