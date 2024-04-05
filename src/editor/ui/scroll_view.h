@@ -41,6 +41,42 @@ public:
 		if(visibilityRatio_ >= 1.f) {
 			return {};
 		}
+		std::vector<std::unique_ptr<Widget>> children;
+
+		if(offset_ > 0.001f) {
+			children.push_back(Flexible::New(
+				offset_,
+				Button::Build()
+					.ID("ScrollbarTrackStart")
+					.StyleClass("ScrollbarTrack")
+					.SizeExpanded()
+					.OnPress([this](const ButtonEvent& e) {
+						if(e.button == MouseButton::ButtonLeft && e.bPressed) {
+							OnTrackClick(true);
+						}
+					})
+					.New()
+			));
+		}
+		children.push_back(Flexible::New(
+			visibilityRatio_,
+			StatefulWidget::New(&thumb_)
+		));
+		if(offset_ + visibilityRatio_ < 1.f) {
+			children.push_back(Flexible::New(
+				1.f - (visibilityRatio_ + offset_),
+				Button::Build()
+					.ID("ScrollbarTrackEnd")
+					.StyleClass("ScrollbarTrack")
+					.SizeExpanded()
+					.OnPress([this](const ButtonEvent& e) {
+						if(e.button == MouseButton::ButtonLeft && e.bPressed) {
+							OnTrackClick(false);
+						}
+					})
+					.New()
+			));
+		}
 		return EventListener::New(
 			[this](IEvent* e) {
 				if(auto* layoutNotification = e->As<LayoutNotification>()) {
@@ -66,28 +102,7 @@ public:
 					.ID("ScrollbarFlexbox")
 					.Direction(axis_ == Axis::Y ? ContentDirection::Column : ContentDirection::Row)
 					.Expand()
-					.Children(
-						Flexible::New(
-							offset_, 
-							Button::Build()
-								.ID("ScrollbarTrackStart")
-								.StyleClass("ScrollbarTrack")
-								.SizeExpanded()
-								.New()
-						),
-						Flexible::New(
-							visibilityRatio_,
-							StatefulWidget::New(&thumb_)
-						),
-						Flexible::New(
-							1.f - (visibilityRatio_ + offset_),
-							Button::Build()
-								.ID("ScrollbarTrackEnd")
-								.StyleClass("ScrollbarTrack")
-								.SizeExpanded()
-								.New()
-						)
-					)	
+					.Children(std::move(children))	
 					.New()		
 				)
 				.New()
@@ -107,10 +122,7 @@ public:
 
 private:
 
-	void OnThumbDrag(float delta) {
-		auto deltaNorm = delta / trackSize_;
-		auto newOffset = offset_ + deltaNorm;
-		
+	void SetOffset(float newOffset) {
 		if(newOffset + visibilityRatio_ > 1.f) {
 			newOffset = 1.f - visibilityRatio_;
 		} else if(newOffset < 0.f) {
@@ -124,6 +136,19 @@ private:
 			onScroll_(offset_);
 		}
 		MarkNeedsRebuild();
+	}
+
+	void OnThumbDrag(float delta) {
+		const auto deltaNorm = delta / trackSize_;
+		const auto newOffset = offset_ + deltaNorm;
+		SetOffset(newOffset);	
+	}
+
+	void OnTrackClick(bool isStart) {
+		// Scroll one page to the start or end
+		const auto delta = isStart ? -visibilityRatio_ : visibilityRatio_;
+		const auto newOffset = offset_ + delta; 
+		SetOffset(newOffset);
 	}
 
 	class Thumb: public WidgetState {
@@ -164,6 +189,7 @@ private:
 private:
 	Axis                   axis_;
 	float                  visibilityRatio_;
+	// Normalized scroll offset 0.0 - 1.0
 	float                  offset_;
 	Thumb                  thumb_;
 	float				   trackSize_;
@@ -242,8 +268,8 @@ private:
 		NotifyListeners();
 	}
 
-	bool OnScroll(const MouseScrollEvent& e) {
-		LOGF(Verbose, "ScrollView OnScroll called. Scroll delta: {}", e.scrollDelta);
+	bool OnMouseScroll(const MouseScrollEvent& e) {
+		LOGF(Verbose, "ScrollView OnMouseScroll called. Scroll delta: {}", e.scrollDelta);
 		auto axis = Axis::Y;
 		auto delta = e.scrollDelta * 30.f;
 		auto newOffset = scrollOffset_ - delta;
@@ -259,6 +285,7 @@ private:
 		return true;
 	}
 
+	// Called from a scrollbar
 	void OnScrollbarChanged(Axis axis, float offsetNorm) {
 		auto offsetPx = offsetNorm * contentSize_[axis];
 		auto newOffset = math::Clamp(offsetPx, 0.f, scrollOffsetMax_[axis]);
@@ -321,7 +348,7 @@ public:
 			drawEvent->canvas->ClipRect(GetRect());
 			return true;
 		}
-		// Received from the ScrollViewState when the scroll position is changes
+		// Received from the ScrollViewState when the scroll position is changed
 		if(auto* scrollChangedEvent = event->As<ScrollChangedEvent>()) {
 			// Positive offset corresponds to a negative coordinates because the 0 is at the top of the screen
 			SetOrigin(-scrollChangedEvent->offset);
@@ -364,7 +391,7 @@ inline std::unique_ptr<Widget> ScrollViewState::Build(std::unique_ptr<Widget>&& 
 		},
 		MouseRegion::Build()
 			.OnMouseScroll([this](const MouseScrollEvent& e) {
-				return OnScroll(e);
+				return OnMouseScroll(e);
 			})
 			.Child(Container::Build()
 				.StyleClass("Transparent")

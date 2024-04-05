@@ -34,7 +34,7 @@ void SetDarkTheme() {
 	{
 		auto& s = theme->Add("ScrollbarContainer");
 		s.Add<LayoutStyle>().Margins(0).Paddings(0);
-		s.Add<BoxStyle>().Rounding(0).Opacity(0.f);
+		s.Add<BoxStyle>().Rounding(0).Opacity(0.f).Borders(0);
 	}
 	{
 		auto& s = theme->Add("ScrollbarTrack");
@@ -42,7 +42,7 @@ void SetDarkTheme() {
 		s.Add<LayoutStyle>("Hovered", "Normal");
 		s.Add<LayoutStyle>("Pressed", "Normal");
 
-		s.Add<BoxStyle>("Normal").FillColor("#353535").Borders(1).Rounding(0);
+		s.Add<BoxStyle>("Normal").FillColor("#353535").Borders(0).Rounding(0);
 		s.Add<BoxStyle>("Hovered", "Normal");
 		s.Add<BoxStyle>("Pressed", "Normal");
 	}
@@ -126,7 +126,7 @@ namespace std {
 	using namespace std::filesystem;
 }
 
-/// Draws a tree of directories in the specified folder
+// Draws a tree of directories in the specified folder
 // Each tree node can be opened, dragged, deleted and created
 class FilesystemView: public WidgetState {
 	WIDGET_CLASS(FilesystemView, WidgetState)
@@ -297,6 +297,8 @@ private:
 };
 
 int main(int argc, char* argv[]) {
+	std::string str;
+	std::reverse(str.begin(), str.end());
 
 	const auto commandLine = std::vector<std::string>(argv, argv + argc);
 	auto workingDir = std::filesystem::path(commandLine[0]).parent_path();
