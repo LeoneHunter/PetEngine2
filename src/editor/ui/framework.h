@@ -1134,14 +1134,17 @@ namespace UI {
 	
 	public:
 
-		virtual bool OnHitTest(HitTestEvent& event) {
-			auto hitPosLocalSpace = event.GetLastHitPos();
-			if(GetRect().Contains(hitPosLocalSpace)) {
-				event.PushItem(this, hitPosLocalSpace - GetOrigin());
+		virtual bool OnHitTest(HitTestEvent& event, float2 position) {
+			if(GetRect().Contains(position)) {
+				const auto internalPosition = position - GetOrigin();
+				event.PushItem(this, internalPosition);
+				HitTestChildren(event, internalPosition);
 				return true;
 			}
 			return false;
 		}
+
+		virtual bool HitTestChildren(HitTestEvent& event, float2 position) { return false; }
 
 		// Returns size after layout is performed
 		virtual float2 OnLayout(const LayoutConstraints& event) { 
@@ -1259,19 +1262,23 @@ namespace UI {
 				return true;
 			} 
 			if(event->IsA<HitTestEvent>()) {
-				if(Super::OnEvent(event)) {
-					// Dispatch HitTest only if we was hit
-					if(auto* layoutChild = FindChildOfClass<LayoutWidget>(this)) {
-						layoutChild->OnEvent(event);
-					}
-					return true;
-				} 
+				Assertm(false, "Deprecated");
 				return false;
 			} 
 			return Super::OnEvent(event);
 		}
 
 	public:
+
+		bool HitTestChildren(HitTestEvent& event, float2 position) override {
+			if(!child_) {
+				return false;
+			}
+			if(auto* layoutChild = FindChildOfClass<LayoutWidget>()) {
+				return layoutChild->OnHitTest(event, position);
+			}
+			return false;
+		}
 
 		float2 OnLayout(const LayoutConstraints& rect) override { 
 			const auto layoutInfo = *GetLayoutStyle();
@@ -1410,6 +1417,24 @@ namespace UI {
 			} 
 			return Super::OnEvent(event);
 		}
+		
+		bool HitTestChildren(HitTestEvent& event, float2 position) override {
+			if(children_.empty()) {
+				return false;
+			}
+			for(auto it = children_.rbegin(); it != children_.rend(); ++it) {
+				if(auto* layoutChild = LayoutWidget::FindNearest(it->get())) {
+					if(layoutChild->OnHitTest(event, position)) {
+						return true;
+					}
+				}
+			}
+			return false;
+		}
+
+	public:
+
+		bool Empty() const { return children_.empty(); }
 
 	protected:
 		MultiChildLayoutWidget(const LayoutStyle* style = nullptr,
@@ -1419,6 +1444,12 @@ namespace UI {
 			: LayoutWidget(style, axisMode, notifyOnUpdate, id)
 			, children_() 
 		{}
+
+		auto begin() { return children_.begin(); }
+		auto end() { return children_.end(); }
+
+		auto begin() const { return children_.begin(); }
+		auto end() const { return children_.end(); }
 
 	private:
 		std::vector<std::unique_ptr<Widget>> children_;

@@ -252,6 +252,7 @@ inline FlexboxBuilder Flexbox::Build() { return {}; }
 
 /*
 * Aligns a child inside the parent if parent is bigger that child
+* Transparent for hit test
 */
 class Aligned: public SingleChildLayoutWidget {
 	WIDGET_CLASS(Aligned, SingleChildLayoutWidget)
@@ -267,6 +268,10 @@ public:
 		, vertical_(vertical) {
 		Parent(std::move(widget));
 		SetAxisMode(axisModeFixed);
+	}
+	
+	bool OnHitTest(HitTestEvent& event, float2 position) {
+		return HitTestChildren(event, position - GetOrigin());
 	}
 
 	float2 OnLayout(const LayoutConstraints& event) override {
@@ -334,6 +339,61 @@ private:
 private:
 	Alignment horizontal_;
 	Alignment vertical_;
+};
+
+
+
+
+/*
+* Always expanded container with multiple children
+* All children receive constraints of all available space
+*/
+class StackView: public MultiChildLayoutWidget {
+	WIDGET_CLASS(StackView, MultiChildLayoutWidget)
+public:
+
+	template<typename ...T> 
+		requires (std::derived_from<T, Widget> && ...)
+	static auto New(std::unique_ptr<T>&& ...child) {
+		auto out = std::unique_ptr<Widget>(new StackView());
+		(out->Parent(std::move(child)), ...);
+		return out;
+	}
+
+	static auto New(std::vector<std::unique_ptr<Widget>>&& children) {
+		auto out = std::unique_ptr<Widget>(new StackView());
+		for(auto& child: children) {
+			out->Parent(std::move(child));
+		}
+		return out;
+	}
+
+	float2 OnLayout(const LayoutConstraints& event) override {
+		Super::OnLayout(event);
+		if(Empty()) {
+			return GetOuterSize();
+		}
+		const auto layoutInfo = *GetLayoutStyle();
+		const auto paddings = layoutInfo.paddings;
+		LayoutConstraints e;
+		e.parent = this;
+		e.rect   = Rect(paddings.TL(), GetSize() - paddings.Size());
+
+		for(auto& child: *this) {
+			if(auto* layoutWidget = LayoutWidget::FindNearest(child.get())) {
+				layoutWidget->OnLayout(e);
+				layoutWidget->OnPostLayout();
+			}
+		}
+		return GetOuterSize();
+	}
+
+protected:
+	StackView() {
+		SetAxisMode(axisModeExpand);
+		auto* styleClass = Application::Get()->GetTheme()->Find("Transparent");
+		SetLayoutStyle(styleClass->Find<LayoutStyle>());
+	}
 };
 
 

@@ -52,7 +52,7 @@ void SetDarkTheme() {
 		s.Add<LayoutStyle>("Hovered", "Normal");
 		s.Add<LayoutStyle>("Pressed", "Normal");
 
-		s.Add<BoxStyle>("Normal").FillColor("#505050").Borders(0).Rounding(0);
+		s.Add<BoxStyle>("Normal").FillColor("#505050").Borders(0).Rounding(3);
 		s.Add<BoxStyle>("Hovered", "Normal").FillColor("#707070");
 		s.Add<BoxStyle>("Pressed", "Normal").FillColor("#909090");
 	}
@@ -133,7 +133,7 @@ class FilesystemView: public WidgetState {
 public:
 
 	FilesystemView(const std::path& dir) 
-		: scrollViewState_(false, true) {
+		: scrollViewState_(ScrollViewState::Flags::Vertical) {
 		SetRootDirectory(dir);
 		auto theme = Application::Get()->GetTheme();	
 		const auto frameColor = Color::FromHex("#303030");
@@ -297,21 +297,15 @@ private:
 };
 
 int main(int argc, char* argv[]) {
-	std::string str;
-	std::reverse(str.begin(), str.end());
-
 	const auto commandLine = std::vector<std::string>(argv, argv + argc);
-	auto workingDir = std::filesystem::path(commandLine[0]).parent_path();
+	const auto workingDir = std::filesystem::path(commandLine[0]).parent_path();
 	logging::Init(workingDir.string());
 	logging::SetLevel(logging::Level::All);
-
-	using namespace UI;
 
 	g_Application = Application::Create("App", 1800, 900);
 	SetDarkTheme();
 	auto app = std::make_unique<FilesystemView>(std::path("G:\\"));
 	g_Application->Parent(StatefulWidget::New(app.get()));
-	//TestFlexbox();
 
 	while(g_Application->Tick());
 }

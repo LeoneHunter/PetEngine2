@@ -421,7 +421,7 @@ struct Rect {
 
 	constexpr void		Clear() { min = point_type{0.f}; max = point_type{0.f}; }
 	// If min == max the rect is technically empty
-	constexpr bool		Empty() { return min == max; }
+	constexpr bool		Empty() const { return min == max; }
 
 	// Helpers
 	constexpr Rect&		Translate(point_type inTranslation) {

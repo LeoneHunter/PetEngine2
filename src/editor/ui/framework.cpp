@@ -498,20 +498,10 @@ public:
 			} else if(bHasPopups) {
 				continue;
 			}
-			// Hittest widgets
-			WidgetVisitor visitor;
-			visitor = [&](Widget* child) {
-				if(auto* layoutWidget = child->As<LayoutWidget>()) {
-					if(layoutWidget->OnHitTest(hitTest)) {
-						layoutWidget->VisitChildren(visitor);
-						return visitResultExit;
-					}
-					return visitResultContinue;
-				}
-				return child->VisitChildren(visitor);
-			};
-			widget->VisitChildren(visitor);
-			
+			// Hit test widgets recursively
+			if(auto* layoutWidget = LayoutWidget::FindNearest(widget.get())) {
+				layoutWidget->OnHitTest(hitTest, mousePosGlobal);
+			}
 			if(!hitTest.hitStack.Empty()) {
 				hoveredWindow = widget.get();
 				hoveredWindow_ = hoveredWindow->GetWeak();		
@@ -852,7 +842,7 @@ public:
 		LOGF(Info, "Widget tree: \n{}", ss.str());
 	}
 
-	std::string PrintAncestorTree(Widget* widget) {
+	std::string PrintAncestors(Widget* widget) {
 		std::string out;
 		PropertyArchive ar;
 		for(Widget* w = widget; w; w = w->GetParent()) {
@@ -860,22 +850,31 @@ public:
 			w->DebugSerialize(ar);
 		}
 		util::StringBuilder sb(&out);
-		sb.Line(PrintPropertyArchive(ar));
+		sb.Line(PrintPropertyArchive(ar, true));
 		return out;
 	}
 
-	std::string PrintPropertyArchive(const PropertyArchive& ar) {
+	std::string PrintPropertyArchive(const PropertyArchive& ar, bool reversed = false) {
 		std::string out;
 		util::StringBuilder sb(&out);
-		for(auto it = ar.rootObjects_.rbegin(); it != ar.rootObjects_.rend(); ++it) {
-			auto& object = *it;
-			sb.Line(object->debugName_);
+
+		auto print = [&](PropertyArchive::Object& object) {
+			sb.Line(object.debugName_);
 			sb.PushIndent();
 
-			for(auto& property : object->properties_) {
+			for(auto& property: object.properties_) {
 				sb.Line("{}: {}", property.Name, property.Value);
 			}
 			sb.PopIndent();
+		};
+		if(reversed) {
+			for(auto it = ar.rootObjects_.begin(); it != ar.rootObjects_.end(); ++it) {
+				print(**it);
+			}
+		} else {
+			for(auto it = ar.rootObjects_.rbegin(); it != ar.rootObjects_.rend(); ++it) {
+				print(**it);
+			}
 		}
 		return out;
 	}
@@ -944,6 +943,13 @@ public:
 		// Draw children recursively using DFS
 		drawFunc = [&](Widget* widget) {
 			if(auto* layout = widget->As<LayoutWidget>()) {
+				const auto rect = layout->GetRect();
+				Assertf(!rect.Empty(), 
+						"A widget with 0 size encountered in DrawWindow().\n"
+						"Widget: {}\nAncestors:\n{}",
+						layout->GetDebugID(),
+						PrintAncestors(layout));
+
 				widget->OnEvent(&drawEvent);
 
 				if(bDrawDebugClipRects_ && canvas.HasClipRect()) {
@@ -1029,7 +1035,7 @@ public:
 			auto* state = widget->GetState();
 
 			if(!state) {
-				auto s = PrintAncestorTree(widget);
+				auto s = PrintAncestors(widget);
 				Assertf(state != nullptr, 
 						"Stafeful widget without state found during Build. Ancestor tree:\n{}\nContext:\n{}", 
 						s, 
@@ -1039,7 +1045,7 @@ public:
 
 			if(!widget->NeedsRebuild()) {
 				if(!oldWidget || !oldWidget->GetChild()) {
-					auto ancestors = PrintAncestorTree(widget);
+					auto ancestors = PrintAncestors(widget);
 					Assertf(oldWidget != nullptr, 
 							"A widget with clear state and no old children is found while building the widget {}. Ancestor tree:\n{}\nContext:\n{}", 
 							requestedWidget->GetDebugID(),
@@ -1246,7 +1252,6 @@ public:
 
 			if(hoveredWindow_) {
 				sb.Line("{} Hit stack: ", hoveredWindow_->GetDebugID());
-				sb.PushIndent();
 				sb.Line(PrintHitStack());
 			}
 			debugOverlay_->SetText(str);

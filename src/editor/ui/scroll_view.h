@@ -6,6 +6,7 @@
 namespace UI {
 
 constexpr auto scrollbarThickness = 8.f;
+constexpr auto mouseScrollPx = 30.f;
 
 class ScrollViewState;
 class Scrolled;
@@ -33,6 +34,7 @@ public:
 		, offset_(0.f)
 		, trackSize_(0.f)
 		, thumb_(this)
+		, hovered_(false)
 		, onScroll_(onScroll)
 	{}
 
@@ -43,12 +45,12 @@ public:
 		}
 		std::vector<std::unique_ptr<Widget>> children;
 
-		if(offset_ > 0.001f) {
+		if(offset_ > 0.0001f) {
 			children.push_back(Flexible::New(
 				offset_,
 				Button::Build()
 					.ID("ScrollbarTrackStart")
-					.StyleClass("ScrollbarTrack")
+					.StyleClass(hovered_ ? "ScrollbarTrack" : "Transparent")
 					.SizeExpanded()
 					.OnPress([this](const ButtonEvent& e) {
 						if(e.button == MouseButton::ButtonLeft && e.bPressed) {
@@ -67,7 +69,7 @@ public:
 				1.f - (visibilityRatio_ + offset_),
 				Button::Build()
 					.ID("ScrollbarTrackEnd")
-					.StyleClass("ScrollbarTrack")
+					.StyleClass(hovered_ ? "ScrollbarTrack" : "Transparent")
 					.SizeExpanded()
 					.OnPress([this](const ButtonEvent& e) {
 						if(e.button == MouseButton::ButtonLeft && e.bPressed) {
@@ -77,6 +79,7 @@ public:
 					.New()
 			));
 		}
+		const auto thickness = hovered_ ? scrollbarThickness : scrollbarThickness - 3.f;
 		return EventListener::New(
 			[this](IEvent* e) {
 				if(auto* layoutNotification = e->As<LayoutNotification>()) {
@@ -86,24 +89,36 @@ public:
 				}
 				return false;
 			},
-			Container::Build()
-				.ID(containerID)
-				.StyleClass("Transparent")
-				.NotifyOnLayoutUpdate()
-				.SizeMode(AxisMode{
-					axis_ == Axis::Y ? AxisMode::Fixed : AxisMode::Expand,
-					axis_ == Axis::Y ? AxisMode::Expand : AxisMode::Fixed,
+			MouseRegion::Build()
+				.OnMouseEnter([this]() {
+					hovered_ = true;
+					MarkNeedsRebuild();
 				})
-				.Size(float2{
-					axis_ == Axis::Y ? scrollbarThickness : 0.f,
-					axis_ == Axis::Y ? 0.f : scrollbarThickness,
+				.OnMouseLeave([this]() {
+					hovered_ = false;
+					MarkNeedsRebuild();
 				})
-				.Child(Flexbox::Build()
-					.ID("ScrollbarFlexbox")
-					.Direction(axis_ == Axis::Y ? ContentDirection::Column : ContentDirection::Row)
-					.Expand()
-					.Children(std::move(children))	
-					.New()		
+				.HandleHoverAlways()
+				.Child(Container::Build()
+					.ID(containerID)
+					.StyleClass("Transparent")
+					.NotifyOnLayoutUpdate()
+					.SizeMode(AxisMode{
+						axis_ == Axis::Y ? AxisMode::Fixed : AxisMode::Expand,
+						axis_ == Axis::Y ? AxisMode::Expand : AxisMode::Fixed,
+					})
+					.Size(float2{
+						axis_ == Axis::Y ? thickness : 0.f,
+						axis_ == Axis::Y ? 0.f : thickness,
+					})
+					.Child(Flexbox::Build()
+						.ID("ScrollbarFlexbox")
+						.Direction(axis_ == Axis::Y ? ContentDirection::Column : ContentDirection::Row)
+						.Expand()
+						.Children(std::move(children))	
+						.New()		
+					)
+					.New()
 				)
 				.New()
 		);
@@ -193,6 +208,7 @@ private:
 	float                  offset_;
 	Thumb                  thumb_;
 	float				   trackSize_;
+	bool				   hovered_;
 	OnScrollbarChangedFunc onScroll_;
 };
 
@@ -205,18 +221,33 @@ private:
 class ScrollViewState: public WidgetState {
 	WIDGET_CLASS(ScrollViewState, WidgetState)
 public:
+	enum class Flags {
+		Vertical			  = 0x1,
+		Horizontal			  = 0x2,
+		ScrollbarVertical     = 0x4,
+		ScrollbarHorizontal   = 0x8,
+		HorizontalMouseScroll = 0x10,
+	};
+	DEFINE_ENUM_FLAGS_OPERATORS_FRIEND(Flags)
 
 	static inline auto viewportID = StringID("ScrollViewViewport");
 	static inline auto contentID = StringID("ScrollViewContent");
 
-	ScrollViewState(bool enableHorizontal, bool enableVertical)
-		: enableHorizontalScroll_(enableHorizontal)
-		, enableVerticalScroll_(enableVertical) 
-		, scrollbarVerticalState_(
-			Axis::Y, 
-			[this](float offset) { OnScrollbarChanged(Axis::Y, offset); }
-		)
-	{}
+	ScrollViewState(Flags flags = Flags::Vertical)
+		: flags_(flags) {
+		if(flags & Flags::ScrollbarHorizontal) {
+			scrollbars_[0].reset(new ScrollbarState(
+				Axis::X, 
+				[this](float offset) { OnScrollbarChanged(Axis::X, offset); }
+			));
+		}
+		if(flags & Flags::ScrollbarVertical) {
+			scrollbars_[1].reset(new ScrollbarState(
+				Axis::Y, 
+				[this](float offset) { OnScrollbarChanged(Axis::Y, offset); }
+			));
+		}
+	}
 
 	std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&& child) override;
 
@@ -239,7 +270,6 @@ public:
 private:
 
 	void OnViewportLayout(const LayoutNotification& e) {
-		LOGF(Verbose, "ScrollView OnViewportLayout called. Vieport size: {}", e.rectLocal.Size());
 		if(viewportSize_ != e.rectLocal.Size()) {
 			viewportSize_ = e.rectLocal.Size();
 			UpdateScrolling();
@@ -247,7 +277,6 @@ private:
 	}
 	
 	void OnContentLayout(const LayoutNotification& e) {
-		LOGF(Verbose, "ScrollView OnContentLayout called. Content size: {}", e.rectLocal.Size());
 		if(contentSize_ != e.rectLocal.Size()) {
 			contentSize_ = e.rectLocal.Size();
 			UpdateScrolling();
@@ -255,23 +284,24 @@ private:
 	}
 
 	void UpdateScrolling() {
-		auto axis = Axis::Y;
-		const auto visibilityRatio = viewportSize_[axis] / contentSize_[axis];
+		for(auto axis: axes2D) {
+			const auto visibilityRatio = viewportSize_[axis] / contentSize_[axis];
 
-		if(visibilityRatio < 1.f) {
-			scrollOffsetMax_[axis] = math::Clamp(contentSize_[axis] - viewportSize_[axis], 0.f);
-			scrollOffset_[axis] = math::Clamp(scrollOffset_[axis], 0.f, scrollOffsetMax_[axis]);
-		} else {
-			scrollOffsetMax_ = float2(0.f);
-			scrollOffset_ = float2(0.f);
+			if(visibilityRatio < 1.f) {
+				scrollOffsetMax_[axis] = math::Clamp(contentSize_[axis] - viewportSize_[axis], 0.f);
+				scrollOffset_[axis] = math::Clamp(scrollOffset_[axis], 0.f, scrollOffsetMax_[axis]);
+			} else {
+				scrollOffsetMax_ = float2(0.f);
+				scrollOffset_ = float2(0.f);
+			}
 		}
 		NotifyListeners();
 	}
 
+	// Returns true if can scroll and consumes the event
 	bool OnMouseScroll(const MouseScrollEvent& e) {
-		LOGF(Verbose, "ScrollView OnMouseScroll called. Scroll delta: {}", e.scrollDelta);
-		auto axis = Axis::Y;
-		auto delta = e.scrollDelta * 30.f;
+		const auto axis = (flags_ & Flags::HorizontalMouseScroll) ? Axis::X : Axis::Y;
+		const auto delta = e.scrollDelta * mouseScrollPx;
 		auto newOffset = scrollOffset_ - delta;
 
 		if(newOffset[axis] > scrollOffsetMax_[axis] && scrollOffset_[axis] == scrollOffsetMax_[axis]) {
@@ -303,21 +333,26 @@ private:
 		for(auto& listener: listeners_) {
 			listener->OnEvent(&scrollEvent);
 		}
-		const auto offsetNorm = scrollOffset_[Axis::Y] / contentSize_[Axis::Y];
-		const auto visibilityRatio = viewportSize_[Axis::Y] / contentSize_[Axis::Y];
-		scrollbarVerticalState_.Update(offsetNorm, visibilityRatio);
+		for(auto axis: axes2D) {
+			const auto offsetNorm = scrollOffset_[axis] / contentSize_[axis];
+			const auto visibilityRatio = viewportSize_[axis] / contentSize_[axis];
+			auto& scrollbar = scrollbars_[(int)axis];
+
+			if(scrollbar) {
+				scrollbar->Update(offsetNorm, visibilityRatio);
+			}
+		}
 	}
 
 private:
-	bool                 enableHorizontalScroll_ = false;
-	bool                 enableVerticalScroll_   = false;
+	Flags				 flags_;
 	float2				 contentSize_;
 	float2				 viewportSize_;
 	float2               scrollOffset_;
 	float2               scrollOffsetMax_;
 	// For now Scrolled widgets
-	std::vector<Widget*> listeners_;
-	ScrollbarState		 scrollbarVerticalState_;
+	std::vector<Widget*>            listeners_;
+	std::unique_ptr<ScrollbarState> scrollbars_[2];
 };
 
 
@@ -393,35 +428,41 @@ inline std::unique_ptr<Widget> ScrollViewState::Build(std::unique_ptr<Widget>&& 
 			.OnMouseScroll([this](const MouseScrollEvent& e) {
 				return OnMouseScroll(e);
 			})
-			.Child(Container::Build()
-				.StyleClass("Transparent")
-				.SizeExpanded()
-				.Child(Flexbox::Build()
-					.DirectionRow()
-					.Expand()
-					.Children(
-						Container::Build()
-						.ID(viewportID)
-						.ClipContent(true)
-						.StyleClass("Transparent")
-						.SizeExpanded()
-						.NotifyOnLayoutUpdate()
-						.Child(Scrolled::New(
-							this,
-							contentID,
-							AxisMode{
-								enableHorizontalScroll_ ? AxisMode::Shrink : AxisMode::Expand,
-								enableVerticalScroll_ ? AxisMode::Shrink : AxisMode::Expand
-							},
-							std::move(child))
-						)
-						.New(),
-						StatefulWidget::New(&scrollbarVerticalState_)
+			.Child(StackView::New([&]() {
+				std::vector<std::unique_ptr<Widget>> children;
+				children.push_back(Container::Build()
+					.ID(viewportID)
+					.ClipContent(true)
+					.StyleClass("Transparent")
+					.SizeExpanded()
+					.NotifyOnLayoutUpdate()
+					.Child(Scrolled::New(
+						this,
+						contentID,
+						AxisMode{
+							flags_ & Flags::Horizontal ? AxisMode::Shrink : AxisMode::Expand,
+							flags_ & Flags::Vertical ? AxisMode::Shrink : AxisMode::Expand
+						},
+						std::move(child))
 					)
 					.New()
-				)					
-				.New()
-			)
+				);
+				if(flags_ & Flags::ScrollbarVertical) {
+					children.push_back(Aligned::New(
+						Alignment::End, 
+						Alignment::Start, 
+						StatefulWidget::New(scrollbars_[1].get())
+					));
+				}
+				if(flags_ & Flags::ScrollbarHorizontal) {
+					children.push_back(Aligned::New(
+						Alignment::Start, 
+						Alignment::End, 
+						StatefulWidget::New(scrollbars_[0].get())
+					));
+				}
+				return children;
+			}()))				
 			.New()
 	);
 }
