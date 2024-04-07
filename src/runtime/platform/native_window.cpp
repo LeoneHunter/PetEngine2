@@ -1,6 +1,7 @@
 #include "native_window.h"
 #include <windows.h>
-#include <windowsx.h> // GET_X_LPARAM(), GET_Y_LPARAM()
+// GET_X_LPARAM(), GET_Y_LPARAM()
+#include <windowsx.h> 
 #include <tchar.h>
 #include <dwmapi.h>
 #include <map>
@@ -130,9 +131,6 @@ class NativeWindow_Windows: public INativeWindow {
 public:
 
 	NativeWindow_Windows(const char* inWindowTitle, u32 inWidth, u32 inHeight) {
-
-		/// Load window size, position, maximize mode from the config
-		// Default params		
 		bool bMaximize = false;
 		const auto windowMaxWidth = GetSystemMetrics(SM_CXSCREEN);
 		const auto windowMaxHeight = GetSystemMetrics(SM_CYSCREEN);
@@ -141,44 +139,52 @@ public:
 		const auto windowPosX = (windowMaxWidth - windowWidth) / 2;
 		const auto windowPosY = (windowMaxHeight - windowHeight) / 2;
 
-		// Load from config
-
-		// Create application window
-		m_WndCls = {sizeof(WNDCLASSEX), CS_CLASSDC | CS_HREDRAW | CS_VREDRAW, WndProc_, 0L, 0L, GetModuleHandleW(NULL), NULL, NULL, NULL, NULL, _T("GavaGUI_Window_Class"), NULL};
+		m_WndCls = {
+			sizeof(WNDCLASSEX), 
+			CS_CLASSDC | CS_HREDRAW | CS_VREDRAW, 
+			WndProc_, 
+			0L, 
+			0L, 
+			GetModuleHandleW(NULL), 
+			NULL, 
+			NULL, 
+			NULL, 
+			NULL, 
+			_T("PetEngine_Window_Class"), 
+			NULL
+		};
 		::RegisterClassEx(&m_WndCls);
 
 		auto inWindowTitleWide = util::ToWideString(std::string(inWindowTitle));
-		m_hwnd = ::CreateWindowEx(0L, m_WndCls.lpszClassName, inWindowTitleWide.c_str(), WS_OVERLAPPEDWINDOW, windowPosX, windowPosY, windowWidth, windowHeight, NULL, NULL, m_WndCls.hInstance, NULL);
-
-		/// Set additional window state params
-		/*auto windowParams = WINDOWPLACEMENT();
-		windowParams.length = sizeof WINDOWPLACEMENT;
-		windowParams.flags = 0;
-		windowParams.showCmd = true;
-
-		::SetWindowPlacement(m_hwnd, &windowParams);*/
-
+		m_hwnd = ::CreateWindowEx(
+			0L, 
+			m_WndCls.lpszClassName, 
+			inWindowTitleWide.c_str(), 
+			WS_OVERLAPPEDWINDOW, 
+			windowPosX, 
+			windowPosY, 
+			windowWidth, 
+			windowHeight, 
+			NULL, 
+			NULL, 
+			m_WndCls.hInstance, 
+			NULL
+		);
 		m_WindowSizePx = {(float)windowWidth, (float)windowHeight};
-
 		// Cache cursors for referencing later
 		m_Cursors[0] = NULL;
-
 		for(auto i = 1; i != (int)MouseCursor::_Size; ++i) {
 			m_Cursors[i] = ::LoadCursor(NULL, castCursor((MouseCursor)i));
 		}
 	}
 
 	void Show() override {
-		// Show the window
 		::ShowWindow(m_hwnd, SW_SHOWDEFAULT);
 		::UpdateWindow(m_hwnd);
-
 		SetMouseCursor(MouseCursor::Arrow);
 	}
 
 	bool PollEvents() override {
-		// Poll and handle messages (inputs, window resize, etc.)
-		// See the WndProc() function below for our to dispatch events to the Win32 backend.
 		MSG msg;
 		while(::PeekMessageW(&msg, NULL, 0U, 0U, PM_REMOVE)) {
 			::TranslateMessage(&msg);
@@ -186,20 +192,6 @@ public:
 			if(msg.message == WM_QUIT)
 				return false;
 		}
-
-		// Generate window resize events manually
-		/*RECT windowRect;
-		::GetWindowRect(m_hwnd, &windowRect);
-		const auto newWindowSize = float2((float)windowRect.right - windowRect.left, (float)windowRect.bottom - windowRect.top);
-
-		if (newWindowSize != m_WindowSizePx) {
-			m_WindowSizePx = newWindowSize;
-
-			if (m_OnWindowResizeEvent) {
-				m_OnWindowResizeEvent(m_WindowSizePx);
-			}
-		}*/	
-
 		return true;
 	}
 
@@ -247,8 +239,7 @@ public:
 
 	LRESULT WINAPI HandleEvent(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		switch(msg) {
-			case WM_MOUSEMOVE:
-			{
+			case WM_MOUSEMOVE: {
 				if(!m_bMouseTracked) {
 					TRACKMOUSEEVENT tme = {sizeof(tme), TME_LEAVE | TME_HOVER, m_hwnd, 0};
 					::TrackMouseEvent(&tme);
@@ -259,24 +250,21 @@ public:
 				}
 				break;
 			}
-			case WM_MOUSELEAVE:
-			{
+			case WM_MOUSELEAVE: {
 				m_bMouseTracked = false;
 				if(m_OnCursorMoveEvent) {
 					m_OnCursorMoveEvent(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
 				}
 				break;
 			}
-			case WM_MOUSEHOVER:
-			{
+			case WM_MOUSEHOVER: {
 				this->SetMouseCursor(MouseCursor::Arrow);
 				break;
 			}
 			case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK:
 			case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK:
 			case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK:
-			case WM_XBUTTONDOWN: case WM_XBUTTONDBLCLK:
-			{				
+			case WM_XBUTTONDOWN: case WM_XBUTTONDBLCLK: {				
 				int button = 0;
 				if(msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK) { button = 0; }
 				if(msg == WM_RBUTTONDOWN || msg == WM_RBUTTONDBLCLK) { button = 1; }
@@ -291,8 +279,7 @@ public:
 			case WM_LBUTTONUP:
 			case WM_RBUTTONUP:
 			case WM_MBUTTONUP:
-			case WM_XBUTTONUP:
-			{
+			case WM_XBUTTONUP: {
 				int button = 0;
 				if(msg == WM_LBUTTONUP) { button = 0; }
 				if(msg == WM_RBUTTONUP) { button = 1; }
@@ -304,20 +291,17 @@ public:
 
 				return 0;
 			}
-			case WM_MOUSEWHEEL:
-			{
+			case WM_MOUSEWHEEL: {
 				if(m_OnMouseScrollEvent) { m_OnMouseScrollEvent((float)GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA); }
 				return 0;
 			}			
-			case WM_MOUSEHWHEEL:
-			{
+			case WM_MOUSEHWHEEL: {
 				return 0;
 			}			
 			case WM_KEYDOWN:
 			case WM_KEYUP:
 			case WM_SYSKEYDOWN:
-			case WM_SYSKEYUP:
-			{
+			case WM_SYSKEYUP: {
 				const bool isDown = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
 				if(wParam < 256) {
 					if (m_OnKeyboardButtonEvent) {
@@ -327,18 +311,16 @@ public:
 				return 0;
 			}
 			case WM_SETFOCUS:
-			case WM_KILLFOCUS:
-			//io.AddFocusEvent(msg == WM_SETFOCUS);
-			return 0;
-			case WM_CHAR:
-			{
+			case WM_KILLFOCUS: {
+				return 0;
+			}
+			case WM_CHAR: {
 				if(wParam > 0 && wParam < 0x10000) {				
 					m_OnCharInputCallback((wchar_t)wParam);
 				}
 				return 0;
 			}
-			case WM_SETCURSOR:
-			{
+			case WM_SETCURSOR: {
 			/*	if(LOWORD(lParam) == HTCLIENT) {					
 					LPTSTR win32_cursor = IDC_ARROW;
 					::SetCursor(::LoadCursor(NULL, win32_cursor));
@@ -346,10 +328,10 @@ public:
 				}*/
 				break;
 			}
-			case WM_DEVICECHANGE:
-			{ return 0; }
-			case WM_SIZE:
-			{
+			case WM_DEVICECHANGE: { 
+				return 0; 
+			}
+			case WM_SIZE: {
 				m_WindowSizePx = float2((float)LOWORD(lParam), (float)HIWORD(lParam));
 				if(!m_OnWindowResizeEvent) {
 					return 0;
@@ -361,14 +343,12 @@ public:
 				}
 				return 0;
 			}
-			case WM_SYSCOMMAND:
-			{
+			case WM_SYSCOMMAND: {
 				if((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
 					return 0;
 				break;
 			}			
-			case WM_DESTROY:
-			{
+			case WM_DESTROY: {
 				::PostQuitMessage(0);
 				return 0;
 			}
@@ -401,14 +381,11 @@ public:
 		if(!::OpenClipboard(NULL)) {
 			return;
 		}
-
 		HANDLE wbuf_handle = ::GetClipboardData(CF_UNICODETEXT);
-
 		if(wbuf_handle == NULL) {
 			::CloseClipboard();
 			return;
 		}
-
 		if(const WCHAR* wbuf_global = (const WCHAR*)::GlobalLock(wbuf_handle)) {
 			outString = wbuf_global;
 		}
@@ -417,11 +394,9 @@ public:
 	}
 
 	void SetClipboardText(const std::wstring& inString) const override {
-
 		if(!::OpenClipboard(NULL)) {
 			return;
 		}
-		
 		// Add space for \0
 		const auto textSizeBytes = inString.size() * sizeof(WCHAR) + sizeof(WCHAR);
 		HGLOBAL bufferHandle = ::GlobalAlloc(GMEM_MOVEABLE, textSizeBytes);
@@ -430,21 +405,18 @@ public:
 			::CloseClipboard();
 			return;
 		}
-
 		WCHAR* buffer = (WCHAR*)::GlobalLock(bufferHandle);
 
 		if (buffer) {
 			memcpy(buffer, inString.data(), textSizeBytes);
 			buffer[inString.size()] = L'\0';
 		}		
-
 		::GlobalUnlock(bufferHandle);
 		::EmptyClipboard();
 
 		if(::SetClipboardData(CF_UNICODETEXT, bufferHandle) == NULL) {
 			::GlobalFree(bufferHandle);
 		}
-			
 		::CloseClipboard();
 	}
 
@@ -474,13 +446,10 @@ INativeWindow* INativeWindow::createWindow(std::string_view inWindowTitle, u32 i
 }
 
 LRESULT WINAPI WndProc_(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-
 	auto it = g_Windows.find(hWnd);
 	if(it == g_Windows.end()) {
 		return ::DefWindowProcW(hWnd, msg, wParam, lParam);
 	}
-
-	// Forward an event to the appropriate window
 	auto* window = it->second;
 	return window->HandleEvent(hWnd, msg, wParam, lParam);
 }
