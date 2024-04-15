@@ -20,6 +20,7 @@ void SetDarkTheme() {
 		auto& s = theme->Add("TitleBar");
 		s.Add<LayoutStyle>().Margins(0).Paddings(5);
 		s.Add<BoxStyle>().FillColor("#404040").Rounding(6);
+		s.Add<BoxStyle>("Focused", "").FillColor("#606060").Rounding(6);
 	}
 	{
 		auto& s = theme->Add("Button");
@@ -57,7 +58,7 @@ void SetDarkTheme() {
 		s.Add<BoxStyle>("Pressed", "Normal").FillColor("#909090");
 	}
 	{
-		auto& s = theme->Add("FloatWindow");
+		auto& s = theme->Add("Window");
 		s.Add<LayoutStyle>().Margins(5, 5).Paddings(0);
 		s.Add<BoxStyle>().FillColor("#303030").Rounding(6);	
 		s.Add<BoxStyle>("Hovered").FillColor("#606060");	
@@ -95,6 +96,11 @@ void SetDarkTheme() {
 		auto& s = theme->Add("OutlineRed");
 		s.Add<LayoutStyle>().Margins(0).Paddings(0);
 		s.Add<BoxStyle>().BorderColor("#ff0000").Rounding(0).Borders(1);
+	}
+	{
+		auto& s = theme->Add("Frame");
+		s.Add<LayoutStyle>().Margins(5, 5).Paddings(5, 5);
+		s.Add<BoxStyle>().FillColor(frameColor).Rounding(6);
 	}
 	g_Application->SetTheme(theme);
 }
@@ -296,6 +302,106 @@ private:
 	ScrollViewState scrollViewState_;
 };
 
+
+
+namespace test_focus {
+
+class Window: public WidgetState {
+	WIDGET_CLASS(Window, WidgetState)
+public:
+
+	Window(std::string_view title)
+		: title_(title)
+		, focusNode_([this](auto v) { OnFocusChanged(v); })
+	{}
+
+	std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&&) {
+		return Focused::New(
+			&focusNode_,
+			MouseRegion::Build()
+				.OnMouseButton([this](const MouseButtonEvent& e) {
+					if(e.button == MouseButton::ButtonLeft && e.isPressed) {
+						focusNode_.RequestFocus();
+					}
+				})
+				.Child(Container::Build()
+					.StyleClass("Window")
+					.SizeFixed(400, 400)	
+					.Child(Flexbox::Build()
+						.DirectionColumn()
+						.Expand()
+						.Children(Container::Build()
+							.StyleClass("TitleBar")
+							.BoxStyle(isFocused_ ? "Focused" : "")
+							.SizeMode(AxisMode::Expand, AxisMode::Fixed)
+							.Size(0, 20)
+							.Child(Aligned::New(
+								Alignment::Center,
+								Alignment::Center,
+								TextBox::New(title_)
+							))
+							.New()
+						)
+						.New()
+					)
+					.New()
+				)
+				.New()
+		);
+	}
+
+private:
+
+	void OnFocusChanged(bool focused) {
+		isFocused_ = focused;
+		LOGF(Verbose, "{} is {}", GetDebugID(), focused ? "focused" : "unfocused");
+		MarkNeedsRebuild();
+	}
+
+private:
+	bool		isFocused_ = false;
+	std::string title_;
+	FocusNode   focusNode_;
+};
+
+class App: public WidgetState {
+public:
+
+	App() {
+		for(auto i = 0; i < 2; ++i) {
+			windows_.emplace_back(new Window(std::format("Window {}", i)));
+		}
+	}
+
+	std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&&) {
+		return Flexbox::Build()
+			.DirectionRow()
+			.JustifyContent(JustifyContent::SpaceAround)
+			.AlignCenter()
+			.Expand()
+			.Children([this]() {
+				std::vector<std::unique_ptr<Widget>> out;
+				for(auto& w: windows_) {
+					out.emplace_back(StatefulWidget::New(w.get()));
+				}
+				return out;
+			}())
+			.New();
+	}
+
+private:
+	std::vector<std::unique_ptr<WidgetState>> windows_;
+};
+App* app;
+
+void BuildTestWidgets() {
+	app = new App();
+	g_Application->Parent(StatefulWidget::New(app));
+}
+
+}
+
+
 int main(int argc, char* argv[]) {
 	const auto commandLine = std::vector<std::string>(argv, argv + argc);
 	const auto workingDir = std::filesystem::path(commandLine[0]).parent_path();
@@ -304,8 +410,10 @@ int main(int argc, char* argv[]) {
 
 	g_Application = Application::Create("App", 1800, 900);
 	SetDarkTheme();
-	auto app = std::make_unique<FilesystemView>(std::path("G:\\"));
-	g_Application->Parent(StatefulWidget::New(app.get()));
+
+	// auto app = std::make_unique<FilesystemView>(std::path("G:\\"));
+	// g_Application->Parent(StatefulWidget::New(app.get()));
+	test_focus::BuildTestWidgets();
 
 	while(g_Application->Tick());
 }

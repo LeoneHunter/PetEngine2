@@ -8,3 +8,4 @@
 #include "tooltip.h"
 #include "popup.h"
 #include "containers.h"
+#include "focus.h"

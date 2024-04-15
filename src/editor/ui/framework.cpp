@@ -1,6 +1,8 @@
 #include "framework.h"
 #include "widgets.h"
 #include "containers.h"
+#include "focus.h"
+
 #include "runtime/platform/native_window.h"
 #include "runtime/system/renderer/ui_renderer.h"
 #include "runtime/system/job_dispatcher.h"
@@ -299,59 +301,167 @@ private:
 	float2               cummulativeTransform;
 };
 
+/*
+* Helper for "for(auto* ancestor: AncestorIterator(widget))"
+* Iterates ancestor of the widget
+* An ancestor could be filtered by type
+*/
+template<class WidgetTypeFilter = Widget>
+	requires std::derived_from<WidgetTypeFilter, Widget>
+struct AncestorIterator {
+
+	constexpr AncestorIterator(Widget* w, bool includeBegin = false)
+		: begin_(w) 
+		, includeBegin_(includeBegin)
+	{}
+
+	struct Iterator {
+
+		constexpr Iterator& operator++() { 
+			if constexpr(std::same_as<WidgetTypeFilter, Widget>) {
+				if(w_) {
+					w_ = w_->GetParent();
+				}
+			} else {
+				if(w_) {
+					w_ = w_->FindAncestorOfClass<WidgetTypeFilter>();
+				}
+			}
+			return *this;
+		}	
+
+		constexpr bool operator==(const Iterator& rhs) const {
+			return w_ == rhs.w_;
+		}
+
+		constexpr WidgetTypeFilter* operator*() {
+			return w_->As<WidgetTypeFilter>();
+		}
+
+		Widget* w_ = nullptr;
+	};
+
+	constexpr Iterator begin() { 
+		if(!begin_) {
+			return {};
+		}
+		if(includeBegin_) {
+			if constexpr(std::same_as<WidgetTypeFilter, Widget>) {
+				return {begin_};
+			}
+			if(!begin_->IsA<WidgetTypeFilter>()) {
+				return {begin_->FindAncestorOfClass<WidgetTypeFilter>()};
+			}
+			return {begin_};
+		}	
+		if constexpr(std::same_as<WidgetTypeFilter, Widget>) {
+			return {begin_->GetParent()};
+		}
+		return {begin_->FindAncestorOfClass<WidgetTypeFilter>()};
+	}
+
+	constexpr Iterator end() { return {}; }
+
+private:
+	Widget* begin_        = nullptr;
+	bool    includeBegin_ = true;
+};
+
+
 
 /*
 * Helper adapter to store widget state between frames
+* Stores weaks to widgets, so that widgets could be safely deleted
+* Expired weaks will be skipped during iteration and other operations
 */
 class WidgetList {
 public:
+	using Container = std::vector<WeakPtr<Widget>>;
+	
+	struct Iterator {
+		using iterator = Container::iterator;
+
+		constexpr Iterator& operator++() { 
+			++it;
+			while(it != se && it->Expired()) {
+				++it;
+			}
+			return *this;
+		}	
+
+		constexpr operator bool() const { return it != se; }
+
+		constexpr bool operator==(const Iterator& rhs) const {
+			return it == rhs.it;
+		}
+
+		Widget* operator*() {
+			return it->Get();
+		}
+
+		iterator it;
+		iterator se;
+	};
 
 	WidgetList() {
-		stack.reserve(10);
+		cont.reserve(10);
 	}
 
 	void Push(Widget* item) {
-		stack.push_back(item->GetWeak());
+		cont.push_back(item->GetWeak());
 	}
 
 	void ForEach(const std::function<void(Widget*)>& fn) {
-		for(auto& item: stack) {
+		for(auto& item: cont) {
 			if(!item) continue;
 			fn(item.Get());
 		}
 	}
 
-	constexpr void Remove(Widget* item) {
-		for(auto it = stack.begin(); it != stack.end(); ++it) {
-			if(*it == item) {
-				stack.erase(it);
-				break;
-			}
+	void Remove(Widget* item) {
+		auto [it, se] = Find(item);
+		if(it != cont.end()) {
+			cont.erase(it);
 		}
 	}
+	
+	void Remove(Iterator it) {
+		if(it.it != cont.end()) {
+			cont.erase(it.it);
+		}
+	}
+	
+	Iterator Find(Widget* item) {
+		for(auto it = cont.begin(); it != cont.end(); ++it) {
+			if(!it->Expired() && *it == item) {
+				return {it, cont.end()};
+			}
+		}
+		return {cont.end(), cont.end()};
+	}
 
-	constexpr bool Contains(Widget* item) {
-		for(auto it = stack.begin(); it != stack.end(); ++it) {
-			if(*it == item) {
+	constexpr bool Contains(const Widget* item) const {
+		for(auto& elem: cont) {
+			if(!elem.Expired() && elem == item) {
 				return true;
 			}
 		}
 		return false;
 	}
 
-	constexpr void Clear() { stack.clear(); }
-	constexpr bool Empty() const { return stack.empty(); }	
+	constexpr void Clear() { cont.clear(); }
+	constexpr bool Empty() const { return cont.empty(); }	
 
 	Widget* Top() {
-		return stack.empty() 
+		return cont.empty() 
 			? nullptr 
-			: stack.front().GetChecked(); 
+			: cont.front().GetChecked(); 
 	}
 
 	const Widget* Top() const {
-		return stack.empty() 
+		return cont.empty() 
 			? nullptr 
-			: stack.front().GetChecked(); 
+			: cont.front().GetChecked(); 
 	}
 
 	std::string Print() const {
@@ -360,16 +470,50 @@ public:
 		sb.PushIndent();
 		sb.Line();
 
-		for(auto& w: stack) {
+		for(auto& w: cont) {
 			if(!w) continue;
 			sb.Line(w->GetDebugID());
 		}
 		return out;
 	}
 
+	constexpr Iterator begin() {
+		auto begin = cont.begin();
+		// Find first not expired weak
+		while(begin != cont.end() && begin->Expired()) {
+			++begin;
+		}
+		return {begin, cont.end()};
+	}
+
+	constexpr Iterator end() {
+		return {cont.end(), cont.end()};
+	}
+
 private:
-	std::vector<WeakPtr<Widget>> stack;
+	Container cont;
 };
+
+// Simple n^2 comparison
+// Items that present only in 'left' are considered 'old'
+// Items that present only in 'right' are considered 'new' 
+// Items that present in both lists are ignored
+void DiffListsSimple(WidgetList& left, 
+			   		 WidgetList& right, 
+			   		 const std::function<void(Widget*)>& onOld,
+			   		 const std::function<void(Widget*)>& onNew) {
+	for(auto* item: left) {
+		auto found = right.Find(item);
+		if(!found) {
+			onOld(item);
+		} else {
+			right.Remove(found);
+		}
+	}
+	for(auto* item: right) {
+		onNew(item);
+	}
+}
 
 
 
@@ -406,14 +550,14 @@ public:
 * Top object that handles input events and drawing
 */
 class ApplicationImpl final:
-	public UI::Application,
+	public ui::Application,
 	public Widget {
 public:
 
 	ApplicationImpl(): Widget("Application") {}
 
 	void Init() {
-		OPTICK_EVENT("UI Init");
+		OPTICK_EVENT("ui Init");
 		g_Renderer = CreateRendererDX12();
 		g_Renderer->Init(g_OSWindow);
 
@@ -447,24 +591,23 @@ public:
 		mouseMoveEvent.mouseDelta = mouseDelta;
 		mouseMoveEvent.mouseButtonsPressedBitField = mouseButtonsPressedBitField_;
 
-		if(mousePosGlobal == NOPOINT) {
+		if(mousePosGlobal == Point::Max()) {
 			auto e = HoverEvent::LeaveEvent();
-			hoveredWidgets_.ForEach([&](Widget* widget) {
+			for(auto* widget: hoveredWidgets_) {
 				widget->OnEvent(&e);
-			});
+			}
 			return;
 		} 
-		
 		// If we're update the hittest after rebuild, delta will be 0.0 so ingore mouse drags
 		// TODO: Dispatch drag events if delta is above some threshold
 		if(!capturingWidgets_.Empty()) {
-			if(mouseDelta == float2(0.f)) {
+			if(mouseDelta == float2::Zero()) {
 				return;
 			}
-			capturingWidgets_.ForEach([&](Widget* w) {
+			for(auto* w: capturingWidgets_) {
 				const auto mouseDeltaFromInitial = mousePosGlobal - mousePosOnCaptureGlobal_;
 				// Convert global to local using hit test data
-				const auto* parentHitData = lastHitStack_.Find(w->FindParentOfClass<LayoutWidget>());
+				const auto* parentHitData = lastHitStack_.Find(w->FindAncestorOfClass<LayoutWidget>());
 				const auto  mousePosLocal = parentHitData
 					? parentHitData->hitPosLocal + mouseDeltaFromInitial
 					: mousePosGlobal;
@@ -474,7 +617,7 @@ public:
 				dragEvent.mousePosLocal          = mousePosLocal;
 				dragEvent.mouseDelta             = mouseDelta;
 				w->OnEvent(&dragEvent);
-			});
+			}
 			return;
 		}
 
@@ -484,7 +627,7 @@ public:
 		auto&			hitStack = hitTest.hitStack;
 		hitTest.hitPosGlobal = mousePosGlobal;
 		hoveredWindow_ = nullptr;
-		bool bHasPopups = false;
+		bool hasPopups = false;
 
 		for(auto it = widgetStack_.rbegin(); it != widgetStack_.rend(); ++it) {
 			auto& [widget, layer] = *it;
@@ -492,8 +635,8 @@ public:
 			if(layer == Layer::Overlay) {
 				continue;
 			} else if(layer == Layer::Popup) { 
-				bHasPopups = true; 
-			} else if(bHasPopups) {
+				hasPopups = true; 
+			} else if(hasPopups) {
 				continue;
 			}
 			// Hit test widgets recursively
@@ -508,45 +651,38 @@ public:
 		}
 		WidgetList prevHovered = hoveredWidgets_;
 		WidgetList newHovered;
-
 		// Dispatch leave events first so that event timeline is consistent for widgets
 		// I.e. if some widget receives a hover enter event it will reveive a hover leave before it's neigboor receives enter
 		{
 			std::vector<Widget*> hoveredWidgets;
-			for(Widget* widget = hitStack.TopWidget(); 
-				widget; 
-				widget = widget->GetParent()) { 
+			for(Widget* widget: AncestorIterator(hitStack.TopWidget(), true)) {
 				hoveredWidgets.push_back(widget);
 			}
 			auto e = HoverEvent::LeaveEvent();
 			std::vector<Widget*> noLongerHoveredWidgets;
 
-			prevHovered.ForEach([&](Widget* widget) {
-				auto contains = std::ranges::find(hoveredWidgets, widget) != hoveredWidgets.end();
-				if(!contains) {
+			for(Widget* widget: prevHovered) {
+				if(!std::ranges::contains(hoveredWidgets, widget)) {
 					widget->OnEvent(&e);
 					noLongerHoveredWidgets.push_back(widget);
 				}
-			});
+			};
 			for(auto& w: noLongerHoveredWidgets) {
 				prevHovered.Remove(w);
 			}
 		}
-
 		// Dispatch mouse enter events
 		if(!hitStack.Empty()) {
 			auto e = HoverEvent::Normal();
-			bool bHandled = false;
+			bool isHandled = false;
 
-			for(Widget* widget = hitStack.TopWidget(); 
-				widget; 
-				widget = widget->GetParent()) {
+			for(Widget* widget: AncestorIterator(hitStack.TopWidget(), true)) {
+				const auto isMouseRegion = widget->IsA<MouseRegion>(); 
+				const auto isAlways = isMouseRegion && widget->As<MouseRegion>()->ShouldAlwaysReceiveHover();
 
-				const auto bMouseRegion = widget->IsA<MouseRegion>(); 
-				const auto bAlways = bMouseRegion && widget->As<MouseRegion>()->ShouldAlwaysReceiveHover();
-
-				if(bHandled && !bAlways)
+				if(isHandled && !isAlways) {
 					continue;
+				}
 				const bool bPrevHovered = prevHovered.Contains(widget);
 				e.bHoverEnter = !bPrevHovered;
 
@@ -554,11 +690,12 @@ public:
 					newHovered.Push(widget);
 					++e.depth;
 
-					if(bPrevHovered)
+					if(bPrevHovered) {
 						prevHovered.Remove(widget);
-
-					if(!bHandled && !bAlways)
-						bHandled = true;
+					}
+					if(!isHandled && !isAlways) {
+						isHandled = true;
+					}
 				}
 			}
 		}
@@ -568,8 +705,7 @@ public:
 
 	Point GetLocalPosForWidget(Widget* widget) {
 		auto out = mousePosGlobal_;
-		
-		if(auto* layoutParent = widget->FindParentOfClass<LayoutWidget>()) {
+		if(auto* layoutParent = widget->FindAncestorOfClass<LayoutWidget>()) {
 			if(auto* hitData = lastHitStack_.Find(layoutParent)) {
 				out = hitData->hitPosLocal;
 			}
@@ -578,7 +714,6 @@ public:
 	}
 
 	void DispatchMouseButtonEvent(KeyCode button, bool bPressed) {
-
 		bPressed ? ++mouseButtonHeldNum_ : --mouseButtonHeldNum_;
 		bPressed ? mouseButtonsPressedBitField_ |= (MouseButtonMask)button
 			: mouseButtonsPressedBitField_ &= ~(MouseButtonMask)button;
@@ -590,7 +725,7 @@ public:
 			MouseButtonEvent event;
 			event.mousePosGlobal = mousePosGlobal_;
 			event.mousePosLocal = mousePosGlobal_;
-			event.bPressed = bPressed;
+			event.isPressed = bPressed;
 			event.button = (MouseButton)button;
 			bool bHandled = false;
 
@@ -635,24 +770,22 @@ public:
 
 		if(!capturingWidgets_.Empty() && !bPressed && (MouseButton)button == pressedMouseButton_) {
 			MouseButtonEvent e;
-			e.bPressed = bPressed;
+			e.isPressed = bPressed;
 			e.button = (MouseButton)button;
 			e.mousePosGlobal = mousePosGlobal_;
 			e.mousePosLocal = mousePosGlobal_;
 
-			capturingWidgets_.ForEach([&](Widget* w) {
-				if(!w) return;
+			for(auto* w: capturingWidgets_) {
 				e.mousePosLocal = GetLocalPosForWidget(w);
 				w->OnEvent(&e);
-			});
+			}
 			capturingWidgets_.Clear();
-			mousePosOnCaptureGlobal_ = NOPOINT;
+			mousePosOnCaptureGlobal_ = Point::Max();
 			pressedMouseButton_ = MouseButton::None;
 		}
 	}
 
 	void DispatchKeyEvent(KeyCode button, bool bPressed) {
-
 		if(button == KeyCode::KEY_LEFT_SHIFT) modifiersState_[LeftShift] = !modifiersState_[LeftShift];
 		if(button == KeyCode::KEY_RIGHT_SHIFT) modifiersState_[RightShift] = !modifiersState_[RightShift];
 
@@ -665,7 +798,6 @@ public:
 		if(button == KeyCode::KEY_CAPS_LOCK) modifiersState_[CapsLock] = !modifiersState_[CapsLock];
 
 		if(button == KeyCode::KEY_P && bPressed) {
-
 			for(auto windowIt = widgetStack_.rbegin(); windowIt != widgetStack_.rend(); ++windowIt) {
 				auto* window = windowIt->widget.get();
 				LogWidgetTree(window);
@@ -703,11 +835,9 @@ public:
 		MouseScrollEvent e;
 		e.scrollDelta = {0.f, scroll};
 
-		for(Widget* widget = lastHitStack_.TopWidget(); widget; widget = widget->GetParent()) {
-			if(auto* mouseRegion = widget->As<MouseRegion>()) {
-				if(mouseRegion->OnEvent(&e)) {
-					return;
-				}
+		for(auto* mouseRegion: AncestorIterator<MouseRegion>(lastHitStack_.TopWidget(), true)) {
+			if(mouseRegion->OnEvent(&e)) {
+				return;
 			}
 		}
 	}
@@ -739,7 +869,7 @@ public:
 		sb.Line("Hovered window: {}", hoveredWindow_ ? hoveredWindow_->GetDebugID() : "");
 		sb.Line("Hovered widget: {}", !hoveredWidgets_.Empty() ? hoveredWidgets_.Print() : "");
 		sb.Line("Mouse pos local: {}", hoveredWidgets_.Top() ? GetLocalPosForWidget(hoveredWidgets_.Top()) : mousePosGlobal_);
-		sb.Line("Mouse pos global: {}", mousePosGlobal_ == NOPOINT ? "npos" : std::format("{}", mousePosGlobal_));
+		sb.Line("Mouse pos global: {}", mousePosGlobal_ == Point::Max() ? "OUTSIDE" : std::format("{}", mousePosGlobal_));
 		sb.Line("Capturing mouse widgets: {}", !capturingWidgets_.Empty() ? capturingWidgets_.Print() : "");
 		sb.Line();
 		
@@ -843,7 +973,7 @@ public:
 	std::string PrintAncestors(Widget* widget) {
 		std::string out;
 		PropertyArchive ar;
-		for(Widget* w = widget; w; w = w->GetParent()) {
+		for(auto* w: AncestorIterator(widget, true)) {
 			ar.PushObject(w->GetDebugID(), w, nullptr);
 			w->DebugSerialize(ar);
 		}
@@ -877,9 +1007,10 @@ public:
 		return out;
 	}
 
-	std::string PrintHitStack() {
+	std::string PrintHitStack(u32 indent = 1) {
 		std::string out;
 		util::StringBuilder sb(&out);
+		sb.PushIndent(indent);
 		PropertyArchive ar;
 
 		for(auto& hitData : lastHitStack_) {
@@ -887,7 +1018,6 @@ public:
 			ar.PushObject(hitData.widget->GetDebugID(), *hitData.widget, nullptr);
 			hitData.widget->DebugSerialize(ar);
 		}
-
 		for(auto it = ar.rootObjects_.begin(); it != ar.rootObjects_.end(); ++it) {
 			auto& object = *it;
 			sb.Line(object->debugName_);
@@ -980,7 +1110,7 @@ public:
 	void UpdateLayout(Widget* widget) {
 		LayoutWidget* layoutWidget = nullptr;
 
-		for(Widget* ancestor = widget->GetParent(); ancestor; ancestor = ancestor->GetParent()) {
+		for(Widget* ancestor: AncestorIterator(widget)) {
 			if(auto* l = ancestor->As<LayoutWidget>()) {
 				const auto axisMode = l->GetAxisMode();
 				const auto layoutDependsOnChildren =
@@ -1000,7 +1130,7 @@ public:
 		}
 		// Update layout of children recursively starting from this widget
 		LayoutConstraints e;
-		auto* parentLayout = layoutWidget->FindParentOfClass<LayoutWidget>();
+		auto* parentLayout = layoutWidget->FindAncestorOfClass<LayoutWidget>();
 		const bool isRoot = parentLayout == nullptr;
 
 		if(isRoot) {
@@ -1026,6 +1156,9 @@ public:
 	// - Add "BuildStackTrace" for build debugging
 	// - Index of the child being iterated
 	void RebuildDirtyWidgets() {
+		if(dirtyWidgets_.empty()) {
+			return;
+		}
 		StatefulWidget* requestedWidget = nullptr;
 
 		std::function<void(StatefulWidget*)> build;
@@ -1187,96 +1320,87 @@ public:
 		}
 	}
 
+	void UpdateDebugOverlay() {
+		if(!bDrawDebugInfo_) {
+			return;
+		}
+		std::string str;
+		auto sb = util::StringBuilder(&str);
+
+		sb.Line("Frame time: {:5.2f}ms", lastFrameTimeMs_);
+		sb.Line("Opened window count: {}", widgetStack_.size());
+		sb.Line("Timers count: {}", timers_.Size());
+		sb.Line("Hovered window: {}", hoveredWindow_ ? hoveredWindow_->GetDebugID() : "");
+		sb.Line("Hovered widget: {}", !hoveredWidgets_.Empty() ? hoveredWidgets_.Print() : "");
+		sb.Line("Mouse pos local: {}", [&]()->std::string {
+			if(mousePosGlobal_ == Point::Max()) {
+				return "OUTSIZE";
+			}
+			if(auto* topHovered = hoveredWidgets_.Top()) {
+				return std::format("{}", GetLocalPosForWidget(topHovered));
+			}
+			return std::format("{}", mousePosGlobal_);
+		}());
+		sb.Line("Mouse pos global: {}", mousePosGlobal_ == Point::Max() ? "OUTSIDE" : std::format("{}", mousePosGlobal_));
+		sb.Line("Capturing mouse widgets: {}", !capturingWidgets_.Empty() ? capturingWidgets_.Print() : "");
+		sb.Line();
+
+		if(hoveredWindow_) {
+			sb.Line("{} Hit stack: ", hoveredWindow_->GetDebugID());
+			sb.Line(PrintHitStack());
+		}
+		debugOverlay_->SetText(str);
+	}
+
 public:
 
 	bool Tick() final {
-		OPTICK_FRAME("UI_Tick");
 		const auto frameStartTimePoint = std::chrono::high_resolution_clock::now();
-
 		// Rebuild fonts if needed for different size
-		{
-			OPTICK_EVENT("Rebuilding fonts");
-			RebuildFonts();
-		}
+		RebuildFonts();
 
 		if(bResetState_) {
 			DispatchMouseMoveEvent(mousePosGlobal_);
 			bResetState_ = false;
 		}
 
-		{
-			OPTICK_EVENT("Polling events");
-			if(!g_OSWindow->PollEvents()) {
-				return false;
-			}
-			timers_.Tick();
+		if(!g_OSWindow->PollEvents()) {
+			return false;
 		}
-
-		// Rebuild
-		{
-			if(!dirtyWidgets_.empty()) {
-				RebuildDirtyWidgets();	
-			}
-		}
+		timers_.Tick();
+		RebuildDirtyWidgets();
 
 		// Update layout
-		{
-			// Copy because widgets can request rebuild in UpdateLayout()
-			auto pendingUpdateLayout = dirtyWidgets_;
-			dirtyWidgets_.clear();
+		// Copy because widgets can request rebuild in OnPostLayout()
+		// based on layout size. For examle Scrollbar
+		auto pendingUpdateLayout = dirtyWidgets_;
+		dirtyWidgets_.clear();
 
-			for(auto& widget: pendingUpdateLayout) {
-				if(widget) {
-					UpdateLayout(widget.Get());
-				}
+		for(auto& widget: pendingUpdateLayout) {
+			if(widget) {
+				UpdateLayout(widget.Get());
 			}
-			// Update hittest
-			DispatchMouseMoveEvent(mousePosGlobal_);
 		}
+		// Update hittest
+		DispatchMouseMoveEvent(mousePosGlobal_);
 
-		if(bDrawDebugInfo_) {
-			std::string str;
-			auto sb = util::StringBuilder(&str);
+		UpdateDebugOverlay();
 
-			sb.Line("Frame time: {:5.2f}ms", lastFrameTimeMs_);
-			sb.Line("Opened window count: {}", widgetStack_.size());
-			sb.Line("Timers count: {}", timers_.Size());
-			sb.Line("Hovered window: {}", hoveredWindow_ ? hoveredWindow_->GetDebugID() : "");
-			sb.Line("Hovered widget: {}", !hoveredWidgets_.Empty() ? hoveredWidgets_.Print() : "");
-			sb.Line("Mouse pos local: {}", hoveredWidgets_.Top() ? GetLocalPosForWidget(hoveredWidgets_.Top()) : mousePosGlobal_);
-			sb.Line("Mouse pos global: {}", mousePosGlobal_ == NOPOINT ? "npos" : std::format("{}", mousePosGlobal_));
-			sb.Line("Capturing mouse widgets: {}", !capturingWidgets_.Empty() ? capturingWidgets_.Print() : "");
-			sb.Line();
-
-			if(hoveredWindow_) {
-				sb.Line("{} Hit stack: ", hoveredWindow_->GetDebugID());
-				sb.Line(PrintHitStack());
-			}
-			debugOverlay_->SetText(str);
-		}
-
-		// Draw views
+		// Draw
 		g_Renderer->ResetDrawLists();
 		auto* frameDrawList = g_Renderer->GetFrameDrawList();
 		frameDrawList->PushFont(theme_->GetDefaultFont(), g_DefaultFontSize);
-		{
-			OPTICK_EVENT("Drawing UI");
-
-			// DrawlistImpl canvas;
-			// canvas.RendererDrawList = frameDrawList;
-			// DrawEvent drawEvent;
-			// drawEvent.canvas = &canvas;
-			// drawEvent.theme = theme_.get();
-
-			for(auto& [window, layer] : widgetStack_) {
-				DrawWindow(window.get(), frameDrawList, theme_.get());
-			}
+		for(auto& [window, layer] : widgetStack_) {
+			DrawWindow(window.get(), frameDrawList, theme_.get());
 		}
-		const auto frameEndTimePoint = std::chrono::high_resolution_clock::now();
 
+		const auto frameEndTimePoint = std::chrono::high_resolution_clock::now();
 		++frameNum_;
 		lastFrameTimeMs_ = std::chrono::duration_cast<std::chrono::microseconds>(frameEndTimePoint - frameStartTimePoint).count() / 1000.f;
 
+		// Kick actual rendering
+		// TODO: make async with two contexts
+		// so that we can start updating next frame while previous is rendering
 		g_Renderer->RenderFrame(true);
 		return true;
 	}
@@ -1310,12 +1434,12 @@ public:
 	void BringToFront(Widget* widget) override {
 		using Iterator = decltype(widgetStack_)::iterator;
 		auto found = false;
-		// Bring the child just below the overlay layer		
+		// Bring the child just below the overlay layer
 		for(auto it = widgetStack_.begin(); it != widgetStack_.end(); ++it) {
 			if(!found && it->widget.get() == widget) {
 				found = true;
 			} 
-			if (found) {
+			if(found) {
 				auto nextItem = ++Iterator(it);
 				if(nextItem != widgetStack_.end() && nextItem->layer != Layer::Overlay) {
 					std::swap(it->widget, nextItem->widget);
@@ -1355,10 +1479,38 @@ public:
 		}
 	}
 
+	void RequestFocus(FocusNode* node) {
+		// Create new focus chain
+		// Compare with precious chain
+		// Dispatch unfocus events
+		// Edge cases:
+		// 		Requested node is already focused
+		WidgetList& oldChain = focusedWidgets_;
+		WidgetList  newChain;
+		newChain.Push(node->GetWidget());
+
+		for(auto* focusedAncestor: AncestorIterator<Focused>(node->GetWidget())) {
+			newChain.Push(focusedAncestor);
+		}
+		DiffListsSimple(
+			oldChain, 
+			newChain,
+			[&](Widget* oldFocused) {
+				oldFocused->As<Focused>()->OnFocusChanged(false);
+			},
+			[&](Widget* newFocused) {
+				newFocused->As<Focused>()->OnFocusChanged(true);
+			}
+		);
+		LOGF(Verbose, "Focus request is handled.\nOld chain:{}\nNew chain:{}", oldChain.Print(), newChain.Print());
+		focusedWidgets_ = newChain;
+	}
+
 	bool OnEvent(IEvent* e) {
 		return false;
 	}
 
+	// TODO: rework
 	void Shutdown() final {}
 
 	Theme* GetTheme() final {
@@ -1399,11 +1551,6 @@ public:
 	}
 
 private:
-
-	// Handle to the rendering job completion event
-	// We will wait for it before kicking new rendering job
-	JobSystem::EventRef		renderingJobEventRef_;
-
 	u64						frameNum_ = 0;
 	float					lastFrameTimeMs_ = 0;
 	
@@ -1424,9 +1571,10 @@ private:
 
 	// Layout widgets that are hit by mouse cursor
 	HitStack				lastHitStack_;
-	// WeakPtr<Widget>			hoveredWidget_;
 	WidgetList				hoveredWidgets_;
 	WidgetList				capturingWidgets_;
+	WidgetList				focusedWidgets_;
+
 	WeakPtr<Widget>			hoveredWindow_;
 	
 	// Draw hitstack and mouse pos
@@ -1457,19 +1605,19 @@ private:
 
 };
 
-UI::Application* UI::Application::Create(std::string_view windowTitle, u32 width, u32 height) {
+ui::Application* ui::Application::Create(std::string_view windowTitle, u32 width, u32 height) {
 	if(!g_OSWindow) { g_OSWindow = INativeWindow::createWindow(windowTitle, width, height); }
 	if(!g_Application) g_Application = new ApplicationImpl();
 	g_Application->Init();
 	return g_Application;
 }
 
-UI::Application* UI::Application::Get() {
+ui::Application* ui::Application::Get() {
 	return g_Application;
 }
 
-UI::FrameState UI::Application::GetState() {
+ui::FrameState ui::Application::GetState() {
 	return g_Application->GetFrameStateImpl();
 }
 
-GAVAUI_END
+} // namespace ui

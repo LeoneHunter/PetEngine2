@@ -153,90 +153,91 @@ public:
 // TODO: remove indent
 namespace ui {
 
-	class Object;
-	class Widget;
-	class Style;
-	class LayoutWidget;
-	class StatefulWidget;
-	class Theme;
-	class Tooltip;
+class Object;
+class Widget;
+class Style;
+class LayoutWidget;
+class StatefulWidget;
+class Theme;
+class Tooltip;
+class FocusNode;
 
-	template<typename T>
-	concept WidgetSubclass = std::derived_from<T, Widget>;
+template<typename T>
+concept WidgetSubclass = std::derived_from<T, Widget>;
 
-	template<typename T>
-	using WeakPtr = util::WeakPtr<T>;
-	using WidgetWeakPtr = util::WeakPtr<Widget>;
+template<typename T>
+using WeakPtr = util::WeakPtr<T>;
+using WidgetWeakPtr = util::WeakPtr<Widget>;
 
-	// User provided function used to spawn other widgets
-	// Used in a tooltip and dragdrop 
-	using SpawnerFunction = std::function<LayoutWidget*()>;
+// User provided function used to spawn other widgets
+// Used in a tooltip and dragdrop 
+using SpawnerFunction = std::function<LayoutWidget*()>;
 
-	using Margins = RectSides<u32>;
-	using Paddings = RectSides<u32>;
-	using WidgetSlot = size_t;
+using Margins = RectSides<u32>;
+using Paddings = RectSides<u32>;
+using WidgetSlot = size_t;
 
-	constexpr auto defaultWidgetSlot = WidgetSlot();
+constexpr auto defaultWidgetSlot = WidgetSlot();
 
-	// Used by Flexbox and Aligned widgets
-	enum class Alignment {
-		Start,
-		End,
-		Center
-	};
-	DEFINE_ENUM_TOSTRING_3(Alignment, Start, End, Center)
+// Used by Flexbox and Aligned widgets
+enum class Alignment {
+	Start,
+	End,
+	Center
+};
+DEFINE_ENUM_TOSTRING_3(Alignment, Start, End, Center)
 
-	enum class EventCategory {
-		Debug, 		// DebugLog
-		System, 	// Draw, MouseMove, MouseButton, KeyboardKey
-		Layout, 	// HitTest, ParentLayout, ChildLayout, Hover
-		Callback,
-		Notification
-	};
+enum class EventCategory {
+	Debug, 		// DebugLog
+	System, 	// Draw, MouseMove, MouseButton, KeyboardKey
+	Layout, 	// HitTest, ParentLayout, ChildLayout, Hover
+	Callback,
+	Notification
+};
 
-	// Mask to check pressed buttons
-	enum class MouseButtonMask: u8 {
-		None			= 0,
-		ButtonLeft		= 0x1,
-		ButtonRight		= 0x2,
-		ButtonMiddle	= 0x4,
-		Button4			= 0x8,
-		Button5			= 0x10,
-	};
-	DEFINE_ENUM_FLAGS_OPERATORS(MouseButtonMask)
+// Mask to check pressed buttons
+enum class MouseButtonMask: u8 {
+	None			= 0,
+	ButtonLeft		= 0x1,
+	ButtonRight		= 0x2,
+	ButtonMiddle	= 0x4,
+	Button4			= 0x8,
+	Button5			= 0x10,
+};
+DEFINE_ENUM_FLAGS_OPERATORS(MouseButtonMask)
 
-	enum class MouseButton: u8 {
-		None,
-		ButtonLeft,
-		ButtonRight,
-		ButtonMiddle,
-		Button4,
-		Button5,
-	};
+enum class MouseButton: u8 {
+	None,
+	ButtonLeft,
+	ButtonRight,
+	ButtonMiddle,
+	Button4,
+	Button5,
+};
 
-	enum class MouseState {
-		Default,	// When hovering an empty space or widget without a tooltip
-		Tooltip,	// After some time hovering
-		Held,		// When pressed and holding
-		Dragged,	// When dragged threshold crossed
-		DragDrop,	// When DragDrop active
-	};
+enum class MouseState {
+	Default,	// When hovering an empty space or widget without a tooltip
+	Tooltip,	// After some time hovering
+	Held,		// When pressed and holding
+	Dragged,	// When dragged threshold crossed
+	DragDrop,	// When DragDrop active
+};
 
-	enum KeyModifiers {
-		LeftShift,
-		RightShift,
-		LeftControl,
-		RightControl,
-		LeftAlt,
-		RightAlt,
-		CapsLock,
-		Count,
-	};
+enum KeyModifiers {
+	LeftShift,
+	RightShift,
+	LeftControl,
+	RightControl,
+	LeftAlt,
+	RightAlt,
+	CapsLock,
+	Count,
+};
 
-	using KeyModifiersArray = std::array<bool, (int)KeyModifiers::Count>;
+using KeyModifiersArray = std::array<bool, (int)KeyModifiers::Count>;
 
-	using TimerCallback = std::function<bool()>;
-	using TimerHandle = void*;
+using TimerCallback = std::function<bool()>;
+using TimerHandle = void*;
 
 
 enum class AxisMode {
@@ -280,1351 +281,1352 @@ constexpr bool operator==(const SizeMode& lhs, const SizeMode& rhs) {
 }
 
 
-	/*
-	* Some global state information of the application
-	* Can be accesed at any time in read only mode
-	* Users should not cache this because its valid only for one frame
-	*/
-	struct FrameState {
-		Point					mousePosGlobal;
-		// Number of buttons currently held
-		u8						mouseButtonHeldNum = 0;
-		MouseButtonMask			mouseButtonsPressedBitField = MouseButtonMask::None;
-		// Position of the mouse cursor when the first mouse button has been pressed
-		Point					mousePosOnCaptureGlobal;
-		KeyModifiersArray		keyModifiersState{false};
-		float2					windowSize;
-		Theme* 					theme = nullptr;
-	};
+/*
+* Some global state information of the application
+* Can be accesed at any time in read only mode
+* Users should not cache this because its valid only for one frame
+*/
+struct FrameState {
+	Point					mousePosGlobal;
+	// Number of buttons currently held
+	u8						mouseButtonHeldNum = 0;
+	MouseButtonMask			mouseButtonsPressedBitField = MouseButtonMask::None;
+	// Position of the mouse cursor when the first mouse button has been pressed
+	Point					mousePosOnCaptureGlobal;
+	KeyModifiersArray		keyModifiersState{false};
+	float2					windowSize;
+	Theme* 					theme = nullptr;
+};
 
-	/*
-	* Controls the order of the root parented widgets processing and drawing
-	*/
-	enum class Layer {
-		Background,
-		Float,
-		Popup,
-		Overlay,
-	};
+/*
+* Controls the order of the root parented widgets processing and drawing
+*/
+enum class Layer {
+	Background,
+	Float,
+	Popup,
+	Overlay,
+};
 
-	/*
-	* Creates new OS window and a custor renderer for widgets
-	* Handles OS input events and dispatches them to widgets
-	* Then draw widgets via custom renderer
-	* Uses ImGui drawlist and renderer as a backend
-	*/
-	class Application {
-	public:
+/*
+* Creates new OS window and a custor renderer for widgets
+* Handles OS input events and dispatches them to widgets
+* Then draw widgets via custom renderer
+* Uses ImGui drawlist and renderer as a backend
+*/
+class Application {
+public:
 
-		virtual ~Application() = default;
+	virtual ~Application() = default;
 
-		static Application* 	Create(std::string_view windowTitle, u32 width, u32 height);
-		static Application* 	Get();
-		static FrameState		GetState();
+	static Application* 	Create(std::string_view windowTitle, u32 width, u32 height);
+	static Application* 	Get();
+	static FrameState		GetState();
 
-		virtual void			Shutdown() = 0;
-		// For now we do all ui here
-		virtual bool			Tick() = 0;
-		// Parents a widget to the root of the widget tree
-		// Widgets parented to the root behave like windows and can be reordered
-		virtual void			Parent(std::unique_ptr<Widget>&& widget, Layer layer = Layer::Float) = 0;
-		virtual std::unique_ptr<Widget>
-								Orphan(Widget* widget) = 0;
-		virtual void			BringToFront(Widget* widget) = 0;
+	virtual void			Shutdown() = 0;
+	// For now we do all ui here
+	virtual bool			Tick() = 0;
+	// Parents a widget to the root of the widget tree
+	// Widgets parented to the root behave like windows and can be reordered
+	virtual void			Parent(std::unique_ptr<Widget>&& widget, Layer layer = Layer::Float) = 0;
+	virtual std::unique_ptr<Widget>
+							Orphan(Widget* widget) = 0;
+	virtual void			BringToFront(Widget* widget) = 0;
 
-		virtual Theme* 			GetTheme() = 0;
-		// Merges theme styles with the prevous theme overriding existent styles 
-		virtual void			SetTheme(Theme* theme) = 0;
+	virtual Theme* 			GetTheme() = 0;
+	// Merges theme styles with the prevous theme overriding existent styles 
+	virtual void			SetTheme(Theme* theme) = 0;
 
-		virtual TimerHandle		AddTimer(Object* object, const TimerCallback& callback, u64 periodMs) = 0;
-		virtual void			RemoveTimer(TimerHandle handle) = 0;
+	virtual TimerHandle		AddTimer(Object* object, const TimerCallback& callback, u64 periodMs) = 0;
+	virtual void			RemoveTimer(TimerHandle handle) = 0;
 
-		virtual void 			RequestRebuild(StatefulWidget* widget) = 0;
-	};
+	virtual void 			RequestRebuild(StatefulWidget* widget) = 0;
+	virtual void 			RequestFocus(FocusNode* focusNode) = 0;
+};
 
 
-	// Custom dynamic cast
-	#define EVENT_CLASS(className, superClassName) DEFINE_CLASS_META(className, superClassName)
+// Custom dynamic cast
+#define EVENT_CLASS(className, superClassName) DEFINE_CLASS_META(className, superClassName)
 
-	/*
-	* Interface to widget tree events
-	* Events are executed immediatly
-	*/
-	class IEvent {
-		DEFINE_ROOT_CLASS_META(IEvent)
-	public:
-		virtual void Log() {};
-		virtual ~IEvent() = default;
-		// Whether this event should be dispatched to all widgets
-		// ignoring the return value
-		// E.g. DrawEvent
-		virtual bool IsBroadcast() const { return false; };
-		virtual EventCategory GetCategory() const { return EventCategory::Callback; };
-		
-		// Returns a debug identifier of this object
-		// [ClassName: <4 bytes of adress>]
-		std::string GetDebugID() { return std::format("[{}: {:x}]", GetClassName(), (uintptr_t)this & 0xffff); }
-	};
-
-	/*
-	* Events dispatched up the tree
-	*/
-	class Notification: public IEvent {
-		EVENT_CLASS(Notification, IEvent)
-	public:
-		virtual EventCategory GetCategory() const override { return EventCategory::Notification; }
-
-		u32 depth = 0;
-	};
-
-	/*
-	* Request to draw a widget debug data
-	*/
-	class DebugLogEvent final: public IEvent {
-		EVENT_CLASS(DebugLogEvent, IEvent)
-	public:
-		bool IsBroadcast() const override { return true; };
-		EventCategory GetCategory() const override { return EventCategory::Debug; }
-		PropertyArchive* archive = nullptr;
-	};
-
-	/*
-	* Only a top Window widget receives this event
-	* Children widget receive HoverEvent and MouseDragEvent
-	*/
-	class MouseDragEvent final: public IEvent {
-		EVENT_CLASS(MouseDragEvent, IEvent)
-	public:
-		EventCategory GetCategory() const override { return EventCategory::System; }
-
-		// If during this event mouse button is being held
-		// This is the point of initial mouse press
-		Point			mousePosOnCaptureLocal;
-		// Position of the mouse inside the hovered widget
-		// Relative to the widget size
-		Point			mousePosOnCaptureInternal;
-		Point			mousePosLocal;		
-		float2			mouseDelta;
-		MouseButtonMask	mouseButtonsPressedBitField = MouseButtonMask::None;
-	};
+/*
+* Interface to widget tree events
+* Events are executed immediatly
+*/
+class IEvent {
+	DEFINE_ROOT_CLASS_META(IEvent)
+public:
+	virtual void Log() {};
+	virtual ~IEvent() = default;
+	// Whether this event should be dispatched to all widgets
+	// ignoring the return value
+	// E.g. DrawEvent
+	virtual bool IsBroadcast() const { return false; };
+	virtual EventCategory GetCategory() const { return EventCategory::Callback; };
 	
-	class MouseScrollEvent final: public IEvent {
-		EVENT_CLASS(MouseScrollEvent, IEvent)
-	public:
-		EventCategory GetCategory() const override { return EventCategory::System; }
+	// Returns a debug identifier of this object
+	// [ClassName: <4 bytes of adress>]
+	std::string GetDebugID() { return std::format("[{}: {:x}]", GetClassName(), (uintptr_t)this & 0xffff); }
+};
 
-		float2 scrollDelta;
+/*
+* Events dispatched up the tree
+*/
+class Notification: public IEvent {
+	EVENT_CLASS(Notification, IEvent)
+public:
+	virtual EventCategory GetCategory() const override { return EventCategory::Notification; }
+
+	u32 depth = 0;
+};
+
+/*
+* Request to draw a widget debug data
+*/
+class DebugLogEvent final: public IEvent {
+	EVENT_CLASS(DebugLogEvent, IEvent)
+public:
+	bool IsBroadcast() const override { return true; };
+	EventCategory GetCategory() const override { return EventCategory::Debug; }
+	PropertyArchive* archive = nullptr;
+};
+
+/*
+* Only a top Window widget receives this event
+* Children widget receive HoverEvent and MouseDragEvent
+*/
+class MouseDragEvent final: public IEvent {
+	EVENT_CLASS(MouseDragEvent, IEvent)
+public:
+	EventCategory GetCategory() const override { return EventCategory::System; }
+
+	// If during this event mouse button is being held
+	// This is the point of initial mouse press
+	Point			mousePosOnCaptureLocal;
+	// Position of the mouse inside the hovered widget
+	// Relative to the widget size
+	Point			mousePosOnCaptureInternal;
+	Point			mousePosLocal;		
+	float2			mouseDelta;
+	MouseButtonMask	mouseButtonsPressedBitField = MouseButtonMask::None;
+};
+
+class MouseScrollEvent final: public IEvent {
+	EVENT_CLASS(MouseScrollEvent, IEvent)
+public:
+	EventCategory GetCategory() const override { return EventCategory::System; }
+
+	float2 scrollDelta;
+};
+
+/*
+* Passed to children of a widget when it's layout needs update
+* Widgets that are not subclasses of LayoutWidget do not care about these events
+* Constraints define the area in which a child can position itself and change size
+*/
+struct LayoutConstraints {
+	LayoutConstraints() = default;
+
+	LayoutConstraints(LayoutWidget*	parent, Rect rect)
+		: parent(parent)
+		, rect(rect)
+	{}
+	LayoutWidget* parent{};
+	Rect          rect;
+};
+
+class LayoutNotification final: public Notification {
+	EVENT_CLASS(LayoutNotification, Notification)
+public:
+	LayoutWidget* source = nullptr;
+	Rect          rectLocal;
+};
+
+
+
+/*
+* Stores a stack of widgets that is being hovered by the mouse
+* It grows from the root widget to the leaves
+* Usually leaves are buttons, text, icon
+* Top element is the last widget that was hit
+*/
+class HitStack {
+public:
+
+	struct HitData {
+		WeakPtr<LayoutWidget>	widget;
+		Point					hitPosLocal;
 	};
 
-	/*
-	* Passed to children of a widget when it's layout needs update
-	* Widgets that are not subclasses of LayoutWidget do not care about these events
-	* Constraints define the area in which a child can position itself and change size
-	*/
-	struct LayoutConstraints {
-		LayoutConstraints() = default;
+public:
+	constexpr void Push(LayoutWidget* widget, Point posLocal);
 
-		LayoutConstraints(LayoutWidget*	parent, Rect rect)
-			: parent(parent)
-			, rect(rect)
-		{}
-		LayoutWidget* parent{};
-		Rect          rect;
-	};
+	constexpr bool Empty() const { return stack.empty(); }
 
-	class LayoutNotification final: public Notification {
-		EVENT_CLASS(LayoutNotification, Notification)
-	public:
-		LayoutWidget* source = nullptr;
-		Rect          rectLocal;
-	};
-
-
+	constexpr HitData& Top() { return stack.back(); }
+	constexpr LayoutWidget*  TopWidget() { return stack.empty() ? nullptr : stack.back().widget.GetChecked(); }
 	
-	/*
-	* Stores a stack of widgets that is being hovered by the mouse
-	* It grows from the root widget to the leaves
-	* Usually leaves are buttons, text, icon
-	* Top element is the last widget that was hit
-	*/
-	class HitStack {
-	public:
-
-		struct HitData {
-			WeakPtr<LayoutWidget>	widget;
-			Point					hitPosLocal;
-		};
-
-	public:
-		constexpr void Push(LayoutWidget* widget, Point posLocal);
-
-		constexpr bool Empty() const { return stack.empty(); }
-
-		constexpr HitData& Top() { return stack.back(); }
-		constexpr LayoutWidget*  TopWidget() { return stack.empty() ? nullptr : stack.back().widget.GetChecked(); }
-		
-		// Find hit data for a specified widget
-		constexpr const HitData* Find(const LayoutWidget* widget) const {
-			for(const auto& hitData : stack) {
-				if(hitData.widget == widget) 
-					return &hitData;
-			}
-			return nullptr;
+	// Find hit data for a specified widget
+	constexpr const HitData* Find(const LayoutWidget* widget) const {
+		for(const auto& hitData : stack) {
+			if(hitData.widget == widget) 
+				return &hitData;
 		}
-		constexpr bool Contains(const LayoutWidget* widget) const {
-			return Find(widget) != nullptr;
-		}
+		return nullptr;
+	}
+	constexpr bool Contains(const LayoutWidget* widget) const {
+		return Find(widget) != nullptr;
+	}
 
-		constexpr auto begin() { return stack.rbegin(); }
-		constexpr auto end() { return stack.rend(); }
+	constexpr auto begin() { return stack.rbegin(); }
+	constexpr auto end() { return stack.rend(); }
 
-	public:
-		std::vector<HitData> stack;
-	};
+public:
+	std::vector<HitData> stack;
+};
 
-	/*
-	* Called by the framework when mouse cursor is moving
-	*/
-	class HitTestEvent final: public IEvent {
-		EVENT_CLASS(HitTestEvent, IEvent)
-	public:
+/*
+* Called by the framework when mouse cursor is moving
+*/
+class HitTestEvent final: public IEvent {
+	EVENT_CLASS(HitTestEvent, IEvent)
+public:
 
-		// internalPos is a position inside the widget rect relative to origin
-		constexpr void PushItem(LayoutWidget* widget, Point internalPos) {
-			hitStack.Push(widget, internalPos);
-		}
+	// internalPos is a position inside the widget rect relative to origin
+	constexpr void PushItem(LayoutWidget* widget, Point internalPos) {
+		hitStack.Push(widget, internalPos);
+	}
 
-		constexpr Point GetLastHitPos() {
-			return hitStack.Empty() ? hitPosGlobal : hitStack.Top().hitPosLocal;
-		}
+	constexpr Point GetLastHitPos() {
+		return hitStack.Empty() ? hitPosGlobal : hitStack.Top().hitPosLocal;
+	}
 
-		EventCategory GetCategory() const override { return EventCategory::Layout; }
+	EventCategory GetCategory() const override { return EventCategory::Layout; }
 
-	public:
-		Point		hitPosGlobal;
-		HitStack	hitStack;
-	};
+public:
+	Point		hitPosGlobal;
+	HitStack	hitStack;
+};
 
 
 
-	/*
-	* Dispatched to the last widget in the hittest stack
-	* If the widget doen't want to handle the event it passes it to the parent
-	* The dispatched also responsible for handling hover out events
-	*/
-	class HoverEvent final: public IEvent {
-		EVENT_CLASS(HoverEvent, IEvent)
-	public:
+/*
+* Dispatched to the last widget in the hittest stack
+* If the widget doen't want to handle the event it passes it to the parent
+* The dispatched also responsible for handling hover out events
+*/
+class HoverEvent final: public IEvent {
+	EVENT_CLASS(HoverEvent, IEvent)
+public:
 
-		static HoverEvent EnterEvent() { 
-			HoverEvent e; 
-			e.bHoverEnter = true;
-			e.bHoverLeave = false;
-			return e; 
-		}
+	static HoverEvent EnterEvent() { 
+		HoverEvent e; 
+		e.bHoverEnter = true;
+		e.bHoverLeave = false;
+		return e; 
+	}
 
-		static HoverEvent LeaveEvent() { 
-			HoverEvent e; 
-			e.bHoverEnter = false;
-			e.bHoverLeave = true;
-			return e; 
-		}
+	static HoverEvent LeaveEvent() { 
+		HoverEvent e; 
+		e.bHoverEnter = false;
+		e.bHoverLeave = true;
+		return e; 
+	}
 
-		static HoverEvent Normal() { 
-			HoverEvent e; 
-			e.bHoverEnter = false;
-			e.bHoverLeave = false;
-			return e; 
-		}
+	static HoverEvent Normal() { 
+		HoverEvent e; 
+		e.bHoverEnter = false;
+		e.bHoverLeave = false;
+		return e; 
+	}
 
-		EventCategory GetCategory() const override { return EventCategory::System; }
+	EventCategory GetCategory() const override { return EventCategory::System; }
 
-		u8 bHoverEnter: 1;
-		u8 bHoverLeave: 1;
-		// Number of items hovered before
-		u32 depth = 0;
-	};
+	u8 bHoverEnter: 1;
+	u8 bHoverLeave: 1;
+	// Number of items hovered before
+	u32 depth = 0;
+};
 
-	
 
-	/*
-	* System event dispatched by Application when os window is clicked
-	* First its dispatched to the top widget of the hitstack until a widget 
-	*	that returns true is found. Then [handled] is set to true and event
-	*	continues to propagate up the tree so that other widget and wrappers can 
-	*	handle it differently.
-	*/
-	class MouseButtonEvent final: public IEvent {
-		EVENT_CLASS(MouseButtonEvent, IEvent)
-	public:
 
-		EventCategory GetCategory() const override { return EventCategory::System; }
+/*
+* System event dispatched by Application when os window is clicked
+* First its dispatched to the top widget of the hitstack until a widget 
+*	that returns true is found. Then [handled] is set to true and event
+*	continues to propagate up the tree so that other widget and wrappers can 
+*	handle it differently.
+*/
+class MouseButtonEvent final: public IEvent {
+	EVENT_CLASS(MouseButtonEvent, IEvent)
+public:
 
-		MouseButton	button = MouseButton::None;
+	EventCategory GetCategory() const override { return EventCategory::System; }
+
+	MouseButton	button = MouseButton::None;
 	bool		isPressed = false;
-		Point		mousePosGlobal;
-		Point		mousePosLocal;
-	};
+	Point		mousePosGlobal;
+	Point		mousePosLocal;
+};
 
 
 
 
-	class Canvas {
-	public:
+class Canvas {
+public:
 
-		virtual ~Canvas() = default;
-		virtual void DrawBox(Rect rect, const BoxStyle* style) = 0;
-		virtual void DrawRect(Rect rect, Color color, bool bFilled = true) = 0;
+	virtual ~Canvas() = default;
+	virtual void DrawBox(Rect rect, const BoxStyle* style) = 0;
+	virtual void DrawRect(Rect rect, Color color, bool bFilled = true) = 0;
 
-		virtual void DrawText(Point origin, const TextStyle* style, std::string_view textView) = 0;
-		virtual void ClipRect(Rect clipRect) = 0;
-	};
+	virtual void DrawText(Point origin, const TextStyle* style, std::string_view textView) = 0;
+	virtual void ClipRect(Rect clipRect) = 0;
+};
 
-	class DrawEvent final: public IEvent {
-		EVENT_CLASS(DrawEvent, IEvent)
-	public:
+class DrawEvent final: public IEvent {
+	EVENT_CLASS(DrawEvent, IEvent)
+public:
 
-		bool IsBroadcast() const override { return true; };
-		EventCategory GetCategory() const override { return EventCategory::System; }
+	bool IsBroadcast() const override { return true; };
+	EventCategory GetCategory() const override { return EventCategory::System; }
 
-		Canvas*	canvas = nullptr;
-		Theme*	theme = nullptr;
-	};
-
-
+	Canvas*	canvas = nullptr;
+	Theme*	theme = nullptr;
+};
 
 
-	// Returned by the callback to instruct iteration
-	struct VisitResult {
-		// If false stops iteration and exit from all visit calls
-		bool bContinue = true;
-		// Skip iterating children of a current widget
-		bool bSkipChildren = false;		
-	};
-	constexpr auto visitResultContinue = VisitResult(true, false);
-	constexpr auto visitResultExit = VisitResult(false, false);
-	constexpr auto visitResultSkipChildren = VisitResult(true, true);
-	// Visitor function that is being called on every widget in the tree 
-	// when provided to the Widget::Visit() method
-	using WidgetVisitor = std::function<VisitResult(Widget*)>;
 
 
-	/*
-	* Base class for Widgets and WidgetStates
-	* Provides not owning Weak pointers to this
-	* Provides custom dynamic cast
-	*/
-	class Object {
-		DEFINE_ROOT_CLASS_META(Object)
-	public:
-		virtual ~Object() { if(refCounter_) { refCounter_->OnDestructed(); } }
+// Returned by the callback to instruct iteration
+struct VisitResult {
+	// If false stops iteration and exit from all visit calls
+	bool bContinue = true;
+	// Skip iterating children of a current widget
+	bool bSkipChildren = false;		
+};
+constexpr auto visitResultContinue = VisitResult(true, false);
+constexpr auto visitResultExit = VisitResult(false, false);
+constexpr auto visitResultSkipChildren = VisitResult(true, true);
+// Visitor function that is being called on every widget in the tree 
+// when provided to the Widget::Visit() method
+using WidgetVisitor = std::function<VisitResult(Widget*)>;
 
-		template<class T>
-		WeakPtr<T> GetWeakAs() {
-			Assertf(this->As<T>(), "Cannot cast {} to the class {}", GetDebugID(), T::GetStaticClassName());
-			if(!refCounter_) {
-				refCounter_ = new util::RefCounter();
-			}
-			return WeakPtr<T>{this->As<T>(), refCounter_};
+
+/*
+* Base class for Widgets and WidgetStates
+* Provides not owning Weak pointers to this
+* Provides custom dynamic cast
+*/
+class Object {
+	DEFINE_ROOT_CLASS_META(Object)
+public:
+	virtual ~Object() { if(refCounter_) { refCounter_->OnDestructed(); } }
+
+	template<class T>
+	WeakPtr<T> GetWeakAs() {
+		Assertf(this->As<T>(), "Cannot cast {} to the class {}", GetDebugID(), T::GetStaticClassName());
+		if(!refCounter_) {
+			refCounter_ = new util::RefCounter();
 		}
+		return WeakPtr<T>{this->As<T>(), refCounter_};
+	}
 
-		WeakPtr<Object> GetWeak() { return GetWeakAs<Object>(); }
-		
-		// Returns a debug identifier of this object
-		// [MyWidgetClassName: <4 bytes of adress> "MyObjectID"]
-		std::string GetDebugID() const; 
+	WeakPtr<Object> GetWeak() { return GetWeakAs<Object>(); }
+	
+	// Returns a debug identifier of this object
+	// [MyWidgetClassName: <4 bytes of adress> "MyObjectID"]
+	std::string GetDebugID() const; 
 
-	protected:
-		Object() = default;	
-		Object(const Object&) = delete;
-		Object& operator=(const Object&) = delete;
+protected:
+	Object() = default;	
+	Object(const Object&) = delete;
+	Object& operator=(const Object&) = delete;
 
-	private:
-		// Used for custom WeakPtr to this
-		util::RefCounter* refCounter_ = nullptr;
-	};
+private:
+	// Used for custom WeakPtr to this
+	util::RefCounter* refCounter_ = nullptr;
+};
 
-	/*
-	* Base class for ui components
-	*/
-	class Widget: public Object {
-		WIDGET_CLASS(Widget, Object)
-	public:
+/*
+* Base class for ui components
+*/
+class Widget: public Object {
+	WIDGET_CLASS(Widget, Object)
+public:
 
-		// Notify parents that we are about to be destructed
-		virtual void Destroy() {
-			std::unique_ptr<Widget> self = GetParent()->Orphan(this);
-			// Destructed here
+	// Notify parents that we are about to be destructed
+	virtual void Destroy() {
+		std::unique_ptr<Widget> self = GetParent()->Orphan(this);
+		// Destructed here
+	}
+	
+	// Calls a visitor callback on this object and children if bRecursive == true
+	virtual VisitResult	VisitChildren(const WidgetVisitor& visitor, bool bRecursive = false) { return visitResultContinue; }
+	VisitResult VisitChildrenRecursively(const WidgetVisitor& visitor) { return VisitChildren(visitor, true); }
+
+	// Visits parents in the tree recursively
+	void VisitParent(const WidgetVisitor& visitor, bool bRecursive = true) {
+		for(auto parent = parent_; parent; parent = parent->GetParent()) {
+			const auto result = visitor(parent);
+			if(!result.bContinue || !bRecursive) return;
 		}
-		
-		// Calls a visitor callback on this object and children if bRecursive == true
-		virtual VisitResult	VisitChildren(const WidgetVisitor& visitor, bool bRecursive = false) { return visitResultContinue; }
-		VisitResult VisitChildrenRecursively(const WidgetVisitor& visitor) { return VisitChildren(visitor, true); }
+	}
 
-		// Visits parents in the tree recursively
-		void VisitParent(const WidgetVisitor& visitor, bool bRecursive = true) {
-			for(auto parent = parent_; parent; parent = parent->GetParent()) {
-				const auto result = visitor(parent);
-				if(!result.bContinue || !bRecursive) return;
-			}
+	// Attaches this widget to a parent slot
+	virtual void Parent(std::unique_ptr<Widget>&& widget) { Assertf(false, "Class {} cannot have children.", GetClassName()); }
+	NODISCARD virtual std::unique_ptr<Widget> Orphan(Widget* widget) { Assertf(false, "Class {} cannot have children.", GetClassName()); return {}; }
+
+	virtual void OnParented(Widget* parent) { parent_ = parent; };
+	virtual void OnOrphaned() { parent_ = nullptr; }
+			
+	virtual bool OnEvent(IEvent* event) {	
+		if(auto* log = event->As<DebugLogEvent>()) {
+			log->archive->PushObject(GetClassName().data(), this, GetParent());
+			DebugSerialize(*log->archive);
+			return true;
 		}
-
-		// Attaches this widget to a parent slot
-		virtual void Parent(std::unique_ptr<Widget>&& widget) { Assertf(false, "Class {} cannot have children.", GetClassName()); }
-		NODISCARD virtual std::unique_ptr<Widget> Orphan(Widget* widget) { Assertf(false, "Class {} cannot have children.", GetClassName()); return {}; }
-
-		virtual void OnParented(Widget* parent) { parent_ = parent; };
-		virtual void OnOrphaned() { parent_ = nullptr; }
-			 
-		virtual bool OnEvent(IEvent* event) {	
-			if(auto* log = event->As<DebugLogEvent>()) {
-				log->archive->PushObject(GetClassName().data(), this, GetParent());
-				DebugSerialize(*log->archive);
-				return true;
-			}
-			return false;
-		};
-		
-		// Update this widget configuration with the new one
-		// Protected copy constructor should be provided
-		// Called after rebuild during diffing the trees
-		// Only widgets that can be referenced and containt some internal state should override this
-		// @return false - no need to update this widget, just replace
-		virtual bool UpdateWith(const Widget* newWidget) { return false; }
-
-		virtual void DebugSerialize(PropertyArchive& archive) {}
-
-		// TODO: Move to LayoutWidget
-		// Transforms a point in local space into a point in global space
-		// recursively iterating parents
-		virtual Point TransformLocalToGlobal(Point position) const { 
-			return parent_ ? parent_->TransformLocalToGlobal(position) : position; 
-		}
-
-		bool DispatchToParent(IEvent* event) { if(parent_) { return parent_->OnEvent(event); } return false; }		
-
-		void DispatchNotification(Notification* notification) {
-			for(auto* ancestor = parent_; ancestor; ancestor = ancestor->GetParent()) {
-				auto handled = ancestor->OnEvent(notification);
-				if(handled) {
-					++notification->depth;
-				}
-			}
-		}
-
-	public:
-
-		constexpr StringID GetID() const { return id_; }
-		constexpr void SetID(StringID id) { id_ = id; }
-
-		constexpr Widget* GetParent() { return parent_; }
-		constexpr const Widget* GetParent() const { return parent_; }
-
-		// Gets nearest parent in the tree of the class T
-		template<WidgetSubclass T>
-		const T* FindAncestorOfClass() const {
-			for(auto* parent = GetParent(); parent; parent = parent->GetParent()) {
-				if(parent->IsA<T>()) 
-					return static_cast<const T*>(parent);
-			}
-			return nullptr;
-		}
-
-		template<WidgetSubclass T>
-		T* FindAncestorOfClass() { return const_cast<T*>(std::as_const(*this).FindAncestorOfClass<T>()); }
-
-		// Looks for a child with specified class
-		// @param bRecursive - Looks among children of children
-		template<WidgetSubclass T>
-		T* FindChildOfClass(bool bRecursive = true) {
-			T* out = nullptr;
-			VisitChildren([&](Widget* child) {
-				if(child->IsA<T>()) {
-					out = static_cast<T*>(child);
-					return visitResultExit; 
-				}
-				return visitResultContinue;
-			},
-			bRecursive);
-			return out;
-		}
-
-	protected:
-		Widget(StringID id)
-			: id_(id)
-			, parent_(nullptr)
-		{}
-
-		// Must call super
-		// TODO: maybe if ids are different do not update
-		void CopyConfiguration(const Widget& other) {
-			id_ = other.id_;
-		}
-
-	private:
-		// Optional user defined ID
-		StringID			id_;
-		// Our parent widget who manages our lifetime and passes events
-		Widget*				parent_;
+		return false;
 	};
 	
+	// Update this widget configuration with the new one
+	// Protected copy constructor should be provided
+	// Called after rebuild during diffing the trees
+	// Only widgets that can be referenced and containt some internal state should override this
+	// @return false - no need to update this widget, just replace
+	virtual bool UpdateWith(const Widget* newWidget) { return false; }
 
-	/*
-	* Abstract widget container that has one child
-	*/
-	class SingleChildWidget: public Widget {
-		WIDGET_CLASS(SingleChildWidget, Widget)
-	public:
+	virtual void DebugSerialize(PropertyArchive& archive) {}
 
-		void Parent(std::unique_ptr<Widget>&& widget) override {
-			Assert(widget && !widget->GetParent() && !child_);
-			child_ = std::move(widget);
-			child_->OnParented(this);
-		}
+	// TODO: Move to LayoutWidget
+	// Transforms a point in local space into a point in global space
+	// recursively iterating parents
+	virtual Point TransformLocalToGlobal(Point position) const { 
+		return parent_ ? parent_->TransformLocalToGlobal(position) : position; 
+	}
 
-		NODISCARD std::unique_ptr<Widget> Orphan(Widget* widget) override {
-			Assert(widget);
-			if(child_.get() == widget) {
-				child_->OnOrphaned();
-				return std::move(child_);
+	bool DispatchToParent(IEvent* event) { if(parent_) { return parent_->OnEvent(event); } return false; }		
+
+	void DispatchNotification(Notification* notification) {
+		for(auto* ancestor = parent_; ancestor; ancestor = ancestor->GetParent()) {
+			auto handled = ancestor->OnEvent(notification);
+			if(handled) {
+				++notification->depth;
 			}
-			return {};
 		}
-		NODISCARD std::unique_ptr<Widget> OrphanChild() { 
-			if(GetChild()) {
-				return Orphan(GetChild());
-			}
-			return {};
+	}
+
+public:
+
+	constexpr StringID GetID() const { return id_; }
+	constexpr void SetID(StringID id) { id_ = id; }
+
+	constexpr Widget* GetParent() { return parent_; }
+	constexpr const Widget* GetParent() const { return parent_; }
+
+	// Gets nearest parent in the tree of the class T
+	template<WidgetSubclass T>
+	const T* FindAncestorOfClass() const {
+		for(auto* parent = GetParent(); parent; parent = parent->GetParent()) {
+			if(parent->IsA<T>()) 
+				return static_cast<const T*>(parent);
 		}
+		return nullptr;
+	}
 
-		bool DispatchToChildren(IEvent* event) {
-			if(child_) {
-				return child_->OnEvent(event);
-			}
-			return false;
-		}
+	template<WidgetSubclass T>
+	T* FindAncestorOfClass() { return const_cast<T*>(std::as_const(*this).FindAncestorOfClass<T>()); }
 
-		VisitResult VisitChildren(const WidgetVisitor& visitor, bool bRecursive = true) final {
-			if(!child_) return visitResultContinue;
-
-			const auto result = visitor(child_.get());
-			if(!result.bContinue) return visitResultExit;
-
-			if(bRecursive && !result.bSkipChildren) {
-				const auto result = child_->VisitChildren(visitor, bRecursive);
-				if(!result.bContinue) return visitResultExit;
+	// Looks for a child with specified class
+	// @param bRecursive - Looks among children of children
+	template<WidgetSubclass T>
+	T* FindChildOfClass(bool bRecursive = true) {
+		T* out = nullptr;
+		VisitChildren([&](Widget* child) {
+			if(child->IsA<T>()) {
+				out = static_cast<T*>(child);
+				return visitResultExit; 
 			}
 			return visitResultContinue;
-		}
-		
-		bool OnEvent(IEvent* event) override {
-			if(auto* log = event->As<DebugLogEvent>()) {
-				log->archive->PushObject(GetDebugID(), this, GetParent());
-				DebugSerialize(*log->archive);
-				DispatchToChildren(event);
-				return true;
-			} 
-			return Super::OnEvent(event);
-		};
-
-		Widget* GetChild() { return child_.get(); }
-
-	protected:
-		SingleChildWidget(const std::string& id = {})
-			: Widget(id)
-			, child_()
-		{}
-
-	private:
-		std::unique_ptr<Widget> child_;
-	};
-
-
-	class StatefulWidget;
-
-	/*
-	* Contains high level user defined state but subclassing it
-	* A ui is a representation of this state
-	* When the state becomes dirty a Build() is called to update the ui representation of the data
-	*/
-	class WidgetState: public Object {
-		WIDGET_CLASS(WidgetState, Object)
-	public:
-		friend class StatefulWidget;
-
-		WidgetState() = default;
-		~WidgetState();
-
-		WidgetState(const WidgetState&) = delete;
-		WidgetState& operator=(const WidgetState&) = delete;
-
-		virtual std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&& child) = 0;
-
-		void MarkNeedsRebuild();
-
-		void SetVisibility(bool isVisible) {
-			isVisible_ = isVisible;
-			MarkNeedsRebuild();
-		}
-
-		// TODO: rework this, maybe just return nullptr on rebuild
-		bool IsVisible() { return isVisible_; }
-
-		// Called after build
-		// Could be null if the widget tree is destructed before the state
-		void SetWidget(StatefulWidget* widget) {
-			widget_ = widget;
-			// If our widget has been unmounted and destroyes mark us dirty
-			// so we will be built at the next mount
-			if(!widget_) {
-				needsRebuild_ = true;
-			}
-		}
-
-		StatefulWidget* GetWidget() { return widget_; }
-
-	private:
-		bool isVisible_ = true;
-		bool needsRebuild_ = true;
-		// TODO: maybe use a WeakPtr here because if we forget to 
-		// rebind a new widget during rebuild, this will point to the deleted old widget
-		StatefulWidget* widget_ = nullptr;
-	};
-
-
-	/*
-	* Owns widgets build by the bound state but the state 
-	* is owned by the user nad managed externally, and when the user changes the state
-	* it triggers rebuild, and a result of the rebuild is parented to this widget
-	*/
-	class StatefulWidget: public SingleChildWidget {
-		WIDGET_CLASS(StatefulWidget, SingleChildWidget)
-	public:
-
-		static std::unique_ptr<StatefulWidget> New(WidgetState* state, std::unique_ptr<Widget>&& child = {}) {
-			return std::make_unique<StatefulWidget>(state, std::move(child));
-		}
-
-		StatefulWidget(WidgetState* state, std::unique_ptr<Widget>&& child = {})
-			: state_(state)
-			, child_(std::move(child))
-		{}
-		
-		~StatefulWidget() {
-			if(state_) {
-				state_->SetWidget(nullptr);
-			}
-		}
-
-		void DebugSerialize(PropertyArchive& archive) override {
-			Super::DebugSerialize(archive);
-			archive.PushProperty("State", state_ ? state_->GetDebugID() : "null");
-			archive.PushProperty("Dirty", state_ ? state_->needsRebuild_ : false);
-		}
-
-		void MarkNeedsRebuild() {
-			state_->needsRebuild_ = true;
-			Application::Get()->RequestRebuild(this);
-		}
-
-		std::unique_ptr<Widget> Build() {
-			Assertf(state_, "{} doesn't have a state.", GetDebugID());
-			// If we are rebuilding this widget we need to provide old [child] into state_.Build()
-			// because on first build it's provided from the owner but on rebuild we need to provide it here
-			const auto isRebuilding = state_->GetWidget() == this;
-			if(isRebuilding && cachedChild_) {
-				child_ = cachedChild_->GetParent()->Orphan(cachedChild_.Get());
-			} else if(child_){
-				cachedChild_ = child_->GetWeak();
-			}
-			state_->needsRebuild_ = false;
-			return state_->Build(std::move(child_));
-		}
-
-		bool NeedsRebuild() const {
-			Assertf(state_, "{} doesn't have a state.", GetDebugID());
-			// If the child is provided by the owner, we need to force the state rebuild
-			if(child_) {
-				state_->needsRebuild_ = true;
-			}
-			return state_->needsRebuild_;
-		}
-
-		// Bind this widget to the state and unbind the old one
-		void RebindToState() {
-			Assertf(state_, "{} doesn't have a state.", GetDebugID());
-			auto* old = state_->GetWidget();
-			state_->SetWidget(this);
-
-			if(old && old != this) {
-				old->state_ = nullptr;
-			}
-		}
-
-		WidgetState* GetState() { return state_; }
-
-	private:
-		WidgetState* state_;
-		std::unique_ptr<Widget> child_;
-		WeakPtr<Widget> cachedChild_;
-	};
-
-	inline void WidgetState::MarkNeedsRebuild() { 
-		Assertf(widget_, "State doesn't have a widget.");
-		widget_->MarkNeedsRebuild();
+		},
+		bRecursive);
+		return out;
 	}
 
-	inline WidgetState::~WidgetState() {
-		if(widget_) {
-			widget_->Destroy();
-		}
-	}
-
-
-	/*
-	* A widget which has size and position
-	* And possibly can be drawn
-	*/
-	class LayoutWidget: public Widget {
-		WIDGET_CLASS(LayoutWidget, Widget)
-	public:
-
-		bool OnEvent(IEvent* event) override {
-			if(auto* hitTest = event->As<HitTestEvent>()) {
-				if(!IsVisible()) return false;
-				auto hitPosLocalSpace = hitTest->GetLastHitPos();
-
-				if(GetRect().Contains(hitPosLocalSpace)) {
-					hitTest->PushItem(this, hitPosLocalSpace - GetOrigin());
-					return true;
-				}
-				return false;
-			} 
-			return Super::OnEvent(event);
-		};
-
-		void DebugSerialize(PropertyArchive& archive) override {
-			Super::DebugSerialize(archive);
-			archive.PushProperty("Visible", !bHidden_);
-			archive.PushProperty("FloatLayout", (bool)bFloatLayout_);
-			archive.PushProperty("AxisMode", std::format("{}", axisMode_));
-			archive.PushProperty("Origin", origin_);
-			archive.PushProperty("Size", size_);
-			archive.PushStringProperty("LayoutStyleSelector", layoutStyle_ ? *layoutStyle_->name : "null");
-		}
-
-		Point TransformLocalToGlobal(Point localPos) const override {
-			return GetParent() ? GetParent()->TransformLocalToGlobal(localPos + origin_) : localPos + origin_;
-		}
-
-	public:
-
-		// Looks for a nearest LayoutWidget down the tree starting from widget
-		static LayoutWidget* FindNearest(Widget* widget) {
-			if(widget->IsA<LayoutWidget>())
-				return widget->As<LayoutWidget>();
-			return widget->FindChildOfClass<LayoutWidget>();
-		}
-
-		// Finds the topmost widget up the tree that is not another layout widget
-		// Because LayoutWidget serves as a base for widgets composition
-		// Other widgets that wrap this widget will use it for hovering, clicking, moving behaviour
-		Widget*	FindTopmost() {
-			Widget* topmost = this;
-
-			for(auto* parent = GetParent();
-				parent && !parent->IsA<LayoutWidget>();
-				parent = parent->GetParent()) {
-				topmost = parent;
-			}
-			return topmost;
-		}
-
-		SizeMode GetAxisMode() const { return axisMode_; }
-void SetAxisMode(SizeMode mode) { axisMode_ = mode; }
-void SetAxisMode(Axis axis, AxisMode mode) { axisMode_[axis] = mode; }
-
-		// Hiddent objects won't draw themselves and won't handle hovering 
-		// but layout update should be managed by the parent
-		void SetVisibility(bool bVisible) { bHidden_ = !bVisible; }
-		bool IsVisible() const { return !bHidden_; }
-
-		// Should be called by subclasses
-		void SetOrigin(Point pos) { origin_ = pos; }
-		void SetOrigin(float inX, float inY) { origin_ = {inX, inY}; }
-		void SetOrigin(Axis axis, float pos) { origin_[axis] = pos; }
-
-		void Translate(float2 offset) { origin_ += offset; }
-		void Translate(float inX, float inY) { origin_.x += inX; origin_.y += inY; }
-
-		void SetSize(float2 size) { size_ = size; }
-		void SetSize(Axis axis, float size) { size_[(int)axis] = size; }
-		void SetSize(float inX, float inY) { size_ = {inX, inY}; }
-
-		Rect GetRect() const { return {origin_, size_}; }
-		// Returns Rect of this widget in global coordinates
-		Rect GetRectGlobal() const { return Rect(GetParent() ? GetParent()->TransformLocalToGlobal(origin_) : origin_, size_); }
-		float2 GetSize() const { return size_; }
-		float GetSize(Axis axis) const { return size_[axis]; }
-
-		Point GetOrigin() const { return origin_; }
-		Point GetTransform() const { return origin_; }
-
-		// Size + Margins
-		float2 GetOuterSize() {
-			const auto size = GetSize();
-			const auto margins = GetLayoutStyle() ? GetLayoutStyle()->margins : Margins{};
-			return {size.x + margins.Left + margins.Right, size.y + margins.Top + margins.Bottom};
-		}
-
-		// Size - Paddings
-		float2 GetInnerSize() {
-			const auto size = GetSize();
-			const auto paddings = GetLayoutStyle() ? GetLayoutStyle()->paddings : Paddings{};
-			return {size.x - paddings.Left - paddings.Right, size.y - paddings.Top - paddings.Bottom};
-		}
-
-		void SetLayoutStyle(const LayoutStyle* style) { layoutStyle_ = style; }
-		const LayoutStyle* GetLayoutStyle() const { return layoutStyle_; }
-
-		// Widget's position won't be affected by parent's layout events
-		void SetFloatLayout(bool bEnable = true) { bFloatLayout_ = bEnable; }
-		bool IsFloatLayout() const { return bFloatLayout_; }
-	
-	public:
-
-		virtual bool OnHitTest(HitTestEvent& event, float2 position) {
-			if(GetRect().Contains(position)) {
-				const auto internalPosition = position - GetOrigin();
-				event.PushItem(this, internalPosition);
-				HitTestChildren(event, internalPosition);
-				return true;
-			}
-			return false;
-		}
-
-		virtual bool HitTestChildren(HitTestEvent& event, float2 position) { return false; }
-
-		// Returns size after layout is performed
-		virtual float2 OnLayout(const LayoutConstraints& event) { 
-			const auto margins = GetLayoutStyle()->margins;
-
-			if(!bFloatLayout_) {
-				SetOrigin(event.rect.TL() + margins.TL());
-			}
-			for(auto axis: axes2D) {
-				if(GetAxisMode()[axis] == AxisMode::Expand) {
-					Assertf(!event.parent || event.parent->GetAxisMode()[axis] != AxisMode::Shrink, 
-							"{} axis {} mode is set to AxisMode::Expand while parent's {} axis mode is set to AxisMode::Shrink.",
-							GetDebugID(),
-							axis == Axis::X ? "X" : "Y",
-							event.parent->GetDebugID());
-					SetSize(axis, event.rect.Size()[axis] - margins.Size()[axis]);
-				}
-			}
-			return GetOuterSize();
-		}
-
-		// Should be called by subclasses at the end of their OnLayout()
-		void OnPostLayout() {
-			if(bNotifyOnUpdate_) {
-				LayoutNotification e;
-				e.rectLocal = GetRect();
-				e.source = this;
-				DispatchNotification(&e);
-			}
-		}
-
-	protected:
-		LayoutWidget(const LayoutStyle* style          = nullptr,
-					 SizeMode           axisMode       = SizeMode::Fixed(),
-					 bool               notifyOnUpdate = false,
-					 StringID           id             = {})
-			: Widget(id)
-			, bHidden_(false)
-			, bFloatLayout_(false)
-			, bNotifyOnUpdate_(notifyOnUpdate)
-			, axisMode_(axisMode)
-			, layoutStyle_(style) 
+protected:
+	Widget(StringID id)
+		: id_(id)
+		, parent_(nullptr)
 	{}
 
-		void CopyConfiguration(const LayoutWidget& other) {
-			Super::CopyConfiguration(other);
-			bFloatLayout_ = other.bFloatLayout_;
-			bNotifyOnUpdate_ = other.bNotifyOnUpdate_;
-			axisMode_ = other.axisMode_;
-			layoutStyle_ = other.layoutStyle_;
-		}
+	// Must call super
+	// TODO: maybe if ids are different do not update
+	void CopyConfiguration(const Widget& other) {
+		id_ = other.id_;
+	}
 
-	private:
-		u8					bHidden_:1;
-		u8					bFloatLayout_:1;
-		// Send notifications to ancestors when updated
-		u8					bNotifyOnUpdate_:1;
-	SizeMode			axisMode_;
-		// Position in pixels relative to parent origin
-		Point				origin_;
-		float2				size_;
-		// Style object in the Theme
-		const LayoutStyle*	layoutStyle_;
+private:
+	// Optional user defined ID
+	StringID			id_;
+	// Our parent widget who manages our lifetime and passes events
+	Widget*				parent_;
+};
+
+
+/*
+* Abstract widget container that has one child
+*/
+class SingleChildWidget: public Widget {
+	WIDGET_CLASS(SingleChildWidget, Widget)
+public:
+
+	void Parent(std::unique_ptr<Widget>&& widget) override {
+		Assert(widget && !widget->GetParent() && !child_);
+		child_ = std::move(widget);
+		child_->OnParented(this);
+	}
+
+	NODISCARD std::unique_ptr<Widget> Orphan(Widget* widget) override {
+		Assert(widget);
+		if(child_.get() == widget) {
+			child_->OnOrphaned();
+			return std::move(child_);
+		}
+		return {};
+	}
+	NODISCARD std::unique_ptr<Widget> OrphanChild() { 
+		if(GetChild()) {
+			return Orphan(GetChild());
+		}
+		return {};
+	}
+
+	bool DispatchToChildren(IEvent* event) {
+		if(child_) {
+			return child_->OnEvent(event);
+		}
+		return false;
+	}
+
+	VisitResult VisitChildren(const WidgetVisitor& visitor, bool bRecursive = true) final {
+		if(!child_) return visitResultContinue;
+
+		const auto result = visitor(child_.get());
+		if(!result.bContinue) return visitResultExit;
+
+		if(bRecursive && !result.bSkipChildren) {
+			const auto result = child_->VisitChildren(visitor, bRecursive);
+			if(!result.bContinue) return visitResultExit;
+		}
+		return visitResultContinue;
+	}
+	
+	bool OnEvent(IEvent* event) override {
+		if(auto* log = event->As<DebugLogEvent>()) {
+			log->archive->PushObject(GetDebugID(), this, GetParent());
+			DebugSerialize(*log->archive);
+			DispatchToChildren(event);
+			return true;
+		} 
+		return Super::OnEvent(event);
 	};
 
+	Widget* GetChild() { return child_.get(); }
 
-	/*
-	* LayoutWidget container that has one child
-	*/
-	class SingleChildLayoutWidget: public LayoutWidget {
-		WIDGET_CLASS(SingleChildLayoutWidget, LayoutWidget)
-	public:		
+protected:
+	SingleChildWidget(const std::string& id = {})
+		: Widget(id)
+		, child_()
+	{}
 
-		void Parent(std::unique_ptr<Widget>&& widget) override {
-			Assert(widget && !widget->GetParent() && !child_);
-			child_ = std::move(widget);
-			child_->OnParented(this);
+private:
+	std::unique_ptr<Widget> child_;
+};
+
+
+class StatefulWidget;
+
+/*
+* Contains high level user defined state but subclassing it
+* A ui is a representation of this state
+* When the state becomes dirty a Build() is called to update the ui representation of the data
+*/
+class WidgetState: public Object {
+	WIDGET_CLASS(WidgetState, Object)
+public:
+	friend class StatefulWidget;
+
+	WidgetState() = default;
+	~WidgetState();
+
+	WidgetState(const WidgetState&) = delete;
+	WidgetState& operator=(const WidgetState&) = delete;
+
+	virtual std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&& child) = 0;
+
+	void MarkNeedsRebuild();
+
+	void SetVisibility(bool isVisible) {
+		isVisible_ = isVisible;
+		MarkNeedsRebuild();
+	}
+
+	// TODO: rework this, maybe just return nullptr on rebuild
+	bool IsVisible() { return isVisible_; }
+
+	// Called after build
+	// Could be null if the widget tree is destructed before the state
+	void SetWidget(StatefulWidget* widget) {
+		widget_ = widget;
+		// If our widget has been unmounted and destroyes mark us dirty
+		// so we will be built at the next mount
+		if(!widget_) {
+			needsRebuild_ = true;
 		}
+	}
 
-		NODISCARD std::unique_ptr<Widget> Orphan(Widget* widget) override {
-			Assert(widget);
-			if(child_.get() == widget) {
-				child_->OnOrphaned();
-				return std::move(child_);
-			}
-			return {};
+	StatefulWidget* GetWidget() { return widget_; }
+
+private:
+	bool isVisible_ = true;
+	bool needsRebuild_ = true;
+	// TODO: maybe use a WeakPtr here because if we forget to 
+	// rebind a new widget during rebuild, this will point to the deleted old widget
+	StatefulWidget* widget_ = nullptr;
+};
+
+
+/*
+* Owns widgets build by the bound state but the state 
+* is owned by the user nad managed externally, and when the user changes the state
+* it triggers rebuild, and a result of the rebuild is parented to this widget
+*/
+class StatefulWidget: public SingleChildWidget {
+	WIDGET_CLASS(StatefulWidget, SingleChildWidget)
+public:
+
+	static std::unique_ptr<StatefulWidget> New(WidgetState* state, std::unique_ptr<Widget>&& child = {}) {
+		return std::make_unique<StatefulWidget>(state, std::move(child));
+	}
+
+	StatefulWidget(WidgetState* state, std::unique_ptr<Widget>&& child = {})
+		: state_(state)
+		, child_(std::move(child))
+	{}
+	
+	~StatefulWidget() {
+		if(state_) {
+			state_->SetWidget(nullptr);
 		}
+	}
 
-		bool DispatchToChildren(IEvent* event) {
-			if(child_) {
-				return child_->OnEvent(event);
+	void DebugSerialize(PropertyArchive& archive) override {
+		Super::DebugSerialize(archive);
+		archive.PushProperty("State", state_ ? state_->GetDebugID() : "null");
+		archive.PushProperty("Dirty", state_ ? state_->needsRebuild_ : false);
+	}
+
+	void MarkNeedsRebuild() {
+		state_->needsRebuild_ = true;
+		Application::Get()->RequestRebuild(this);
+	}
+
+	std::unique_ptr<Widget> Build() {
+		Assertf(state_, "{} doesn't have a state.", GetDebugID());
+		// If we are rebuilding this widget we need to provide old [child] into state_.Build()
+		// because on first build it's provided from the owner but on rebuild we need to provide it here
+		const auto isRebuilding = state_->GetWidget() == this;
+		if(isRebuilding && cachedChild_) {
+			child_ = cachedChild_->GetParent()->Orphan(cachedChild_.Get());
+		} else if(child_){
+			cachedChild_ = child_->GetWeak();
+		}
+		state_->needsRebuild_ = false;
+		return state_->Build(std::move(child_));
+	}
+
+	bool NeedsRebuild() const {
+		Assertf(state_, "{} doesn't have a state.", GetDebugID());
+		// If the child is provided by the owner, we need to force the state rebuild
+		if(child_) {
+			state_->needsRebuild_ = true;
+		}
+		return state_->needsRebuild_;
+	}
+
+	// Bind this widget to the state and unbind the old one
+	void RebindToState() {
+		Assertf(state_, "{} doesn't have a state.", GetDebugID());
+		auto* old = state_->GetWidget();
+		state_->SetWidget(this);
+
+		if(old && old != this) {
+			old->state_ = nullptr;
+		}
+	}
+
+	WidgetState* GetState() { return state_; }
+
+private:
+	WidgetState* state_;
+	std::unique_ptr<Widget> child_;
+	WeakPtr<Widget> cachedChild_;
+};
+
+inline void WidgetState::MarkNeedsRebuild() { 
+	Assertf(widget_, "State doesn't have a widget.");
+	widget_->MarkNeedsRebuild();
+}
+
+inline WidgetState::~WidgetState() {
+	if(widget_) {
+		widget_->Destroy();
+	}
+}
+
+
+/*
+* A widget which has size and position
+* And possibly can be drawn
+*/
+class LayoutWidget: public Widget {
+	WIDGET_CLASS(LayoutWidget, Widget)
+public:
+
+	bool OnEvent(IEvent* event) override {
+		if(auto* hitTest = event->As<HitTestEvent>()) {
+			if(!IsVisible()) return false;
+			auto hitPosLocalSpace = hitTest->GetLastHitPos();
+
+			if(GetRect().Contains(hitPosLocalSpace)) {
+				hitTest->PushItem(this, hitPosLocalSpace - GetOrigin());
+				return true;
 			}
 			return false;
+		} 
+		return Super::OnEvent(event);
+	};
+
+	void DebugSerialize(PropertyArchive& archive) override {
+		Super::DebugSerialize(archive);
+		archive.PushProperty("Visible", !bHidden_);
+		archive.PushProperty("FloatLayout", (bool)bFloatLayout_);
+		archive.PushProperty("AxisMode", std::format("{}", axisMode_));
+		archive.PushProperty("Origin", origin_);
+		archive.PushProperty("Size", size_);
+		archive.PushStringProperty("LayoutStyleSelector", layoutStyle_ ? *layoutStyle_->name : "null");
+	}
+
+	Point TransformLocalToGlobal(Point localPos) const override {
+		return GetParent() ? GetParent()->TransformLocalToGlobal(localPos + origin_) : localPos + origin_;
+	}
+
+public:
+
+	// Looks for a nearest LayoutWidget down the tree starting from widget
+	static LayoutWidget* FindNearest(Widget* widget) {
+		if(widget->IsA<LayoutWidget>())
+			return widget->As<LayoutWidget>();
+		return widget->FindChildOfClass<LayoutWidget>();
+	}
+
+	// Finds the topmost widget up the tree that is not another layout widget
+	// Because LayoutWidget serves as a base for widgets composition
+	// Other widgets that wrap this widget will use it for hovering, clicking, moving behaviour
+	Widget*	FindTopmost() {
+		Widget* topmost = this;
+
+		for(auto* parent = GetParent();
+			parent && !parent->IsA<LayoutWidget>();
+			parent = parent->GetParent()) {
+			topmost = parent;
 		}
+		return topmost;
+	}
 
-		VisitResult VisitChildren(const WidgetVisitor& visitor, bool bRecursive = true) final {
-			if(!child_) return visitResultContinue;
+	SizeMode GetAxisMode() const { return axisMode_; }
+	void SetAxisMode(SizeMode mode) { axisMode_ = mode; }
+	void SetAxisMode(Axis axis, AxisMode mode) { axisMode_[axis] = mode; }
 
-			const auto result = visitor(child_.get());
+	// Hiddent objects won't draw themselves and won't handle hovering 
+	// but layout update should be managed by the parent
+	void SetVisibility(bool bVisible) { bHidden_ = !bVisible; }
+	bool IsVisible() const { return !bHidden_; }
+
+	// Should be called by subclasses
+	void SetOrigin(Point pos) { origin_ = pos; }
+	void SetOrigin(float inX, float inY) { origin_ = {inX, inY}; }
+	void SetOrigin(Axis axis, float pos) { origin_[axis] = pos; }
+
+	void Translate(float2 offset) { origin_ += offset; }
+	void Translate(float inX, float inY) { origin_.x += inX; origin_.y += inY; }
+
+	void SetSize(float2 size) { size_ = size; }
+	void SetSize(Axis axis, float size) { size_[(int)axis] = size; }
+	void SetSize(float inX, float inY) { size_ = {inX, inY}; }
+
+	Rect GetRect() const { return {origin_, size_}; }
+	// Returns Rect of this widget in global coordinates
+	Rect GetRectGlobal() const { return Rect(GetParent() ? GetParent()->TransformLocalToGlobal(origin_) : origin_, size_); }
+	float2 GetSize() const { return size_; }
+	float GetSize(Axis axis) const { return size_[axis]; }
+
+	Point GetOrigin() const { return origin_; }
+	Point GetTransform() const { return origin_; }
+
+	// Size + Margins
+	float2 GetOuterSize() {
+		const auto size = GetSize();
+		const auto margins = GetLayoutStyle() ? GetLayoutStyle()->margins : Margins{};
+		return {size.x + margins.Left + margins.Right, size.y + margins.Top + margins.Bottom};
+	}
+
+	// Size - Paddings
+	float2 GetInnerSize() {
+		const auto size = GetSize();
+		const auto paddings = GetLayoutStyle() ? GetLayoutStyle()->paddings : Paddings{};
+		return {size.x - paddings.Left - paddings.Right, size.y - paddings.Top - paddings.Bottom};
+	}
+
+	void SetLayoutStyle(const LayoutStyle* style) { layoutStyle_ = style; }
+	const LayoutStyle* GetLayoutStyle() const { return layoutStyle_; }
+
+	// Widget's position won't be affected by parent's layout events
+	void SetFloatLayout(bool bEnable = true) { bFloatLayout_ = bEnable; }
+	bool IsFloatLayout() const { return bFloatLayout_; }
+
+public:
+
+	virtual bool OnHitTest(HitTestEvent& event, float2 position) {
+		if(GetRect().Contains(position)) {
+			const auto internalPosition = position - GetOrigin();
+			event.PushItem(this, internalPosition);
+			HitTestChildren(event, internalPosition);
+			return true;
+		}
+		return false;
+	}
+
+	virtual bool HitTestChildren(HitTestEvent& event, float2 position) { return false; }
+
+	// Returns size after layout is performed
+	virtual float2 OnLayout(const LayoutConstraints& event) { 
+		const auto margins = GetLayoutStyle()->margins;
+
+		if(!bFloatLayout_) {
+			SetOrigin(event.rect.TL() + margins.TL());
+		}
+		for(auto axis: axes2D) {
+			if(GetAxisMode()[axis] == AxisMode::Expand) {
+				Assertf(!event.parent || event.parent->GetAxisMode()[axis] != AxisMode::Shrink, 
+						"{} axis {} mode is set to AxisMode::Expand while parent's {} axis mode is set to AxisMode::Shrink.",
+						GetDebugID(),
+						axis == Axis::X ? "X" : "Y",
+						event.parent->GetDebugID());
+				SetSize(axis, event.rect.Size()[axis] - margins.Size()[axis]);
+			}
+		}
+		return GetOuterSize();
+	}
+
+	// Should be called by subclasses at the end of their OnLayout()
+	void OnPostLayout() {
+		if(bNotifyOnUpdate_) {
+			LayoutNotification e;
+			e.rectLocal = GetRect();
+			e.source = this;
+			DispatchNotification(&e);
+		}
+	}
+
+protected:
+	LayoutWidget(const LayoutStyle* style          = nullptr,
+					SizeMode           axisMode       = SizeMode::Fixed(),
+					bool               notifyOnUpdate = false,
+					StringID           id             = {})
+		: Widget(id)
+		, bHidden_(false)
+		, bFloatLayout_(false)
+		, bNotifyOnUpdate_(notifyOnUpdate)
+		, axisMode_(axisMode)
+		, layoutStyle_(style) 
+	{}
+
+	void CopyConfiguration(const LayoutWidget& other) {
+		Super::CopyConfiguration(other);
+		bFloatLayout_ = other.bFloatLayout_;
+		bNotifyOnUpdate_ = other.bNotifyOnUpdate_;
+		axisMode_ = other.axisMode_;
+		layoutStyle_ = other.layoutStyle_;
+	}
+
+private:
+	u8					bHidden_:1;
+	u8					bFloatLayout_:1;
+	// Send notifications to ancestors when updated
+	u8					bNotifyOnUpdate_:1;
+	SizeMode			axisMode_;
+	// Position in pixels relative to parent origin
+	Point				origin_;
+	float2				size_;
+	// Style object in the Theme
+	const LayoutStyle*	layoutStyle_;
+};
+
+
+/*
+* LayoutWidget container that has one child
+*/
+class SingleChildLayoutWidget: public LayoutWidget {
+	WIDGET_CLASS(SingleChildLayoutWidget, LayoutWidget)
+public:		
+
+	void Parent(std::unique_ptr<Widget>&& widget) override {
+		Assert(widget && !widget->GetParent() && !child_);
+		child_ = std::move(widget);
+		child_->OnParented(this);
+	}
+
+	NODISCARD std::unique_ptr<Widget> Orphan(Widget* widget) override {
+		Assert(widget);
+		if(child_.get() == widget) {
+			child_->OnOrphaned();
+			return std::move(child_);
+		}
+		return {};
+	}
+
+	bool DispatchToChildren(IEvent* event) {
+		if(child_) {
+			return child_->OnEvent(event);
+		}
+		return false;
+	}
+
+	VisitResult VisitChildren(const WidgetVisitor& visitor, bool bRecursive = true) final {
+		if(!child_) return visitResultContinue;
+
+		const auto result = visitor(child_.get());
+		if(!result.bContinue) return visitResultExit;
+
+		if(bRecursive && !result.bSkipChildren) {
+			const auto result = child_->VisitChildren(visitor, bRecursive);
+			if(!result.bContinue) return visitResultExit;
+		}
+		return visitResultContinue;
+	}
+
+	bool OnEvent(IEvent* event) override {
+		if(auto* log = event->As<DebugLogEvent>()) {
+			log->archive->PushObject(GetDebugID(), this, GetParent());
+			DebugSerialize(*log->archive);
+			DispatchToChildren(event);
+			return true;
+		} 
+		if(event->IsA<HitTestEvent>()) {
+			Assertm(false, "Deprecated");
+			return false;
+		} 
+		return Super::OnEvent(event);
+	}
+
+public:
+
+	bool HitTestChildren(HitTestEvent& event, float2 position) override {
+		if(!child_) {
+			return false;
+		}
+		if(auto* layoutChild = FindChildOfClass<LayoutWidget>()) {
+			return layoutChild->OnHitTest(event, position);
+		}
+		return false;
+	}
+
+	float2 OnLayout(const LayoutConstraints& rect) override { 
+		const auto layoutInfo = *GetLayoutStyle();
+		const auto margins = layoutInfo.margins;
+
+		if(!IsFloatLayout()) {
+			SetOrigin(rect.rect.TL() + margins.TL());
+		}
+		for(auto axis: axes2D) {
+			if(GetAxisMode()[axis] == AxisMode::Expand) {
+				SetSize(axis, rect.rect.Size()[axis] - margins.Size()[axis]);
+			}
+		}
+		if(!child_) {
+			return GetSize() + margins.Size();
+		}
+		LayoutConstraints e;
+		e.parent = this;
+		e.rect = Rect(layoutInfo.paddings.TL(), GetSize() - layoutInfo.paddings.Size());
+
+		if(auto* layoutWidget = FindChildOfClass<LayoutWidget>()) {
+			const auto childOuterSize = layoutWidget->OnLayout(e);
+			layoutWidget->OnPostLayout();
+
+			for(auto axis: axes2D) {
+				if(GetAxisMode()[axis] == AxisMode::Shrink) {
+					SetSize(axis, childOuterSize[axis] + layoutInfo.paddings.Size()[axis]);
+				}
+			}
+		}
+		return GetSize() + margins.Size();
+	}		
+
+protected:
+	SingleChildLayoutWidget(StringID styleName,
+							SizeMode axisMode       = SizeMode::Shrink(),
+							bool     notifyOnUpdate = false,
+							StringID id             = {})
+		: LayoutWidget(Application::Get()->GetTheme()->Find(styleName)->Find<LayoutStyle>(),
+						axisMode,
+						notifyOnUpdate,
+						id)
+		, child_() {}
+
+public:
+	std::unique_ptr<Widget> child_;
+};
+
+
+
+/*
+* LayoutWidget container that has multiple children
+*/
+class MultiChildLayoutWidget: public LayoutWidget {
+	WIDGET_CLASS(MultiChildLayoutWidget, LayoutWidget)
+public:
+
+	void Parent(std::unique_ptr<Widget>&& widget) override {
+		Assert(widget && !widget->GetParent());
+		auto* w = widget.get();
+		children_.push_back(std::move(widget));
+		w->OnParented(this);
+	}
+
+	std::unique_ptr<Widget> Orphan(Widget* widget) override {
+		Assert(widget);
+		for(auto it = children_.begin(); it != children_.end(); ++it) {
+			if(it->get() == widget) {
+				auto out = std::move(*it);
+				children_.erase(it);
+				widget->OnOrphaned();
+				return out; 
+			}
+		}			
+		return {};
+	}
+
+	bool DispatchToChildren(IEvent* event) {
+		for(auto& child : children_) {
+			auto result = child->OnEvent(event);
+
+			if(result && !event->IsBroadcast()) {
+				return result;
+			}
+		}
+		return false;
+	}
+
+	void GetVisibleChildren(std::vector<LayoutWidget*>* outVisibleChildren) {
+		outVisibleChildren->reserve(children_.size());
+
+		for(auto& child : children_) {
+			auto layoutChild = child->As<LayoutWidget>();
+
+			if(!layoutChild) {
+				layoutChild = child->FindChildOfClass<LayoutWidget>();
+			}
+
+			if(layoutChild && layoutChild->IsVisible()) {
+				outVisibleChildren->push_back(layoutChild);
+			}
+		}
+	}
+
+	VisitResult VisitChildren(const WidgetVisitor& visitor, bool bRecursive = false) final {
+		for(auto& child : children_) {
+			const auto result = visitor(child.get());
 			if(!result.bContinue) return visitResultExit;
 
 			if(bRecursive && !result.bSkipChildren) {
-				const auto result = child_->VisitChildren(visitor, bRecursive);
+				const auto result = child->VisitChildren(visitor, bRecursive);
 				if(!result.bContinue) return visitResultExit;
 			}
-			return visitResultContinue;
 		}
+		return visitResultContinue;
+	}
 
-		bool OnEvent(IEvent* event) override {
-			if(auto* log = event->As<DebugLogEvent>()) {
-				log->archive->PushObject(GetDebugID(), this, GetParent());
-				DebugSerialize(*log->archive);
-				DispatchToChildren(event);
+	bool OnEvent(IEvent* event) override {
+		if(event->IsA<HitTestEvent>()) {
+			if(Super::OnEvent(event)) {
+				for(auto& child: children_) {
+					auto* layoutChild = LayoutWidget::FindNearest(child.get());
+					if(layoutChild && layoutChild->OnEvent(event)) {
+						break;
+					}
+				}
 				return true;
 			} 
-			if(event->IsA<HitTestEvent>()) {
-				Assertm(false, "Deprecated");
-				return false;
-			} 
-			return Super::OnEvent(event);
-		}
-
-	public:
-
-		bool HitTestChildren(HitTestEvent& event, float2 position) override {
-			if(!child_) {
-				return false;
-			}
-			if(auto* layoutChild = FindChildOfClass<LayoutWidget>()) {
-				return layoutChild->OnHitTest(event, position);
-			}
+			return false;
+		} 
+		if(auto* log = event->As<DebugLogEvent>()) {
+			log->archive->PushObject(GetDebugID(), this, GetParent());
+			DebugSerialize(*log->archive);
+			DispatchToChildren(event);
+			return true;
+		} 
+		return Super::OnEvent(event);
+	}
+	
+	bool HitTestChildren(HitTestEvent& event, float2 position) override {
+		if(children_.empty()) {
 			return false;
 		}
-
-		float2 OnLayout(const LayoutConstraints& rect) override { 
-			const auto layoutInfo = *GetLayoutStyle();
-			const auto margins = layoutInfo.margins;
-
-			if(!IsFloatLayout()) {
-				SetOrigin(rect.rect.TL() + margins.TL());
-			}
-			for(auto axis: axes2D) {
-				if(GetAxisMode()[axis] == AxisMode::Expand) {
-					SetSize(axis, rect.rect.Size()[axis] - margins.Size()[axis]);
-				}
-			}
-			if(!child_) {
-				return GetSize() + margins.Size();
-			}
-			LayoutConstraints e;
-			e.parent = this;
-			e.rect = Rect(layoutInfo.paddings.TL(), GetSize() - layoutInfo.paddings.Size());
-
-			if(auto* layoutWidget = FindChildOfClass<LayoutWidget>()) {
-				const auto childOuterSize = layoutWidget->OnLayout(e);
-				layoutWidget->OnPostLayout();
-
-				for(auto axis: axes2D) {
-					if(GetAxisMode()[axis] == AxisMode::Shrink) {
-						SetSize(axis, childOuterSize[axis] + layoutInfo.paddings.Size()[axis]);
-					}
-				}
-			}
-			return GetSize() + margins.Size();
-		}		
-
-	protected:
-		SingleChildLayoutWidget(StringID styleName,
-								SizeMode axisMode       = SizeMode::Shrink(),
-								bool     notifyOnUpdate = false,
-								StringID id             = {})
-			: LayoutWidget(Application::Get()->GetTheme()->Find(styleName)->Find<LayoutStyle>(),
-						   axisMode,
-						   notifyOnUpdate,
-						   id)
-			, child_() {}
-
-	public:
-		std::unique_ptr<Widget> child_;
-	};
-
-
-
-	/*
-	* LayoutWidget container that has multiple children
-	*/
-	class MultiChildLayoutWidget: public LayoutWidget {
-		WIDGET_CLASS(MultiChildLayoutWidget, LayoutWidget)
-	public:
-
-		void Parent(std::unique_ptr<Widget>&& widget) override {
-			Assert(widget && !widget->GetParent());
-			auto* w = widget.get();
-			children_.push_back(std::move(widget));
-			w->OnParented(this);
-		}
-
-		std::unique_ptr<Widget> Orphan(Widget* widget) override {
-			Assert(widget);
-			for(auto it = children_.begin(); it != children_.end(); ++it) {
-				if(it->get() == widget) {
-					auto out = std::move(*it);
-					children_.erase(it);
-					widget->OnOrphaned();
-					return out; 
-				}
-			}			
-			return {};
-		}
-
-		bool DispatchToChildren(IEvent* event) {
-			for(auto& child : children_) {
-				auto result = child->OnEvent(event);
-
-				if(result && !event->IsBroadcast()) {
-					return result;
-				}
-			}
-			return false;
-		}
-
-		void GetVisibleChildren(std::vector<LayoutWidget*>* outVisibleChildren) {
-			outVisibleChildren->reserve(children_.size());
-
-			for(auto& child : children_) {
-				auto layoutChild = child->As<LayoutWidget>();
-
-				if(!layoutChild) {
-					layoutChild = child->FindChildOfClass<LayoutWidget>();
-				}
-
-				if(layoutChild && layoutChild->IsVisible()) {
-					outVisibleChildren->push_back(layoutChild);
-				}
-			}
-		}
-
-		VisitResult VisitChildren(const WidgetVisitor& visitor, bool bRecursive = false) final {
-			for(auto& child : children_) {
-				const auto result = visitor(child.get());
-				if(!result.bContinue) return visitResultExit;
-
-				if(bRecursive && !result.bSkipChildren) {
-					const auto result = child->VisitChildren(visitor, bRecursive);
-					if(!result.bContinue) return visitResultExit;
-				}
-			}
-			return visitResultContinue;
-		}
-
-		bool OnEvent(IEvent* event) override {
-			if(event->IsA<HitTestEvent>()) {
-				if(Super::OnEvent(event)) {
-					for(auto& child: children_) {
-						auto* layoutChild = LayoutWidget::FindNearest(child.get());
-						if(layoutChild && layoutChild->OnEvent(event)) {
-							break;
-						}
-					}
+		for(auto it = children_.rbegin(); it != children_.rend(); ++it) {
+			if(auto* layoutChild = LayoutWidget::FindNearest(it->get())) {
+				if(layoutChild->OnHitTest(event, position)) {
 					return true;
-				} 
-				return false;
-			} 
-			if(auto* log = event->As<DebugLogEvent>()) {
-				log->archive->PushObject(GetDebugID(), this, GetParent());
-				DebugSerialize(*log->archive);
-				DispatchToChildren(event);
-				return true;
-			} 
-			return Super::OnEvent(event);
-		}
-		
-		bool HitTestChildren(HitTestEvent& event, float2 position) override {
-			if(children_.empty()) {
-				return false;
-			}
-			for(auto it = children_.rbegin(); it != children_.rend(); ++it) {
-				if(auto* layoutChild = LayoutWidget::FindNearest(it->get())) {
-					if(layoutChild->OnHitTest(event, position)) {
-						return true;
-					}
 				}
 			}
-			return false;
 		}
+		return false;
+	}
 
-	public:
+public:
 
-		bool Empty() const { return children_.empty(); }
+	bool Empty() const { return children_.empty(); }
 
-	protected:
-		MultiChildLayoutWidget(const LayoutStyle* style = nullptr,
-							   SizeMode 		  axisMode = SizeMode::Shrink(),
-							   bool				  notifyOnUpdate = false,
-							   const std::string& id = {})
-			: LayoutWidget(style, axisMode, notifyOnUpdate, id)
-			, children_() 
-		{}
+protected:
+	MultiChildLayoutWidget(const LayoutStyle* style = nullptr,
+							SizeMode 		  axisMode = SizeMode::Shrink(),
+							bool				  notifyOnUpdate = false,
+							const std::string& id = {})
+		: LayoutWidget(style, axisMode, notifyOnUpdate, id)
+		, children_() 
+	{}
 
-		auto begin() { return children_.begin(); }
-		auto end() { return children_.end(); }
+	auto begin() { return children_.begin(); }
+	auto end() { return children_.end(); }
 
-		auto begin() const { return children_.begin(); }
-		auto end() const { return children_.end(); }
+	auto begin() const { return children_.begin(); }
+	auto end() const { return children_.end(); }
 
-	private:
-		std::vector<std::unique_ptr<Widget>> children_;
-	};
-
-
+private:
+	std::vector<std::unique_ptr<Widget>> children_;
+};
 
 
-	class MouseRegionBuilder;
 
-	using MouseEnterEventCallback = std::function<void()>;
-	using MouseLeaveEventCallback = std::function<void()>;
-	using MouseHoverEventCallback = std::function<void(const HoverEvent&)>;
-	using MouseButtonEventCallback = std::function<void(const MouseButtonEvent&)>;
-	using MouseDragEventCallback = std::function<void(const MouseDragEvent&)>;
 
-	// Must return true if wants to consume event
-	using MouseScrollEventCallback = std::function<bool(const MouseScrollEvent&)>;
+class MouseRegionBuilder;
 
-	struct MouseRegionConfig {
-		MouseEnterEventCallback  onMouseEnter;
-		MouseLeaveEventCallback  onMouseLeave;
-		MouseHoverEventCallback  onMouseHover;
-		MouseButtonEventCallback onMouseButton;
-		MouseDragEventCallback   onMouseDrag;
-		MouseScrollEventCallback onMouseScroll;
-		// Whether to handle events even if other MouseRegion widget 
-		//     has already handled the event
-		bool					 bHandleHoverAlways = false;
-		bool					 bHandleButtonAlways = false;
-	};
+using MouseEnterEventCallback = std::function<void()>;
+using MouseLeaveEventCallback = std::function<void()>;
+using MouseHoverEventCallback = std::function<void(const HoverEvent&)>;
+using MouseButtonEventCallback = std::function<void(const MouseButtonEvent&)>;
+using MouseDragEventCallback = std::function<void(const MouseDragEvent&)>;
 
-	/*
-	* Widget that detects mouse events
-	* Allows to receive events even if handled by children
-	* Uses underlying LayoutWidget for hit detection
-	* Other widget types can still receive these events but only if not captured by children
-	*/
-	class MouseRegion: public SingleChildWidget {
-		WIDGET_CLASS(MouseRegion, SingleChildWidget)
-	public:
-		static MouseRegionBuilder Build();
+// Must return true if wants to consume event
+using MouseScrollEventCallback = std::function<bool(const MouseScrollEvent&)>;
 
-		bool OnEvent(IEvent* event) override {
-			if(auto* hoverEvent = event->As<HoverEvent>()) {
-				if(hoverEvent->bHoverEnter) {
-					if(config_.onMouseEnter) {
-						config_.onMouseEnter();
-					} else if(config_.onMouseHover) {
-						config_.onMouseHover(*hoverEvent);
-					}
-				} else if(hoverEvent->bHoverLeave) {
-					if(config_.onMouseLeave) {
-						config_.onMouseLeave();
-					}
+struct MouseRegionConfig {
+	MouseEnterEventCallback  onMouseEnter;
+	MouseLeaveEventCallback  onMouseLeave;
+	MouseHoverEventCallback  onMouseHover;
+	MouseButtonEventCallback onMouseButton;
+	MouseDragEventCallback   onMouseDrag;
+	MouseScrollEventCallback onMouseScroll;
+	// Whether to handle events even if other MouseRegion widget 
+	//     has already handled the event
+	bool					 bHandleHoverAlways = false;
+	bool					 bHandleButtonAlways = false;
+};
+
+/*
+* Widget that detects mouse events
+* Allows to receive events even if handled by children
+* Uses underlying LayoutWidget for hit detection
+* Other widget types can still receive these events but only if not captured by children
+*/
+class MouseRegion: public SingleChildWidget {
+	WIDGET_CLASS(MouseRegion, SingleChildWidget)
+public:
+	static MouseRegionBuilder Build();
+
+	bool OnEvent(IEvent* event) override {
+		if(auto* hoverEvent = event->As<HoverEvent>()) {
+			if(hoverEvent->bHoverEnter) {
+				if(config_.onMouseEnter) {
+					config_.onMouseEnter();
 				} else if(config_.onMouseHover) {
 					config_.onMouseHover(*hoverEvent);
 				}
-				return config_.onMouseEnter || config_.onMouseHover;
-			}
-			if(auto* dragEvent = event->As<MouseDragEvent>()) {
-				if(config_.onMouseDrag) {
-					config_.onMouseDrag(*dragEvent);
-					return true;
+			} else if(hoverEvent->bHoverLeave) {
+				if(config_.onMouseLeave) {
+					config_.onMouseLeave();
 				}
-				return config_.onMouseDrag || config_.onMouseButton;
+			} else if(config_.onMouseHover) {
+				config_.onMouseHover(*hoverEvent);
 			}
-			if(auto* buttonEvent = event->As<MouseButtonEvent>()) {
-				if(config_.onMouseButton) {
-					config_.onMouseButton(*buttonEvent);
-					return true;
-				}
-				return config_.onMouseDrag || config_.onMouseButton;
-			}
-			if(auto* scrollEvent = event->As<MouseScrollEvent>()) {
-				if(config_.onMouseScroll) {
-					return config_.onMouseScroll(*scrollEvent);
-				}
-				return false;
-			}
-			return Super::OnEvent(event);
+			return config_.onMouseEnter || config_.onMouseHover;
 		}
-
-		bool UpdateWith(const Widget* newWidget) override {
-			Assertf(GetClass() == MouseRegion::GetStaticClass(), "UpdateWith() must be overriden in subclasses, "
-					"otherwise during widget rebuilding and diffing only superclass part will be updated, which leads to ub. "
-					"This widget class is '{}'.",
-					GetClassName());
-			if(auto* w = newWidget->As<MouseRegion>()) {
-				CopyConfiguration(*w);
+		if(auto* dragEvent = event->As<MouseDragEvent>()) {
+			if(config_.onMouseDrag) {
+				config_.onMouseDrag(*dragEvent);
 				return true;
+			}
+			return config_.onMouseDrag || config_.onMouseButton;
+		}
+		if(auto* buttonEvent = event->As<MouseButtonEvent>()) {
+			if(config_.onMouseButton) {
+				config_.onMouseButton(*buttonEvent);
+				return true;
+			}
+			return config_.onMouseDrag || config_.onMouseButton;
+		}
+		if(auto* scrollEvent = event->As<MouseScrollEvent>()) {
+			if(config_.onMouseScroll) {
+				return config_.onMouseScroll(*scrollEvent);
 			}
 			return false;
 		}
-		
-		void DebugSerialize(PropertyArchive& archive) override {
-			Super::DebugSerialize(archive);
-			archive.PushProperty("AlwaysReceiveHover", config_.bHandleHoverAlways);
-			archive.PushProperty("AlwaysReceiveButton", config_.bHandleButtonAlways);
+		return Super::OnEvent(event);
+	}
 
-			std::string str;
-			if(config_.onMouseEnter) {
-				str.append("onMouseEnter");
-				str.append(" | ");
-			}
-			if(config_.onMouseHover) {
-				str.append("onMouseHover");
-				str.append(" | ");
-			}
-			if(config_.onMouseLeave) {
-				str.append("onMouseLeave");
-				str.append(" | ");
-			}
-			if(config_.onMouseButton) {
-				str.append("onMouseButton");
-				str.append(" | ");
-			}
-			if(config_.onMouseDrag) {
-				str.append("onMouseDrag");
-				str.append(" | ");
-			}
-			if(config_.onMouseScroll) {
-				str.append("onMouseScroll");
-				str.append(" | ");
-			}
-			// Delete " | " at the end
-			if(!str.empty() && str.back() == ' ') {
-				str = str.substr(0, str.size() - 3);
-			}
-			archive.PushProperty("Callbacks", str);
+	bool UpdateWith(const Widget* newWidget) override {
+		Assertf(GetClass() == MouseRegion::GetStaticClass(), "UpdateWith() must be overriden in subclasses, "
+				"otherwise during widget rebuilding and diffing only superclass part will be updated, which leads to ub. "
+				"This widget class is '{}'.",
+				GetClassName());
+		if(auto* w = newWidget->As<MouseRegion>()) {
+			CopyConfiguration(*w);
+			return true;
 		}
-
-		bool ShouldAlwaysReceiveHover() const { return config_.bHandleHoverAlways; }
-		bool ShouldAlwaysReceiveButton() const { return config_.bHandleButtonAlways; }
-
-	protected:
-		MouseRegion(const MouseRegionConfig& config) 
-			: config_(config)
-		{}
-
-		void CopyConfiguration(const MouseRegion& other) {
-			Super::CopyConfiguration(other);
-			config_ = other.config_;
-		}
-
-		friend class MouseRegionBuilder;
+		return false;
+	}
 	
-	private:	
-		MouseRegionConfig config_;
-	};
+	void DebugSerialize(PropertyArchive& archive) override {
+		Super::DebugSerialize(archive);
+		archive.PushProperty("AlwaysReceiveHover", config_.bHandleHoverAlways);
+		archive.PushProperty("AlwaysReceiveButton", config_.bHandleButtonAlways);
 
-	class MouseRegionBuilder {
-	public:
-
-		auto& OnMouseButton(const MouseButtonEventCallback& c) { config_.onMouseButton = c; return *this; }
-		auto& OnMouseDrag(const MouseDragEventCallback& c) { config_.onMouseDrag = c; return *this; }
-		auto& OnMouseEnter(const MouseEnterEventCallback& c) { config_.onMouseEnter = c; return *this; }
-		auto& OnMouseLeave(const MouseLeaveEventCallback& c) { config_.onMouseLeave = c; return *this; }
-		auto& OnMouseHover(const MouseHoverEventCallback& c) { config_.onMouseHover = c; return *this; }
-		auto& OnMouseScroll(const MouseScrollEventCallback& c) { config_.onMouseScroll = c; return *this; }
-		auto& HandleHoverAlways(bool b = true) { config_.bHandleHoverAlways = b; return *this; }
-		auto& HandleButtonAlways(bool b = true) { config_.bHandleButtonAlways = b; return *this; }
-		auto& Child(std::unique_ptr<Widget>&& child) { child_ = std::move(child); return *this; }
-
-		std::unique_ptr<MouseRegion> New() { 
-			Assertf([&]() {
-				if(config_.onMouseHover || config_.onMouseEnter) {
-					return (bool)config_.onMouseLeave;
-				}
-				return true;
-			}(), "OnMouseLeave callback should be set if OnMouseEnter or OnMouseHover is set");
-
-			std::unique_ptr<MouseRegion> out(new MouseRegion(config_));
-			out->Parent(std::move(child_));
-			return out;
+		std::string str;
+		if(config_.onMouseEnter) {
+			str.append("onMouseEnter");
+			str.append(" | ");
 		}
-
-	private:
-		MouseRegionConfig       config_;
-		std::unique_ptr<Widget> child_;
-	};
-
-	inline MouseRegionBuilder MouseRegion::Build() { return {}; }
-
-
-
-
-
-
-
-	using EventCallback = std::function<bool(IEvent*)>;
-
-	/*
-	* TODO: maybe rename into NotificationListener and separate notificatoins and events
-	* Calls the user provided callback when an event is received
-	*/
-	class EventListener: public SingleChildWidget {
-		WIDGET_CLASS(EventListener, SingleChildWidget)
-	public:
-
-		static auto New(const EventCallback& callback, std::unique_ptr<Widget>&& child) {
-			auto out = std::make_unique<EventListener>();
-			out->callback_ = callback;
-			out->Parent(std::move(child));
-			return out;
+		if(config_.onMouseHover) {
+			str.append("onMouseHover");
+			str.append(" | ");
 		}
+		if(config_.onMouseLeave) {
+			str.append("onMouseLeave");
+			str.append(" | ");
+		}
+		if(config_.onMouseButton) {
+			str.append("onMouseButton");
+			str.append(" | ");
+		}
+		if(config_.onMouseDrag) {
+			str.append("onMouseDrag");
+			str.append(" | ");
+		}
+		if(config_.onMouseScroll) {
+			str.append("onMouseScroll");
+			str.append(" | ");
+		}
+		// Delete " | " at the end
+		if(!str.empty() && str.back() == ' ') {
+			str = str.substr(0, str.size() - 3);
+		}
+		archive.PushProperty("Callbacks", str);
+	}
 
-		bool OnEvent(IEvent* event) override {
-			if(callback_ && callback_(event)) {
-				return true;
+	bool ShouldAlwaysReceiveHover() const { return config_.bHandleHoverAlways; }
+	bool ShouldAlwaysReceiveButton() const { return config_.bHandleButtonAlways; }
+
+protected:
+	MouseRegion(const MouseRegionConfig& config) 
+		: config_(config)
+	{}
+
+	void CopyConfiguration(const MouseRegion& other) {
+		Super::CopyConfiguration(other);
+		config_ = other.config_;
+	}
+
+	friend class MouseRegionBuilder;
+
+private:	
+	MouseRegionConfig config_;
+};
+
+class MouseRegionBuilder {
+public:
+
+	auto& OnMouseButton(const MouseButtonEventCallback& c) { config_.onMouseButton = c; return *this; }
+	auto& OnMouseDrag(const MouseDragEventCallback& c) { config_.onMouseDrag = c; return *this; }
+	auto& OnMouseEnter(const MouseEnterEventCallback& c) { config_.onMouseEnter = c; return *this; }
+	auto& OnMouseLeave(const MouseLeaveEventCallback& c) { config_.onMouseLeave = c; return *this; }
+	auto& OnMouseHover(const MouseHoverEventCallback& c) { config_.onMouseHover = c; return *this; }
+	auto& OnMouseScroll(const MouseScrollEventCallback& c) { config_.onMouseScroll = c; return *this; }
+	auto& HandleHoverAlways(bool b = true) { config_.bHandleHoverAlways = b; return *this; }
+	auto& HandleButtonAlways(bool b = true) { config_.bHandleButtonAlways = b; return *this; }
+	auto& Child(std::unique_ptr<Widget>&& child) { child_ = std::move(child); return *this; }
+
+	std::unique_ptr<MouseRegion> New() { 
+		Assertf([&]() {
+			if(config_.onMouseHover || config_.onMouseEnter) {
+				return (bool)config_.onMouseLeave;
 			}
-			return Super::OnEvent(event);
-		}
+			return true;
+		}(), "OnMouseLeave callback should be set if OnMouseEnter or OnMouseHover is set");
 
-	private:
-		EventCallback callback_;
-	};
+		std::unique_ptr<MouseRegion> out(new MouseRegion(config_));
+		out->Parent(std::move(child_));
+		return out;
+	}
+
+private:
+	MouseRegionConfig       config_;
+	std::unique_ptr<Widget> child_;
+};
+
+inline MouseRegionBuilder MouseRegion::Build() { return {}; }
+
+
+
+
+
+
+
+using EventCallback = std::function<bool(IEvent*)>;
+
+/*
+* TODO: maybe rename into NotificationListener and separate notificatoins and events
+* Calls the user provided callback when an event is received
+*/
+class EventListener: public SingleChildWidget {
+	WIDGET_CLASS(EventListener, SingleChildWidget)
+public:
+
+	static auto New(const EventCallback& callback, std::unique_ptr<Widget>&& child) {
+		auto out = std::make_unique<EventListener>();
+		out->callback_ = callback;
+		out->Parent(std::move(child));
+		return out;
+	}
+
+	bool OnEvent(IEvent* event) override {
+		if(callback_ && callback_(event)) {
+			return true;
+		}
+		return Super::OnEvent(event);
+	}
+
+private:
+	EventCallback callback_;
+};
 
 
 }
