@@ -7,7 +7,7 @@
 #include <set>
 #include <variant>
 
-namespace UI {
+namespace ui {
 
 using Color = ColorU32;
 
@@ -79,7 +79,7 @@ public:
 	BoxStyle(const BoxStyle* inParent = nullptr)
 		: opacity(1.f)
 		, rounding(0)
-		, roundingMask(UI::CornerMask::All)
+		, roundingMask(ui::CornerMask::All)
 		, borderAsOutline(false) {
 		if(inParent)
 			*this = *inParent;
@@ -196,7 +196,7 @@ public:
 
 public:
 	std::string filename;
-	UI::Font*   font;
+	ui::Font*   font;
 	u32         fontSize;
 	ColorU32    color;
 	bool        fontWeightBold;
@@ -286,101 +286,72 @@ public:
 	Sides margins;
 };
 
-template<typename T>
-concept StyleParameterType = std::same_as<T, u32> || std::same_as<T, s32> || std::same_as<T, float>;
-
-using StyleParameterVariant = std::variant<u32, s32, float>;
-
 
 /*
  * Containts a collection of named style parameters used by widgets
  * A widget expects certain parameters to draw itself
  * E.g. a Button expects a BoxStyle to draw background and borders
  * A Text widget expects a TextStyle with specified font and size
+ * TODO: For now case sensitive, maybe make case insensitive
  */
 class StyleClass {
 public:
-	StyleClass(StringID inName, const StyleClass* inParent = nullptr)
-		: name_(inName)
-		, parent_(inParent) {}
+	StyleClass(StringID name, const StyleClass* parent = nullptr)
+		: name_(name)
+		, parent_(parent) {}
 
-	StyleClass(const StyleClass& inStyle)
-		: name_(inStyle.name_)
-		, parent_(inStyle.parent_) {
-		styles_.reserve(inStyle.styles_.size());
-
-		for(const auto& styleToCopy: inStyle.styles_) {
+	StyleClass(const StyleClass& style)
+		: name_(style.name_)
+		, parent_(style.parent_) {
+		styles_.reserve(style.styles_.size());
+		for(const auto& styleToCopy: style.styles_) {
 			styles_.emplace_back(styleToCopy->Copy());
 		}
 	}
 
-	template<class StyleType>
-	StyleType& Add(std::string_view inName = "", std::string_view inStyleCopy = "") {
-		auto name          = StringID(inName.data());
-		auto copyStyleName = StringID(inStyleCopy.data());
-
+	// Adds a new style or returns existing
+	// Style names are case sensitive
+	// There could be multiple styles with the same name but different types.
+	// For example: [BoxStyle{name: "Default"}, LayoutStyle{name: "Default"}]
+	template<class StyleType> 
+		requires std::derived_from<StyleType, Style>
+	StyleType& Add(std::string_view styleName = "", std::string_view copyStyleName = "") {
+		const auto name = StringID(styleName);
 		const StyleType* copyStyle = nullptr;
 
-		if(!copyStyleName.Empty()) {
+		if(!copyStyleName.empty()) {
 			copyStyle = Find<StyleType>(copyStyleName);
-			Assertm(copyStyle, "Copy style with specified name and class not found");
+			Assertf(copyStyle, "Style to copy from with the name '{}' not found", copyStyleName);
 		}
-
+		for(auto& style: styles_) {
+			if(style->IsA<StyleType>() && style->name == name) {
+				return *style->As<StyleType>();
+			}
+		}
 		auto out  = new StyleType(copyStyle);
 		out->name = name;
 		styles_.emplace_back(out);
 		return *out;
 	}
 
-	template<StyleParameterType T>
-	void AddParameter(std::string_view inName, T inVal) {
-		auto name = StringID(inName.data());
-
-		parameters_.emplace_back(StyleParameterVariant(inVal));
-	}
-
 	template<class StyleType>
-	const StyleType* Find(StringID inName = "") const {
+		requires std::derived_from<StyleType, Style>
+	const StyleType* Find(StringID name = "") const {
 		const StyleType* out = nullptr;
-
 		for(auto& style: styles_) {
-			if(style->IsA<StyleType>() 
-			   && (inName == style->name || inName.Empty() || name_.Empty())) {
+			if(style->IsA<StyleType>() && (name == style->name || name.Empty() || name_.Empty())) {
 				out = style->As<StyleType>();
 				break;
 			}
 		}
-
-		if(!out && parent_) {
-			out = parent_->Find<StyleType>(inName);
-		}
-		Assertf(out, "Style class '{}' does not contain a style of type '{}' and name '{}'", *name_, StyleType::GetStaticClassName(), inName.String());
-		return out;
-	}
-
-	// If style with specified class and name not found returns default style with empty name
-	template<class StyleType>
-	const StyleType* FindOrDefault(StringID inName = "") const {
-		const StyleType* out = nullptr;
-		// If we are the fallback style ignore name selector
-		const auto name = name_.Empty() ? name_ : inName;
-
-		for(auto& style: styles_) {
-			if(style->IsA<StyleType>() && (name == style->name || name.Empty())) {
-				out = style->As<StyleType>();
-				break;
-			}
-		}
-
 		if(!out && parent_) {
 			out = parent_->Find<StyleType>(name);
 		}
-
-		if(!out) {
-			// Return fallback
-			LOGF(Verbose, "Style [{}:{}] not found. Using fallback style.", StyleType::GetStaticClassName(), name);
-			return parent_->FindOrDefault<StyleType>();
-		}
+		Assertf(out, 
+				"Style class '{}' does not contain a style of type '{}' and name '{}'", 
+				*name_, 
+				StyleType::GetStaticClassName(), 
+				name.String());
 		return out;
 	}
 
@@ -401,7 +372,6 @@ public:
 	StringID                            name_;
 	const StyleClass*                   parent_;
 	std::vector<std::unique_ptr<Style>> styles_;
-	std::vector<StyleParameterVariant>  parameters_;
 };
 
 
@@ -433,9 +403,9 @@ public:
 
 	// Adds a new style or returns existing
 	StyleClass& Add(std::string_view inStyleName, std::string_view inParentStyle = "") {
-		if(inStyleName.empty())
+		if(inStyleName.empty()) {
 			return *fallback_;
-
+		}
 		auto              name       = StringID(inStyleName.data());
 		auto              parentName = StringID(inParentStyle.data());
 		const StyleClass* parent     = fallback_;
@@ -444,7 +414,7 @@ public:
 			parent = Find(parentName);
 			Assertf(parent, "Cannot find parent style with the name {}", inParentStyle);
 		}
-		auto [it, bExists] = styles_.emplace(name, StyleClass(name, parent));
+		auto [it, isCreated] = styles_.emplace(name, StyleClass(name, parent));
 		return it->second;
 	}
 

@@ -2,7 +2,7 @@
 #include "widgets.h"
 #include "containers.h"
 
-namespace UI {
+namespace ui {
 
 class TooltipPortal;
 

@@ -447,6 +447,8 @@ namespace util {
 		T* GetChecked() { return RC ? RC->IsAlive() ? Ptr : nullptr : nullptr; }
 		const T* GetChecked() const { return RC ? RC->IsAlive() ? Ptr : nullptr : nullptr; }
 
+		bool Expired() const { return !RC || !RC->IsAlive(); }
+
 	private:
 		RefCounter* RC  = nullptr;
 		T*			Ptr = nullptr;

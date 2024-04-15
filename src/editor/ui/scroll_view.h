@@ -3,7 +3,7 @@
 #include "containers.h"
 #include "button.h"
 
-namespace UI {
+namespace ui {
 
 constexpr auto scrollbarThickness = 8.f;
 constexpr auto mouseScrollPx = 30.f;
@@ -51,7 +51,7 @@ public:
 				Button::Build()
 					.ID("ScrollbarTrackStart")
 					.StyleClass(hovered_ ? "ScrollbarTrack" : "Transparent")
-					.SizeExpanded()
+					.SizeMode(SizeMode::Expand())
 					.OnPress([this](const ButtonEvent& e) {
 						if(e.button == MouseButton::ButtonLeft && e.bPressed) {
 							OnTrackClick(true);
@@ -70,7 +70,7 @@ public:
 				Button::Build()
 					.ID("ScrollbarTrackEnd")
 					.StyleClass(hovered_ ? "ScrollbarTrack" : "Transparent")
-					.SizeExpanded()
+					.SizeMode(SizeMode::Expand())
 					.OnPress([this](const ButtonEvent& e) {
 						if(e.button == MouseButton::ButtonLeft && e.bPressed) {
 							OnTrackClick(false);
@@ -103,17 +103,17 @@ public:
 					.ID(containerID)
 					.StyleClass("Transparent")
 					.NotifyOnLayoutUpdate()
-					.SizeMode(AxisMode{
+					.SizeMode(
 						axis_ == Axis::Y ? AxisMode::Fixed : AxisMode::Expand,
-						axis_ == Axis::Y ? AxisMode::Expand : AxisMode::Fixed,
-					})
-					.Size(float2{
+						axis_ == Axis::Y ? AxisMode::Expand : AxisMode::Fixed
+					)
+					.Size(
 						axis_ == Axis::Y ? thickness : 0.f,
-						axis_ == Axis::Y ? 0.f : thickness,
-					})
+						axis_ == Axis::Y ? 0.f : thickness
+					)
 					.Child(Flexbox::Build()
 						.ID("ScrollbarFlexbox")
-						.Direction(axis_ == Axis::Y ? ContentDirection::Column : ContentDirection::Row)
+						.Direction(axis_)
 						.Expand()
 						.Children(std::move(children))	
 						.New()		
@@ -190,7 +190,7 @@ private:
 					.ID("ScrollbarThumb")
 					.StyleClass("ScrollbarThumb")
 					.BoxStyle(state_)
-					.SizeExpanded()
+					.SizeMode(SizeMode::Expand())
 					.New()
 				)
 				.New();
@@ -291,8 +291,8 @@ private:
 				scrollOffsetMax_[axis] = math::Clamp(contentSize_[axis] - viewportSize_[axis], 0.f);
 				scrollOffset_[axis] = math::Clamp(scrollOffset_[axis], 0.f, scrollOffsetMax_[axis]);
 			} else {
-				scrollOffsetMax_ = float2(0.f);
-				scrollOffset_ = float2(0.f);
+				scrollOffsetMax_[axis] = 0.f;
+				scrollOffset_[axis] = 0.f;
 			}
 		}
 		NotifyListeners();
@@ -368,7 +368,7 @@ public:
 
 	static std::unique_ptr<Widget> New(ScrollViewState*          scrollState,
 									   StringID                  id,
-									   AxisMode					 axisMode,
+									   SizeMode					 axisMode,
 									   std::unique_ptr<Widget>&& child) {
 		auto out = std::unique_ptr<Scrolled>(new Scrolled(id, axisMode));
 		scrollState->AddListener(out.get());
@@ -387,6 +387,7 @@ public:
 		if(auto* scrollChangedEvent = event->As<ScrollChangedEvent>()) {
 			// Positive offset corresponds to a negative coordinates because the 0 is at the top of the screen
 			SetOrigin(-scrollChangedEvent->offset);
+			LOGF(Verbose, "Scrolled has been updated with offset {}", scrollChangedEvent->offset);
 		}
 		return Super::OnEvent(event);
 	}
@@ -397,7 +398,7 @@ public:
 	}
 
 protected:
-	Scrolled(StringID id, AxisMode axisMode)
+	Scrolled(StringID id, SizeMode axisMode)
 		: Super("", axisMode, true, id) 
 	{}
 
@@ -434,12 +435,12 @@ inline std::unique_ptr<Widget> ScrollViewState::Build(std::unique_ptr<Widget>&& 
 					.ID(viewportID)
 					.ClipContent(true)
 					.StyleClass("Transparent")
-					.SizeExpanded()
+					.SizeMode(SizeMode::Expand())
 					.NotifyOnLayoutUpdate()
 					.Child(Scrolled::New(
 						this,
 						contentID,
-						AxisMode{
+						SizeMode{
 							flags_ & Flags::Horizontal ? AxisMode::Shrink : AxisMode::Expand,
 							flags_ & Flags::Vertical ? AxisMode::Shrink : AxisMode::Expand
 						},

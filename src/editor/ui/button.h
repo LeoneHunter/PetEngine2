@@ -3,7 +3,7 @@
 #include "tooltip.h"
 #include "containers.h"
 
-namespace UI {
+namespace ui {
 
 class Button;
 class ButtonBuilder;
@@ -51,7 +51,7 @@ public:
 		if(auto* mouseButtonEvent = event->As<MouseButtonEvent>()) {
 			if(mouseButtonEvent->button == MouseButton::ButtonLeft) {
 				
-				if(mouseButtonEvent->bPressed) {
+				if(mouseButtonEvent->isPressed) {
 					state_ = StateEnum::Pressed;
 					FindChildOfClass<Container>()->SetBoxStyleName(StateEnum::Pressed);
 
@@ -67,7 +67,7 @@ public:
 					}
 				}
 				if(eventCallback_) {
-					ButtonEvent btnEvent(this, mouseButtonEvent->button, mouseButtonEvent->bPressed);
+					ButtonEvent btnEvent(this, mouseButtonEvent->button, mouseButtonEvent->isPressed);
 					eventCallback_(btnEvent);
 				}
 				return true;
@@ -112,8 +112,8 @@ class ButtonBuilder {
 public:
 	auto& ID(StringID inID) { container.ID(inID); return *this; }
 	auto& SizeFixed(float2 size) { container.SizeFixed(size); return *this; }	
-	auto& SizeExpanded(bool bHorizontal = true, bool bVertical = true) { container.SizeExpanded(); return *this; }	
-	auto& SizeMode(AxisMode mode) { container.SizeMode(mode); return *this;  }
+	auto& SizeMode(SizeMode mode) { container.SizeMode(mode); return *this;  }
+	auto& SizeMode(AxisMode x, AxisMode y) { container.SizeMode(x, y); return *this;  }
 	auto& PositionFloat(Point inPos) { container.PositionFloat(inPos); return *this; }
 	auto& StyleClass(StringID styleName) { styleClass = styleName; return *this; }
 	auto& ClipContent(bool bClip) { container.ClipContent(bClip); return *this; }

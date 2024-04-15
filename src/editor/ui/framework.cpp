@@ -10,10 +10,8 @@
 
 #include <stack>
 
-#define GAVAUI_BEGIN namespace UI {
-#define GAVAUI_END }
 
-GAVAUI_BEGIN
+namespace ui {
 
 using Timer = util::Timer<std::chrono::milliseconds>;
 using RendererDrawlist = ::DrawList;

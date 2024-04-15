@@ -1,15 +1,15 @@
 #include "containers.h"
 
-namespace UI {
+namespace ui {
 
 std::unique_ptr<Flexbox> FlexboxBuilder::New() {
 	auto out = std::make_unique<Flexbox>();
 	out->SetID(id);
-	out->SetLayoutStyle(Application::Get()->GetTheme()->Find(style)->FindOrDefault<LayoutStyle>());
+	out->SetLayoutStyle(Application::Get()->GetTheme()->Find(style)->Find<LayoutStyle>());
 
 	const auto mainAxis = direction == ContentDirection::Row ? Axis::X : Axis::Y;
 	out->SetAxisMode(mainAxis, expandMainAxis ? AxisMode::Expand : AxisMode::Shrink);
-	out->SetAxisMode(InvertAxis(mainAxis), expandCrossAxis ? AxisMode::Expand : AxisMode::Shrink);
+	out->SetAxisMode(FlipAxis(mainAxis), expandCrossAxis ? AxisMode::Expand : AxisMode::Shrink);
 
 	out->direction_ = direction;
 	out->justifyContent_ = justifyContent;
@@ -131,7 +131,7 @@ void Flexbox::LayOutChildren(const LayoutConstraints& event) {
 	float mainAxisFlexibleSpace = math::Clamp(innerMainAxisSize - fixedChildrenSizeMainAxis, 0.f);
 
 	// Check for overflow
-	/// TODO use min size from theme here
+	// TODO: use min size from theme here
 	if(axisMode[mainAxisIndex] == AxisMode::Expand && mainAxisFlexibleSpace <= 0.f) {
 		if(overflowPolicy_ == OverflowPolicy::Wrap) {
 			// Check if can expand in cross axis and put children there

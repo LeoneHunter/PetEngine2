@@ -5,11 +5,11 @@
 #include "runtime/system/job_dispatcher.h"
 #include "editor/ui/ui.h"
 
-using namespace UI;
-UI::Application* g_Application = nullptr;
+using namespace ui;
+ui::Application* g_Application = nullptr;
 
 void SetDarkTheme() {
-	auto* theme = new UI::Theme();
+	auto* theme = new ui::Theme();
 	const auto frameColor = Color::FromHex("#202020");
 	const auto hoveredColor = Color::FromHex("#505050");
 	{
@@ -133,7 +133,7 @@ class FilesystemView: public WidgetState {
 public:
 
 	FilesystemView(const std::path& dir) 
-		: scrollViewState_(ScrollViewState::Flags::Vertical) {
+		: scrollViewState_(ScrollViewState::Flags::Vertical | ScrollViewState::Flags::ScrollbarVertical) {
 		SetRootDirectory(dir);
 		auto theme = Application::Get()->GetTheme();	
 		const auto frameColor = Color::FromHex("#303030");
@@ -192,8 +192,8 @@ public:
 				},
 				Container::Build()
 					.StyleClass("Frame")
-					.SizeMode({AxisMode::Fixed, AxisMode::Expand})
-					.Size({300, 0})
+					.SizeMode(AxisMode::Fixed, AxisMode::Expand)
+					.Size(300, 0)
 					.ClipContent()
 					.Child(StatefulWidget::New(
 						&scrollViewState_,
@@ -267,7 +267,7 @@ public:
 
 		std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&&) override {
 			return Button::Build()
-				.SizeMode({AxisMode::Expand, AxisMode::Shrink})
+				.SizeMode(AxisMode::Expand, AxisMode::Shrink)
 				.StyleClass("FilesystemNode")
 				.Text(std::string(indent, ' ')
 					.append(isOpen ? "- " : "+ ")

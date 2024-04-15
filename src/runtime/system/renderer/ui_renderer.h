@@ -4,7 +4,7 @@
 #include "runtime/platform/native_window.h"
 
 class Image;
-namespace UI {
+namespace ui {
 	class Font;
 }
 
@@ -57,7 +57,7 @@ public:
 	/**
 	 * Set font for subsequent DrawText() commands
 	 */
-	virtual void PushFont(const UI::Font* inFont, u8 inDefaultSize, bool bBold = false, bool bItalic = false) = 0;
+	virtual void PushFont(const ui::Font* inFont, u8 inDefaultSize, bool bBold = false, bool bItalic = false) = 0;
 	virtual void PopFont() = 0;
 
 	/**

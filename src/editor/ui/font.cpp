@@ -5,7 +5,7 @@
 #include "thirdparty/imgui/imgui.h"
 #include "thirdparty/imgui/imgui_internal.h"
 
-using namespace UI;
+using namespace ui;
 
 class ImFontFace final: public Font::Face {
 	using CHAR = wchar_t;
@@ -545,10 +545,10 @@ private:
 	std::map<FontKey, ImFont*> m_PendingFaces;
 };
 
-Font* UI::Font::FromInternal() {
+Font* ui::Font::FromInternal() {
 	return new ImGuiFont("");
 }
 
-Font* UI::Font::FromFile(const Path& inFilepath) {
+Font* ui::Font::FromFile(const Path& inFilepath) {
 	return new ImGuiFont(inFilepath);
 }

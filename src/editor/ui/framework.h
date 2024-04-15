@@ -7,7 +7,7 @@
 
 using Point = Vec2<float>;
 
-namespace UI { class Widget; }
+namespace ui { class Widget; }
 
 /*
 * Simple write only archive class
@@ -78,7 +78,7 @@ public:
 		}
 	}
 
-	void PushObject(const std::string& debugName, UI::Widget* widget, UI::Widget* parent) {
+	void PushObject(const std::string& debugName, ui::Widget* widget, ui::Widget* parent) {
 		if(!parent || !cursorObject_) {
 			cursorObject_ = &*rootObjects_.emplace_back(new Object(debugName, (ObjectID)widget, nullptr));
 			return;
@@ -151,7 +151,7 @@ public:
 
 
 // TODO: remove indent
-namespace UI {
+namespace ui {
 
 	class Object;
 	class Widget;
@@ -177,13 +177,6 @@ namespace UI {
 	using WidgetSlot = size_t;
 
 	constexpr auto defaultWidgetSlot = WidgetSlot();
-
-	//enum class Axis { X, Y, Both };
-	//constexpr AxisIndex ToAxisIndex(Axis axis) { assert(axis != Axis::Both); return axis == Axis::X ? AxisX : AxisY; }
-	//constexpr Axis ToAxis(int axisIndex) { assert(axisIndex == 0 || axisIndex == 1); return axisIndex ? Axis::Y : Axis::X; }
-
-	// Represent invalid point. I.e. null object for poins
-	constexpr auto NOPOINT = Point(std::numeric_limits<float>::max());
 
 	// Used by Flexbox and Aligned widgets
 	enum class Alignment {
@@ -245,6 +238,46 @@ namespace UI {
 	using TimerCallback = std::function<bool()>;
 	using TimerHandle = void*;
 
+
+enum class AxisMode {
+	Fixed,	// Size is fixed and doesn't depend on parent or children's layout
+	Expand,	// Size depends on the parent size 
+	Shrink	// Size depends on children's sizes and layout
+};
+
+constexpr std::string to_string(AxisMode value) {
+	switch (value) {
+		case AxisMode::Fixed: return "Fixed";
+		case AxisMode::Expand: return "Expand";
+		case AxisMode::Shrink: return "Shrink";
+		default: Assertm(false, "Enum value out of range"); return "";
+	}
+}
+
+// Defines the size dependency for a LayoutWidget
+struct SizeMode {
+	AxisMode x;
+	AxisMode y;
+
+	constexpr SizeMode(): x(AxisMode::Fixed), y(AxisMode::Fixed) {}
+	constexpr SizeMode(AxisMode x, AxisMode y): x(x), y(y) {}
+
+	static constexpr SizeMode Expand() { return {AxisMode::Expand, AxisMode::Expand}; }
+	static constexpr SizeMode Fixed() { return {AxisMode::Fixed, AxisMode::Fixed}; }
+	static constexpr SizeMode Shrink() { return {AxisMode::Shrink, AxisMode::Shrink}; }
+
+	constexpr AxisMode operator[] (Axis axis) const {
+		return axis == Axis::X ? x : y;
+	}
+	
+	constexpr AxisMode& operator[] (Axis axis) {
+		return axis == Axis::X ? x : y;
+	}
+};
+
+constexpr bool operator==(const SizeMode& lhs, const SizeMode& rhs) {
+	return lhs.x == rhs.x && lhs.y == rhs.y;
+}
 
 
 	/*
@@ -406,50 +439,6 @@ namespace UI {
 		Rect          rectLocal;
 	};
 
-	/*
-	* TODO: deprecated
-	* Passed to the parent by a LayoutWidget widget
-	* when its added, modified or deleted to update parent's and itself's layout
-	* Widgets that are not subclasses of LayoutWidget do not care about these events
-	*/
-	class ChildLayoutEvent final: public IEvent {
-		EVENT_CLASS(ChildLayoutEvent, IEvent)
-	public:
-
-		// What child change spawned the event
-		enum Subtype {
-			OnAdded,
-			OnRemoved,
-			OnChanged,
-			OnVisibility
-		};
-
-		ChildLayoutEvent()
-			: subtype(OnChanged)
-			, bAxisChanged(true, true)
-			, child(nullptr)
-		{}
-
-		ChildLayoutEvent(LayoutWidget* child,
-				   float2 size, 
-				   Vec2<bool> axisChanged = {true, true}, 
-				   Subtype type = OnChanged)
-			: subtype(type)
-			, bAxisChanged(axisChanged)
-			, size(size)
-			, child(child)
-		{}
-
-		EventCategory GetCategory() const override { return EventCategory::Layout; }
-
-		Subtype			subtype;
-		Vec2<bool>		bAxisChanged;
-		float2			size;
-		LayoutWidget*	child;
-	};
-
-
-
 
 	
 	/*
@@ -572,7 +561,7 @@ namespace UI {
 		EventCategory GetCategory() const override { return EventCategory::System; }
 
 		MouseButton	button = MouseButton::None;
-		bool		bPressed = false;
+	bool		isPressed = false;
 		Point		mousePosGlobal;
 		Point		mousePosLocal;
 	};
@@ -604,28 +593,6 @@ namespace UI {
 
 
 
-
-
-
-	struct AxisMode {
-
-		enum Mode {
-			Fixed,
-			Expand, 
-			Shrink
-		};
-
-		constexpr Mode operator[] (Axis axis) const {
-			return axis == Axis::X ? x : y;
-		}
-
-		Mode x;
-		Mode y;
-	};
-
-	constexpr auto axisModeFixed = AxisMode(AxisMode::Fixed, AxisMode::Fixed);
-	constexpr auto axisModeExpand = AxisMode(AxisMode::Expand, AxisMode::Expand);
-	constexpr auto axisModeShrink = AxisMode(AxisMode::Shrink, AxisMode::Shrink);
 
 	// Returned by the callback to instruct iteration
 	struct VisitResult {
@@ -747,15 +714,15 @@ namespace UI {
 
 	public:
 
-		StringID GetID() const { return id_; }
-		void SetID(StringID id) { id_ = id; }
+		constexpr StringID GetID() const { return id_; }
+		constexpr void SetID(StringID id) { id_ = id; }
 
-		Widget* GetParent() { return parent_; }
-		const Widget* GetParent() const { return parent_; }
+		constexpr Widget* GetParent() { return parent_; }
+		constexpr const Widget* GetParent() const { return parent_; }
 
 		// Gets nearest parent in the tree of the class T
 		template<WidgetSubclass T>
-		const T* FindParentOfClass() const {
+		const T* FindAncestorOfClass() const {
 			for(auto* parent = GetParent(); parent; parent = parent->GetParent()) {
 				if(parent->IsA<T>()) 
 					return static_cast<const T*>(parent);
@@ -764,7 +731,7 @@ namespace UI {
 		}
 
 		template<WidgetSubclass T>
-		T* FindParentOfClass() { return const_cast<T*>(std::as_const(*this).FindParentOfClass<T>()); }
+		T* FindAncestorOfClass() { return const_cast<T*>(std::as_const(*this).FindAncestorOfClass<T>()); }
 
 		// Looks for a child with specified class
 		// @param bRecursive - Looks among children of children
@@ -1073,17 +1040,9 @@ namespace UI {
 			return topmost;
 		}
 
-		AxisMode GetAxisMode() const { return axisMode_; }
-
-		void SetAxisMode(AxisMode mode) { axisMode_ = mode; }
-
-		void SetAxisMode(Axis axis, AxisMode::Mode mode) {
-			if(axis == Axis::X) {
-				axisMode_.x = mode;
-			} else if(axis == Axis::Y) {
-				axisMode_.y = mode;
-			}
-		}
+		SizeMode GetAxisMode() const { return axisMode_; }
+void SetAxisMode(SizeMode mode) { axisMode_ = mode; }
+void SetAxisMode(Axis axis, AxisMode mode) { axisMode_[axis] = mode; }
 
 		// Hiddent objects won't draw themselves and won't handle hovering 
 		// but layout update should be managed by the parent
@@ -1178,17 +1137,16 @@ namespace UI {
 
 	protected:
 		LayoutWidget(const LayoutStyle* style          = nullptr,
-					 AxisMode           axisMode       = axisModeShrink,
+					 SizeMode           axisMode       = SizeMode::Fixed(),
 					 bool               notifyOnUpdate = false,
 					 StringID           id             = {})
 			: Widget(id)
 			, bHidden_(false)
 			, bFloatLayout_(false)
 			, bNotifyOnUpdate_(notifyOnUpdate)
-			, axisMode_(axisModeFixed)
-			, layoutStyle_(style) {
-			SetAxisMode(axisMode);
-		}
+			, axisMode_(axisMode)
+			, layoutStyle_(style) 
+	{}
 
 		void CopyConfiguration(const LayoutWidget& other) {
 			Super::CopyConfiguration(other);
@@ -1203,7 +1161,7 @@ namespace UI {
 		u8					bFloatLayout_:1;
 		// Send notifications to ancestors when updated
 		u8					bNotifyOnUpdate_:1;
-		AxisMode			axisMode_;
+	SizeMode			axisMode_;
 		// Position in pixels relative to parent origin
 		Point				origin_;
 		float2				size_;
@@ -1314,10 +1272,10 @@ namespace UI {
 
 	protected:
 		SingleChildLayoutWidget(StringID styleName,
-								AxisMode axisMode       = axisModeShrink,
+								SizeMode axisMode       = SizeMode::Shrink(),
 								bool     notifyOnUpdate = false,
 								StringID id             = {})
-			: LayoutWidget(Application::Get()->GetTheme()->Find(styleName)->FindOrDefault<LayoutStyle>(),
+			: LayoutWidget(Application::Get()->GetTheme()->Find(styleName)->Find<LayoutStyle>(),
 						   axisMode,
 						   notifyOnUpdate,
 						   id)
@@ -1438,7 +1396,7 @@ namespace UI {
 
 	protected:
 		MultiChildLayoutWidget(const LayoutStyle* style = nullptr,
-							   AxisMode 		  axisMode = axisModeShrink,
+							   SizeMode 		  axisMode = SizeMode::Shrink(),
 							   bool				  notifyOnUpdate = false,
 							   const std::string& id = {})
 			: LayoutWidget(style, axisMode, notifyOnUpdate, id)
@@ -1671,12 +1629,12 @@ namespace UI {
 
 }
 
-constexpr void UI::HitStack::Push(LayoutWidget* widget, Point posLocal) {
+constexpr void ui::HitStack::Push(LayoutWidget* widget, Point posLocal) {
 	stack.push_back(HitData{widget->GetWeak(), posLocal});
 }
 
 template<>
-struct std::formatter<UI::AxisMode, char> {
+struct std::formatter<ui::SizeMode, char> {
 
 	template<class ParseContext>
 	constexpr ParseContext::iterator parse(ParseContext& ctx) {
@@ -1684,15 +1642,13 @@ struct std::formatter<UI::AxisMode, char> {
 	}
 
 	template<class FmtContext>
-	FmtContext::iterator format(const UI::AxisMode& axisMode, FmtContext& ctx) const {
-		const auto out = std::format("{}:{}", 
-			axisMode.x == UI::AxisMode::Expand ? "Expand" : axisMode.x == UI::AxisMode::Shrink ? "Shrink" : "Fixed",
-			axisMode.y == UI::AxisMode::Expand ? "Expand" : axisMode.y == UI::AxisMode::Shrink ? "Shrink" : "Fixed");
+	FmtContext::iterator format(const ui::SizeMode& sizeMode, FmtContext& ctx) const {
+		const auto out = std::format("{}:{}", to_string(sizeMode.x), to_string(sizeMode.y));
 		return std::ranges::copy(std::move(out), ctx.out()).out;
 	}
 };
 
-inline std::string UI::Object::GetDebugID() const {
+inline std::string ui::Object::GetDebugID() const {
 	if(auto* w = this->As<Widget>(); w && !w->GetID().Empty()) {
 		return std::format("[{}: {:x} \"{}\"]", GetClassName(), (uintptr_t)this & 0xffff, w->GetID());
 	} else {

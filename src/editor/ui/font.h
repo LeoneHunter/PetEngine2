@@ -7,7 +7,7 @@ struct ImFont;
 struct ImFontAtlas;
 class Image;
 
-namespace UI {
+namespace ui {
 
 /**
  * Stores font family: normal, bold and italic fonts inside one container.
@@ -88,4 +88,4 @@ public:
 	virtual float2 CalculateTextSize(const std::string_view& inText, u8 inFontSize, bool bBold = false, bool bItalic = false, float inMaxTextWidth = FLT_MAX, float inWrapWidth = 0.f) const = 0;
 	virtual float2 CalculateTextSize(const std::wstring_view& inText, u8 inFontSize, bool bBold = false, bool bItalic = false, float inMaxTextWidth = FLT_MAX, float inWrapWidth = 0.f) const = 0;
 };
-}  // namespace UI
+}  // namespace ui

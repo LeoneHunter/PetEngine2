@@ -224,11 +224,11 @@ public:
 		m_ImDrawList->PopClipRect();
 	}
 
-	void PushFont(const UI::Font* inFont, u8 inDefaultSize, bool bBold = false, bool bItalic = false) final {
+	void PushFont(const ui::Font* inFont, u8 inDefaultSize, bool bBold = false, bool bItalic = false) final {
 		const auto* face = inFont->GetFace(inDefaultSize, bBold, bItalic);
 		assert(face && "Pushing a font which is not rasterized");
 
-		UI::Font::FaceRenderParameters params;
+		ui::Font::FaceRenderParameters params;
 		face->GetRenderParameters(&params);
 
 		m_ImDrawListSharedData->TexUvWhitePixel = params.TexUvWhitePixelCoords;
@@ -245,7 +245,7 @@ public:
 
 		const auto* slice = m_FontFaceStack.top();
 
-		UI::Font::FaceRenderParameters params;
+		ui::Font::FaceRenderParameters params;
 		slice->GetRenderParameters(&params);
 
 		m_ImDrawListSharedData->TexUvWhitePixel = params.TexUvWhitePixelCoords;
@@ -276,7 +276,7 @@ public:
 		m_ImDrawData->TotalIdxCount = 0;
 		m_ImDrawList->_ResetForNewFrame();
 		m_ImDrawList->PushClipRectFullScreen();
-		m_FontFaceStack = std::stack<const UI::Font::Face*>();
+		m_FontFaceStack = std::stack<const ui::Font::Face*>();
 	}
 
 private:
@@ -508,7 +508,7 @@ private:
 	std::vector<ImDrawList*>				m_ImDrawLists;
 	float									m_Alpha;
 
-	std::stack<const UI::Font::Face*>		m_FontFaceStack;
+	std::stack<const ui::Font::Face*>		m_FontFaceStack;
 };
 
 /**

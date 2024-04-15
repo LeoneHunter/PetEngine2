@@ -1,21 +1,21 @@
 #include "widgets.h"
 #include "runtime/system/renderer/ui_renderer.h"
 
-namespace UI {
+namespace ui {
 
 /*-------------------------------------------------------------------------------------------------*/
 //										TEXT
 /*-------------------------------------------------------------------------------------------------*/
-UI::TextBox::TextBox(const std::string& text, StringID style)
+ui::TextBox::TextBox(const std::string& text, StringID style)
 	: Super(Application::Get()->GetTheme()->Find(style)->Find<LayoutStyle>()) 
 	, style_(Application::Get()->GetTheme()->Find(style))
 	, text_(text) {
 	// const auto size = style_->Find<TextStyle>()->CalculateTextSize(text_);
 	// SetSize(size);
-	SetAxisMode(axisModeFixed);
+	SetAxisMode(SizeMode::Fixed());
 }
 
-bool UI::TextBox::OnEvent(IEvent* event) {
+bool ui::TextBox::OnEvent(IEvent* event) {
 	if(auto* drawEvent = event->As<DrawEvent>()) {
 		drawEvent->canvas->DrawText(GetOrigin(), style_->Find<TextStyle>(), text_);
 		return true;

@@ -30,8 +30,8 @@ constexpr bool operator== (const Span<T>& left, const Span<T>& right) {
 
 enum class Axis{ X, Y };
 
-constexpr Axis operator! (Axis inAxis) { return inAxis == Axis::X ? Axis::Y : Axis::X; }
-constexpr Axis InvertAxis(Axis inAxis) { return inAxis == Axis::X ? Axis::Y : Axis::X; }
+constexpr Axis FlipAxis(Axis axis) { return axis == Axis::X ? Axis::Y : Axis::X; }
+constexpr Axis operator!(Axis axis) { return FlipAxis(axis); }
 // For easy iteration
 constexpr std::array<Axis, 2> axes2D{Axis::X, Axis::Y};
 
@@ -88,8 +88,9 @@ public:
 		return x;
 	}
 
-	constexpr static Vec2<T> max() { return {std::numeric_limits<T>::max(), std::numeric_limits<T>::max()}; }
-	constexpr static Vec2<T> min() { return {std::numeric_limits<T>::min(), std::numeric_limits<T>::min()}; }
+	constexpr static Vec2<T> Max() { return {std::numeric_limits<T>::max(), std::numeric_limits<T>::max()}; }
+	constexpr static Vec2<T> Min() { return {std::numeric_limits<T>::min(), std::numeric_limits<T>::min()}; }
+	constexpr static Vec2<T> Zero() { return {0.f, 0.f}; }
 
 public:
 	T x;

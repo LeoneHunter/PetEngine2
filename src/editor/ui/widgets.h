@@ -1,7 +1,7 @@
 #pragma once
 #include "framework.h"
 
-namespace UI {
+namespace ui {
 
 class Style;
 class TextStyle;

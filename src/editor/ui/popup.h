@@ -1,7 +1,7 @@
 #pragma once
 #include "widgets.h"
 
-namespace UI {
+namespace ui {
 
 
 class PopupPortal;
@@ -132,7 +132,7 @@ public:
 			Container::Build()
 				.PositionFloat(pos_)
 				.NotifyOnLayoutUpdate()
-				.SizeMode({AxisMode::Fixed, AxisMode::Shrink})
+				.SizeMode(AxisMode::Fixed, AxisMode::Shrink)
 				.Size(float2{300, 0})
 				.ID("PopupBody")
 				.StyleClass("Popup")
@@ -153,7 +153,7 @@ public:
 				.Child(Container::Build()
 					.ID("PopupScreenCapture")
 					.StyleClass("Transparent")
-					.SizeExpanded()
+					.SizeMode(SizeMode::Expand())
 					.Child(std::move(body))
 					.New()
 				)
@@ -298,7 +298,7 @@ public:
 	}
 	
 	void OnMouseButton(const MouseButtonEvent& event) {
-		if(event.button == MouseButton::ButtonRight && !event.bPressed) {
+		if(event.button == MouseButton::ButtonRight && !event.isPressed) {
 			OpenPopup();
 		}
 	}
@@ -330,7 +330,7 @@ private:
 }
 
 
-inline std::unique_ptr<UI::Widget> UI::PopupMenuItem::Build(std::unique_ptr<Widget>&&) {
+inline std::unique_ptr<ui::Widget> ui::PopupMenuItem::Build(std::unique_ptr<Widget>&&) {
 	// TODO: use Container instead of Button and change the style on rebuild
 	return MouseRegion::Build()
 		.OnMouseEnter([this]() { parent_->OnItemHovered(index_, true); })
@@ -338,7 +338,7 @@ inline std::unique_ptr<UI::Widget> UI::PopupMenuItem::Build(std::unique_ptr<Widg
 		.HandleHoverAlways()
 		.Child(Button::Build()
 			.StyleClass("PopupMenuItem") 
-			.SizeMode({AxisMode::Expand, AxisMode::Shrink})
+			.SizeMode(AxisMode::Expand, AxisMode::Shrink)
 			.OnPress([this](const ButtonEvent& e) {
 				if(e.button == MouseButton::ButtonLeft && !e.bPressed) {
 					this->onPress_();
@@ -366,7 +366,7 @@ inline std::unique_ptr<UI::Widget> UI::PopupMenuItem::Build(std::unique_ptr<Widg
 		.New();
 }
 
-inline std::unique_ptr<UI::Widget> UI::PopupSubmenuItem::Build(std::unique_ptr<Widget>&&) {
+inline std::unique_ptr<ui::Widget> ui::PopupSubmenuItem::Build(std::unique_ptr<Widget>&&) {
 	return MouseRegion::Build()
 		.OnMouseEnter([this]() { 
 			parent_->OnItemHovered(index_, true); 
@@ -379,14 +379,14 @@ inline std::unique_ptr<UI::Widget> UI::PopupSubmenuItem::Build(std::unique_ptr<W
 			MarkNeedsRebuild();
 		})
 		.OnMouseButton([this](const MouseButtonEvent& e) { 
-			if(e.button == MouseButton::ButtonLeft && !e.bPressed) {
+			if(e.button == MouseButton::ButtonLeft && !e.isPressed) {
 				this->parent_->OnItemPressed(index_); 
 			}
 		})
 		.Child(Container::Build()
 			.StyleClass("PopupMenuItem") 
 			.BoxStyle(isOpen_ ? StateEnum::Opened : state_)
-			.SizeMode({AxisMode::Expand, AxisMode::Shrink})
+			.SizeMode(AxisMode::Expand, AxisMode::Shrink)
 			.Child(Flexbox::Build()
 				.DirectionRow()
 				.Children(
@@ -408,7 +408,7 @@ inline std::unique_ptr<UI::Widget> UI::PopupSubmenuItem::Build(std::unique_ptr<W
 		.New();
 }
 	
-inline void UI::PopupState::Close() { 
+inline void ui::PopupState::Close() { 
 	if(portal_) {
 		portal_->ClosePopup(); 
 	} else if(previousPopup_) {

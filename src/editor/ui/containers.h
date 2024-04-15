@@ -1,7 +1,7 @@
 #pragma once
 #include "widgets.h"
 
-namespace UI {
+namespace ui {
 
 class ContainerBuilder;
 
@@ -18,7 +18,7 @@ public:
 
 	bool OnEvent(IEvent* event) override {
 		if(auto* drawEvent = event->As<DrawEvent>()) {
-			drawEvent->canvas->DrawBox(GetRect(), style_->FindOrDefault<BoxStyle>(boxStyleName_));
+			drawEvent->canvas->DrawBox(GetRect(), style_->Find<BoxStyle>(boxStyleName_));
 			if(bClip_) {
 				drawEvent->canvas->ClipRect(GetRect());
 			}
@@ -42,7 +42,7 @@ public:
 
 protected:
 	Container(StringID styleName, bool notifyOnLayout = false)
-		: Super(styleName, axisModeShrink, notifyOnLayout) 
+		: Super(styleName, SizeMode::Shrink(), notifyOnLayout) 
 	{}
 	friend class ContainerBuilder;
 
@@ -55,10 +55,12 @@ private:
 class ContainerBuilder {
 public:
 	auto& ID(StringID inID) { id = inID; return *this; }
-	auto& SizeFixed(float2 inSize) { bSizeFixed = true; axisMode = axisModeFixed; size = inSize; return *this; }	
-	auto& SizeMode(AxisMode inMode) { axisMode = inMode; return *this;  }
+	auto& SizeFixed(float2 inSize) { bSizeFixed = true; axisMode = SizeMode::Fixed(); size = inSize; return *this; }	
+	auto& SizeFixed(u32 x, u32 y) { bSizeFixed = true; axisMode = SizeMode::Fixed(); size = float2((float)x, (float)y); return *this; }	
+	auto& SizeMode(SizeMode inMode) { axisMode = inMode; return *this;  }
+	auto& SizeMode(AxisMode x, AxisMode y) { axisMode = ui::SizeMode(x, y); return *this;  }
 	auto& Size(float2 inSize) { size = inSize; return *this; }
-	auto& SizeExpanded() { axisMode = axisModeExpand; bSizeFixed = false; return *this; }	
+	auto& Size(float x, float y) { size = float2(x, y); return *this; }
 	auto& PositionFloat(Point inPos) { pos = inPos; bPosFloat = true; return *this; }
 	auto& NotifyOnLayoutUpdate() { bNotifyOnLayout = true; return *this; }
 	auto& BoxStyle(StringID inStyleName) { boxStyleName = inStyleName; return *this; }
@@ -74,7 +76,7 @@ public:
 		out->boxStyleName_ = boxStyleName;
 
 		if(bSizeFixed) {
-			out->SetAxisMode(axisModeFixed);
+			out->SetAxisMode(SizeMode::Fixed());
 		} else {
 			out->SetAxisMode(axisMode);
 		}
@@ -96,7 +98,7 @@ private:
 	u8						bNotifyOnLayout:1 = false;
 	float2                  size;
 	Point                   pos;
-	AxisMode                axisMode = axisModeShrink;
+	ui::SizeMode            axisMode = SizeMode::Shrink();
 	StringID                styleClass;
 	StringID                boxStyleName;
 	StringID                id;
@@ -199,13 +201,13 @@ public:
 	FlexboxBuilder& ID(const std::string& inID) { id = inID; return *this; }
 	FlexboxBuilder& Style(const std::string& inStyle) { style = inStyle; return *this; }
 	// Direction of the main axis
-	FlexboxBuilder& Direction(ContentDirection inDirection) { direction = inDirection; return *this; }
+	FlexboxBuilder& Direction(Axis axis) { direction = axis == Axis::X ? ContentDirection::Row : ContentDirection::Column; return *this; }
 	FlexboxBuilder& DirectionRow() { direction = ContentDirection::Row; return *this; }
 	FlexboxBuilder& DirectionColumn() { direction = ContentDirection::Column; return *this; }
 	// Distribution of children on the main axis
-	FlexboxBuilder& JustifyContent(UI::JustifyContent inJustify) { justifyContent = inJustify; return *this; }
+	FlexboxBuilder& JustifyContent(ui::JustifyContent inJustify) { justifyContent = inJustify; return *this; }
 	// Alignment on the cross axis
-	FlexboxBuilder& Alignment(UI::Alignment inAlignment) { alignment = inAlignment; return *this; }
+	FlexboxBuilder& Alignment(ui::Alignment inAlignment) { alignment = inAlignment; return *this; }
 	FlexboxBuilder& AlignCenter() { alignment = Alignment::Center; return *this; }
 	FlexboxBuilder& AlignStart() { alignment = Alignment::Start; return *this; }
 	FlexboxBuilder& AlignEnd() { alignment = Alignment::End; return *this; }
@@ -237,10 +239,10 @@ private:
 
 	std::string          id;
 	StringID             style           = defaultStyleName;
-	UI::ContentDirection direction       = ContentDirection::Row;
-	UI::JustifyContent   justifyContent  = JustifyContent::Start;
-	UI::Alignment        alignment       = Alignment::Start;
-	UI::OverflowPolicy   overflowPolicy  = OverflowPolicy::Clip;
+	ui::ContentDirection direction       = ContentDirection::Row;
+	ui::JustifyContent   justifyContent  = JustifyContent::Start;
+	ui::Alignment        alignment       = Alignment::Start;
+	ui::OverflowPolicy   overflowPolicy  = OverflowPolicy::Clip;
 	bool                 expandMainAxis  = true;
 	bool                 expandCrossAxis = false;
 
@@ -263,11 +265,10 @@ public:
 	}
 
 	Aligned(Alignment horizontal, Alignment vertical, std::unique_ptr<Widget>&& widget) 
-		: Super("", axisModeExpand) 
+		: Super("", SizeMode::Fixed()) 
 		, horizontal_(horizontal)
 		, vertical_(vertical) {
 		Parent(std::move(widget));
-		SetAxisMode(axisModeFixed);
 	}
 	
 	bool OnHitTest(HitTestEvent& event, float2 position) {
@@ -275,8 +276,8 @@ public:
 	}
 
 	float2 OnLayout(const LayoutConstraints& event) override {
-		auto* parent = FindParentOfClass<LayoutWidget>();
-		auto parentAxisMode = parent ? parent->GetAxisMode() : axisModeExpand;
+		auto* parent = FindAncestorOfClass<LayoutWidget>();
+		auto parentAxisMode = parent ? parent->GetAxisMode() : SizeMode::Expand();
 		SetOrigin(event.rect.TL() + GetLayoutStyle()->margins.TL());
 
 		for(auto axis: axes2D) {
@@ -390,7 +391,7 @@ public:
 
 protected:
 	StackView() {
-		SetAxisMode(axisModeExpand);
+		SetAxisMode(SizeMode::Expand());
 		auto* styleClass = Application::Get()->GetTheme()->Find("Transparent");
 		SetLayoutStyle(styleClass->Find<LayoutStyle>());
 	}
