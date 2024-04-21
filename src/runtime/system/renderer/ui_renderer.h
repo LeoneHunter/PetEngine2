@@ -89,6 +89,9 @@ public:
 	virtual void RenderFrame(bool bVsync) = 0;
 	virtual void ResizeFramebuffers(float2 inSize) = 0;
 
+	// TODO: Use RAII here
+	// Validate image info
+	// CreateTextureFrom(ImageData& formattedImage)
 	virtual TextureHandle CreateTexture(const Image& inImage) = 0;
 	virtual void DeleteTexture(TextureHandle inTexture) = 0;
 

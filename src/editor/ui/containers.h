@@ -235,7 +235,7 @@ public:
 	std::unique_ptr<Flexbox> New();
 
 private:
-	static const inline StringID defaultStyleName = "Flexbox";
+	static const inline StringID defaultStyleName = "";
 
 	std::string          id;
 	StringID             style           = defaultStyleName;

@@ -302,7 +302,8 @@ private:
 };
 
 /*
-* Helper for "for(auto* ancestor: AncestorIterator(widget))"
+* Helper to easily iterate over ancestors of a widget
+* "for(auto* ancestor: AncestorIterator(widget))"
 * Iterates ancestor of the widget
 * An ancestor could be filtered by type
 */
@@ -502,15 +503,16 @@ void DiffListsSimple(WidgetList& left,
 			   		 WidgetList& right, 
 			   		 const std::function<void(Widget*)>& onOld,
 			   		 const std::function<void(Widget*)>& onNew) {
+	auto rightCopy = right;
 	for(auto* item: left) {
-		auto found = right.Find(item);
+		auto found = rightCopy.Find(item);
 		if(!found) {
 			onOld(item);
 		} else {
-			right.Remove(found);
+			rightCopy.Remove(found);
 		}
 	}
-	for(auto* item: right) {
+	for(auto* item: rightCopy) {
 		onNew(item);
 	}
 }
@@ -562,6 +564,7 @@ public:
 		g_Renderer->Init(g_OSWindow);
 
 		theme_.reset(new Theme());
+		theme_->CreateDefaults(kDefaultFontSize);
 
 		auto& debugOverlayStyle = theme_->Add(names::debugOverlayWindowID);
 		debugOverlayStyle.Add<LayoutStyle>().Margins(5, 5).Paddings(5, 5);
@@ -629,9 +632,7 @@ public:
 		hoveredWindow_ = nullptr;
 		bool hasPopups = false;
 
-		for(auto it = widgetStack_.rbegin(); it != widgetStack_.rend(); ++it) {
-			auto& [widget, layer] = *it;
-
+		for(auto& [widget, layer]: std::views::reverse(widgetStack_)) {
 			if(layer == Layer::Overlay) {
 				continue;
 			} else if(layer == Layer::Popup) { 
@@ -653,15 +654,15 @@ public:
 		WidgetList newHovered;
 		// Dispatch leave events first so that event timeline is consistent for widgets
 		// I.e. if some widget receives a hover enter event it will reveive a hover leave before it's neigboor receives enter
+		std::vector<Widget*> hoveredWidgets;
 		{
-			std::vector<Widget*> hoveredWidgets;
-			for(Widget* widget: AncestorIterator(hitStack.TopWidget(), true)) {
+			for(auto* widget: AncestorIterator(hitStack.TopWidget(), true)) {
 				hoveredWidgets.push_back(widget);
 			}
 			auto e = HoverEvent::LeaveEvent();
 			std::vector<Widget*> noLongerHoveredWidgets;
 
-			for(Widget* widget: prevHovered) {
+			for(auto* widget: prevHovered) {
 				if(!std::ranges::contains(hoveredWidgets, widget)) {
 					widget->OnEvent(&e);
 					noLongerHoveredWidgets.push_back(widget);
@@ -676,9 +677,9 @@ public:
 			auto e = HoverEvent::Normal();
 			bool isHandled = false;
 
-			for(Widget* widget: AncestorIterator(hitStack.TopWidget(), true)) {
-				const auto isMouseRegion = widget->IsA<MouseRegion>(); 
-				const auto isAlways = isMouseRegion && widget->As<MouseRegion>()->ShouldAlwaysReceiveHover();
+			for(auto* widget: hoveredWidgets) {
+				const bool isMouseRegion = widget->IsA<MouseRegion>(); 
+				const bool isAlways = isMouseRegion && widget->As<MouseRegion>()->ShouldAlwaysReceiveHover();
 
 				if(isHandled && !isAlways) {
 					continue;
@@ -746,9 +747,6 @@ public:
 					const auto bAlways = bMouseRegion && widget->As<MouseRegion>()->ShouldAlwaysReceiveHover();
 
 					if(!bHandled || bAlways) {
-						LOGF(Verbose, "Button event {} dispatched to {}", event.GetDebugID(), widget->GetDebugID());
-						LOGF(Verbose, "Local mouse pos: {}", event.mousePosLocal);
-
 						if(widget->OnEvent(&event)) {
 							// Widget could be deleted on this event
 							if(!widget) break;
@@ -798,9 +796,8 @@ public:
 		if(button == KeyCode::KEY_CAPS_LOCK) modifiersState_[CapsLock] = !modifiersState_[CapsLock];
 
 		if(button == KeyCode::KEY_P && bPressed) {
-			for(auto windowIt = widgetStack_.rbegin(); windowIt != widgetStack_.rend(); ++windowIt) {
-				auto* window = windowIt->widget.get();
-				LogWidgetTree(window);
+			for(auto& [window, layer]: std::views::reverse(widgetStack_)) {
+				LogWidgetTree(window.get());
 			}
 			return;
 		} 
@@ -942,8 +939,7 @@ public:
 				ss << "|   ";
 			}
 		};
-
-		auto visitor = [&](PropertyArchive::Object& object)->bool {
+		archive.VisitRecursively([&](PropertyArchive::Object& object)->bool {
 			const auto parentID = object.parent_ ? object.parent_->objectID_ : 0;
 
 			if(!parentID) {
@@ -965,8 +961,7 @@ public:
 				ss << std::format("{}: {}", property.Name, property.Value) << '\n';
 			}
 			return true;
-		};
-		archive.VisitRecursively(visitor);
+		});
 		LOGF(Info, "Widget tree: \n{}", ss.str());
 	}
 
@@ -1018,8 +1013,7 @@ public:
 			ar.PushObject(hitData.widget->GetDebugID(), *hitData.widget, nullptr);
 			hitData.widget->DebugSerialize(ar);
 		}
-		for(auto it = ar.rootObjects_.begin(); it != ar.rootObjects_.end(); ++it) {
-			auto& object = *it;
+		for(auto& object: ar.rootObjects_) {
 			sb.Line(object->debugName_);
 			sb.PushIndent();
 
@@ -1101,7 +1095,7 @@ public:
 			} else {
 				widget->VisitChildren(drawFunc);
 			}
-			return visitResultContinue;
+			return VisitResult::Continue();
 		};
 		drawFunc(window);
 		canvas.ClearContext();
@@ -1217,7 +1211,7 @@ public:
 						if(auto* w = child->As<StatefulWidget>()) {
 							build(w);
 						}
-						return visitResultContinue;
+						return VisitResult::Continue();
 					});
 					return;
 				}
@@ -1252,11 +1246,11 @@ public:
 
 				oldWidget->VisitChildren([&](Widget* child) {
 					oldWidgets.push_back(child);
-					return visitResultContinue;
+					return VisitResult::Continue();
 				});
 				newWidget->VisitChildren([&](Widget* child) {
 					newWidgets.push_back(child);
-					return visitResultContinue;
+					return VisitResult::Continue();
 				});
 
 				for(size_t index = 0; index < newWidgets.size(); ++index) {
@@ -1418,17 +1412,15 @@ public:
 	}
 	
 	void RequestRebuild(StatefulWidget* widget) override {
-		// Ancestors of the widget should be scheduled after
-		// for(auto it = dirtyWidgets_.begin(); it != dirtyWidgets_.end(); ++it) {
-		// 	auto& w = *it;
-		// 	for(auto* parent = widget->GetParent(); parent; parent = parent->GetParent()) {
-		// 		if(parent == w) {
-		// 			dirtyWidgets_.insert(it, widget);
-		// 			return;
-		// 		}
-		// 	}
-		// }
-		dirtyWidgets_.push_back(widget->GetWeak());
+		auto it = std::ranges::find_if(
+			dirtyWidgets_, 
+			[&](const auto& w) {  
+				return w && w.Get() == widget;
+			}
+		);
+		if(it == dirtyWidgets_.end()) {
+			dirtyWidgets_.push_back(widget->GetWeak());
+		}
 	}
 
 	void BringToFront(Widget* widget) override {
@@ -1487,11 +1479,12 @@ public:
 		// 		Requested node is already focused
 		WidgetList& oldChain = focusedWidgets_;
 		WidgetList  newChain;
-		newChain.Push(node->GetWidget());
 
-		for(auto* focusedAncestor: AncestorIterator<Focused>(node->GetWidget())) {
+		for(auto* focusedAncestor: AncestorIterator<Focused>(node->GetWidget(), true)) {
 			newChain.Push(focusedAncestor);
 		}
+		LOGF(Verbose, "Focus request is handled.\nOld chain:{}\nNew chain:{}", oldChain.Print(), newChain.Print());
+
 		DiffListsSimple(
 			oldChain, 
 			newChain,
@@ -1502,7 +1495,6 @@ public:
 				newFocused->As<Focused>()->OnFocusChanged(true);
 			}
 		);
-		LOGF(Verbose, "Focus request is handled.\nOld chain:{}\nNew chain:{}", oldChain.Print(), newChain.Print());
 		focusedWidgets_ = newChain;
 	}
 
@@ -1516,18 +1508,6 @@ public:
 	Theme* GetTheme() final {
 		Assertm(theme_, "A theme should be set before creating widgets");
 		return theme_.get();
-	}
-
-	void SetTheme(Theme* theme) final {
-		// If already has a theme, merge two themes overriding existing
-		if(theme_) {
-			theme_->Merge(theme);
-		} else {
-			theme_.reset(theme);
-		}
-		// Add our default font size
-		theme_->GetDefaultFont()->RasterizeFace(g_DefaultFontSize);
-		RebuildFonts();
 	}
 
 	FrameState GetFrameStateImpl() {

@@ -8,8 +8,7 @@
 using namespace ui;
 ui::Application* g_Application = nullptr;
 
-void SetDarkTheme() {
-	auto* theme = new ui::Theme();
+void SetDarkTheme(ui::Theme* theme) {
 	const auto frameColor = Color::FromHex("#202020");
 	const auto hoveredColor = Color::FromHex("#505050");
 	{
@@ -29,6 +28,16 @@ void SetDarkTheme() {
 		s.Add<LayoutStyle>("Pressed", "Normal");
 
 		s.Add<BoxStyle>("Normal").FillColor("#505050").Borders(0).Rounding(6);
+		s.Add<BoxStyle>("Hovered", "Normal").FillColor("#707070");
+		s.Add<BoxStyle>("Pressed", "Normal").FillColor("#909090");
+	}
+	{
+		auto& s = theme->Add("TextButton");
+		s.Add<LayoutStyle>("Normal").Margins(0).Paddings(2);
+		s.Add<LayoutStyle>("Hovered", "Normal");
+		s.Add<LayoutStyle>("Pressed", "Normal");
+
+		s.Add<BoxStyle>("Normal").FillColor("#505050").Borders(0).Rounding(0);
 		s.Add<BoxStyle>("Hovered", "Normal").FillColor("#707070");
 		s.Add<BoxStyle>("Pressed", "Normal").FillColor("#909090");
 	}
@@ -102,7 +111,6 @@ void SetDarkTheme() {
 		s.Add<LayoutStyle>().Margins(5, 5).Paddings(5, 5);
 		s.Add<BoxStyle>().FillColor(frameColor).Rounding(6);
 	}
-	g_Application->SetTheme(theme);
 }
 
 void TestFlexbox() {
@@ -153,6 +161,7 @@ public:
 		s.Add<BoxStyle>("Normal").FillColor(frameColor).Borders(0).Rounding(3);
 		s.Add<BoxStyle>("Hovered", "Normal").FillColor(hoveredColor);
 		s.Add<BoxStyle>("Pressed", "Normal").FillColor(hoveredColor);
+		s.Add<BoxStyle>("Selected", "Normal").FillColor(hoveredColor);
 		{
 			auto& s = theme->Add("Frame");
 			s.Add<LayoutStyle>().Margins(5, 5).Paddings(5, 5);
@@ -168,12 +177,12 @@ public:
 			out.push_back(StatefulWidget::New(&node));
 			if(node.isOpen) {
 				for(auto index: node.childrenIndices) {
-					auto& child = nodes[index];
+					auto& child = nodes_[index];
 					build(*child);
 				}
 			}
 		};
-		build(*nodes.front());
+		build(*nodes_.front());
 		
 		return Aligned::New(
 			Alignment::Center, 
@@ -215,37 +224,102 @@ public:
 		);
 	}
 
+	class Node: public WidgetState {
+	public:
+
+		Node(const std::path& filename, int indent, bool isOpen, FilesystemView* parent) 
+		 	: parent(parent)
+			, state(StateEnum::Normal)
+			, isOpen(isOpen)
+			, indent(indent)
+			, filename(filename)
+		{}
+
+		void SetSelected(bool selected) {
+			state = selected ? StateEnum::Selected : StateEnum::Normal;
+			MarkNeedsRebuild();
+		}
+
+		std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&&) override {
+			return MouseRegion::Build()
+				.OnMouseEnter([this]() { 
+					if(state != StateEnum::Selected) {
+						state = StateEnum::Hovered;
+					}
+					MarkNeedsRebuild();
+				})
+				.OnMouseLeave([this]() { 
+					if(state != StateEnum::Selected) {
+						state = StateEnum::Normal;
+					}
+					MarkNeedsRebuild();
+				})
+				.OnMouseButton([this](const MouseButtonEvent& e) { 
+					if(e.button == MouseButton::ButtonLeft && !e.isPressed) {
+						parent->SetSingleSelected(this);
+						MarkNeedsRebuild();
+					}
+				})
+				.Child(Container::Build()
+					.StyleClass("FilesystemNode") 
+					.BoxStyle(state)
+					.SizeMode(AxisMode::Expand, AxisMode::Shrink)
+					.Child(Flexbox::Build()
+						.DirectionRow()
+						.AlignCenter()
+						.Children(
+							TextBox::New(std::string(indent, ' ')),
+							Button::Build()
+								.StyleClass("TextButton")
+								.Text(isOpen ? "-" : "+")
+								.OnPress([this](const ButtonEvent& e) {
+									if(e.button == MouseButton::ButtonLeft && !e.bPressed) {
+										parent->ToggleNode(this);
+										MarkNeedsRebuild();
+									}
+								})
+								.New(),
+							TextBox::New(" "),
+							TextBox::New(filename.filename().string())
+						)
+						.New()
+					)
+					.New()
+				)
+				.New();
+		}
+
+		int				 indent;
+		bool 			 isOpen;
+		StringID		 state;
+		FilesystemView*  parent;
+		std::path        filename;
+		std::vector<u64> childrenIndices;
+	};
+
 	void SetRootDirectory(const std::path& dir) {
-		root = dir;
-		nodes.clear();
-		auto* rootNode = nodes.emplace_back(new Node(root, 0, true, this)).get();
+		root_ = dir;
+		nodes_.clear();
+		auto* rootNode = nodes_.emplace_back(new Node(root_, 0, true, this)).get();
 
 		for(const auto& file: std::directory_iterator(dir)) {
 			if(!file.is_directory()) {
 				continue;
 			}
-			const auto index = nodes.size();
-			nodes.emplace_back(new Node(file.path(), 1, false, this));
+			const auto index = nodes_.size();
+			nodes_.emplace_back(new Node(file.path(), 1, false, this));
 			rootNode->childrenIndices.push_back(index);
 		}
 	}
 
-	void ToggleNode(std::path filename) {
-		auto& node = [&]()->Node& {
-			for(auto& node: nodes) {
-				if(node->filename == filename) {
-					return *node;
-				}
-			}
-			Assertf(false, "Node {} not found.", filename);
-			return *nodes.front();
-		}();
-		node.isOpen = !node.isOpen;
+	void ToggleNode(Node* node) {
+		node->isOpen = !node->isOpen;
+		SetSingleSelected(node);
 
-		if(node.childrenIndices.empty()) {
+		if(node->childrenIndices.empty()) {
 			std::error_code ec;
 
-			for(const auto& file: std::directory_iterator(node.filename, ec)) {
+			for(const auto& file: std::directory_iterator(node->filename, ec)) {
 				if(!file.is_directory() || ec) {
 					if(ec) {
 						auto msg = ec.message();
@@ -253,53 +327,29 @@ public:
 					}
 					continue;
 				}
-				const auto index = nodes.size();
-				nodes.emplace_back(new Node(file.path(), node.indent + 1, false, this));
-				node.childrenIndices.push_back(index);
+				const auto index = nodes_.size();
+				nodes_.emplace_back(new Node(file.path(), node->indent + 1, false, this));
+				node->childrenIndices.push_back(index);
 			}
 		}
 		MarkNeedsRebuild();
 	}
 
-	class Node: public WidgetState {
-	public:
-
-		Node(const std::path& filename, int indent, bool isOpen, FilesystemView* parent) 
-		 	: parent(parent)
-			, isOpen(isOpen)
-			, indent(indent)
-			, filename(filename)
-		{}
-
-		std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&&) override {
-			return Button::Build()
-				.SizeMode(AxisMode::Expand, AxisMode::Shrink)
-				.StyleClass("FilesystemNode")
-				.Text(std::string(indent, ' ')
-					.append(isOpen ? "- " : "+ ")
-					.append(filename.filename().string()))
-				.Tooltip(filename.string())
-				.OnPress([&](const ButtonEvent& e) { 
-					if(e.button == MouseButton::ButtonLeft && !e.bPressed) {
-						parent->ToggleNode(filename); 
-						MarkNeedsRebuild();
-					}
-				})
-				.New();
+	void SetSingleSelected(Node* node) {
+		for(auto& node: selected_) {
+			node->SetSelected(false);
 		}
-
-		FilesystemView*  parent;
-		std::path        filename;
-		bool             isOpen;
-		int				 indent;
-		std::vector<u64> childrenIndices;
-	};
+		selected_.clear();
+		selected_.push_back(node);
+		node->SetSelected(true);
+	}
 
 private:
-	std::path root;
+	std::path 						   root_;
 	// Node tree stored in breadth first order
-	std::vector<std::unique_ptr<Node>> nodes;
-	ScrollViewState scrollViewState_;
+	std::vector<std::unique_ptr<Node>> nodes_;
+	std::vector<Node*>	 			   selected_;
+	ScrollViewState                    scrollViewState_;
 };
 
 
@@ -404,16 +454,16 @@ void BuildTestWidgets() {
 
 int main(int argc, char* argv[]) {
 	const auto commandLine = std::vector<std::string>(argv, argv + argc);
-	const auto workingDir = std::filesystem::path(commandLine[0]).parent_path();
+	const auto workingDir = std::path(commandLine[0]).parent_path();
 	logging::Init(workingDir.string());
 	logging::SetLevel(logging::Level::All);
 
 	g_Application = Application::Create("App", 1800, 900);
-	SetDarkTheme();
+	SetDarkTheme(g_Application->GetTheme());
 
-	// auto app = std::make_unique<FilesystemView>(std::path("G:\\"));
-	// g_Application->Parent(StatefulWidget::New(app.get()));
-	test_focus::BuildTestWidgets();
+	auto app = std::make_unique<FilesystemView>(std::path("G:\\"));
+	g_Application->Parent(StatefulWidget::New(app.get()));
+	// test_focus::BuildTestWidgets();
 
 	while(g_Application->Tick());
 }

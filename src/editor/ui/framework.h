@@ -1,5 +1,6 @@
 #pragma once
 #include <functional>
+#include <ranges>
 
 #include "runtime/core/core.h"
 #include "runtime/core/util.h"
@@ -334,8 +335,6 @@ public:
 	virtual void			BringToFront(Widget* widget) = 0;
 
 	virtual Theme* 			GetTheme() = 0;
-	// Merges theme styles with the prevous theme overriding existent styles 
-	virtual void			SetTheme(Theme* theme) = 0;
 
 	virtual TimerHandle		AddTimer(Object* object, const TimerCallback& callback, u64 periodMs) = 0;
 	virtual void			RemoveTimer(TimerHandle handle) = 0;
@@ -541,10 +540,10 @@ public:
 
 	EventCategory GetCategory() const override { return EventCategory::System; }
 
-	u8 bHoverEnter: 1;
-	u8 bHoverLeave: 1;
+	bool bHoverEnter = false;
+	bool bHoverLeave = false;
 	// Number of items hovered before
-	u32 depth = 0;
+	u32  depth = 0;
 };
 
 
@@ -571,6 +570,13 @@ public:
 
 
 
+/*
+* Interface to ImGui::Drawlist
+* Uses global coordinates
+* Manages relative coordinates transformation
+* Allocates space in the vertex buffer and pushes a shape into it
+* That buffer then passed to the Renderer for actual rendering
+*/
 class Canvas {
 public:
 
@@ -602,10 +608,11 @@ struct VisitResult {
 	bool bContinue = true;
 	// Skip iterating children of a current widget
 	bool bSkipChildren = false;		
+
+	static auto Continue() { return VisitResult{true, false}; }
+	static auto Exit() { return VisitResult{false, false}; }
+	static auto SkipChildren() { return VisitResult{true, true}; }
 };
-constexpr auto visitResultContinue = VisitResult(true, false);
-constexpr auto visitResultExit = VisitResult(false, false);
-constexpr auto visitResultSkipChildren = VisitResult(true, true);
 // Visitor function that is being called on every widget in the tree 
 // when provided to the Widget::Visit() method
 using WidgetVisitor = std::function<VisitResult(Widget*)>;
@@ -660,7 +667,7 @@ public:
 	}
 	
 	// Calls a visitor callback on this object and children if bRecursive == true
-	virtual VisitResult	VisitChildren(const WidgetVisitor& visitor, bool bRecursive = false) { return visitResultContinue; }
+	virtual VisitResult	VisitChildren(const WidgetVisitor& visitor, bool bRecursive = false) { return VisitResult::Continue(); }
 	VisitResult VisitChildrenRecursively(const WidgetVisitor& visitor) { return VisitChildren(visitor, true); }
 
 	// Visits parents in the tree recursively
@@ -743,9 +750,9 @@ public:
 		VisitChildren([&](Widget* child) {
 			if(child->IsA<T>()) {
 				out = static_cast<T*>(child);
-				return visitResultExit; 
+				return VisitResult::Exit(); 
 			}
-			return visitResultContinue;
+			return VisitResult::Continue();
 		},
 		bRecursive);
 		return out;
@@ -807,16 +814,16 @@ public:
 	}
 
 	VisitResult VisitChildren(const WidgetVisitor& visitor, bool bRecursive = true) final {
-		if(!child_) return visitResultContinue;
+		if(!child_) return VisitResult::Continue();
 
 		const auto result = visitor(child_.get());
-		if(!result.bContinue) return visitResultExit;
+		if(!result.bContinue) return VisitResult::Exit();
 
 		if(bRecursive && !result.bSkipChildren) {
 			const auto result = child_->VisitChildren(visitor, bRecursive);
-			if(!result.bContinue) return visitResultExit;
+			if(!result.bContinue) return VisitResult::Exit();
 		}
-		return visitResultContinue;
+		return VisitResult::Continue();
 	}
 	
 	bool OnEvent(IEvent* event) override {
@@ -1202,16 +1209,16 @@ public:
 	}
 
 	VisitResult VisitChildren(const WidgetVisitor& visitor, bool bRecursive = true) final {
-		if(!child_) return visitResultContinue;
+		if(!child_) return VisitResult::Continue();
 
 		const auto result = visitor(child_.get());
-		if(!result.bContinue) return visitResultExit;
+		if(!result.bContinue) return VisitResult::Exit();
 
 		if(bRecursive && !result.bSkipChildren) {
 			const auto result = child_->VisitChildren(visitor, bRecursive);
-			if(!result.bContinue) return visitResultExit;
+			if(!result.bContinue) return VisitResult::Exit();
 		}
-		return visitResultContinue;
+		return VisitResult::Continue();
 	}
 
 	bool OnEvent(IEvent* event) override {
@@ -1346,14 +1353,14 @@ public:
 	VisitResult VisitChildren(const WidgetVisitor& visitor, bool bRecursive = false) final {
 		for(auto& child : children_) {
 			const auto result = visitor(child.get());
-			if(!result.bContinue) return visitResultExit;
+			if(!result.bContinue) return VisitResult::Exit();
 
 			if(bRecursive && !result.bSkipChildren) {
 				const auto result = child->VisitChildren(visitor, bRecursive);
-				if(!result.bContinue) return visitResultExit;
+				if(!result.bContinue) return VisitResult::Exit();
 			}
 		}
-		return visitResultContinue;
+		return VisitResult::Continue();
 	}
 
 	bool OnEvent(IEvent* event) override {
@@ -1382,8 +1389,8 @@ public:
 		if(children_.empty()) {
 			return false;
 		}
-		for(auto it = children_.rbegin(); it != children_.rend(); ++it) {
-			if(auto* layoutChild = LayoutWidget::FindNearest(it->get())) {
+		for(auto& child: std::views::reverse(children_)) {
+			if(auto* layoutChild = LayoutWidget::FindNearest(child.get())) {
 				if(layoutChild->OnHitTest(event, position)) {
 					return true;
 				}
@@ -1564,6 +1571,7 @@ private:
 class MouseRegionBuilder {
 public:
 
+	auto& ID(StringID id) { id_ = id; return *this; }
 	auto& OnMouseButton(const MouseButtonEventCallback& c) { config_.onMouseButton = c; return *this; }
 	auto& OnMouseDrag(const MouseDragEventCallback& c) { config_.onMouseDrag = c; return *this; }
 	auto& OnMouseEnter(const MouseEnterEventCallback& c) { config_.onMouseEnter = c; return *this; }
@@ -1583,11 +1591,13 @@ public:
 		}(), "OnMouseLeave callback should be set if OnMouseEnter or OnMouseHover is set");
 
 		std::unique_ptr<MouseRegion> out(new MouseRegion(config_));
+		out->SetID(id_);
 		out->Parent(std::move(child_));
 		return out;
 	}
 
 private:
+	StringID				id_;
 	MouseRegionConfig       config_;
 	std::unique_ptr<Widget> child_;
 };

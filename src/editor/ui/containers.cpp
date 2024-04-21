@@ -70,19 +70,19 @@ void Flexbox::LayOutChildren(const LayoutConstraints& event) {
 		auto* layoutChild = LayoutWidget::FindNearest(child);
 		
 		if(!layoutChild || !layoutChild->IsVisible()) {
-			return visitResultContinue;
+			return VisitResult::Continue();
 		}
 		// Check if layout is wrapped in a Flexible
 		layoutChild->VisitParent([&](Widget* parent) {
 			if(parent == this) {
-				return visitResultExit;
+				return VisitResult::Exit();
 			}
 			if(auto* flexible = parent->As<Flexible>()) {
 				flexFactor = flexible->GetFlexFactor();
 				hasFlexible = true;
-				return visitResultExit;
+				return VisitResult::Exit();
 			}
-			return visitResultContinue;
+			return VisitResult::Continue();
 		});
 		auto& childData = childrenData.emplace_back();
 		childData.child = layoutChild;
@@ -126,7 +126,7 @@ void Flexbox::LayOutChildren(const LayoutConstraints& event) {
 					layoutChild->GetDebugID());
 			childData.crossAxisSize = innerCrossAxisSize;
 		}
-		return visitResultContinue;
+		return VisitResult::Continue();
 	});
 	float mainAxisFlexibleSpace = math::Clamp(innerMainAxisSize - fixedChildrenSizeMainAxis, 0.f);
 

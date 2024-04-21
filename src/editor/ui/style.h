@@ -383,8 +383,10 @@ class Theme {
 public:
 	Theme(const Theme&)            = delete;
 	Theme& operator=(const Theme&) = delete;
+	Theme() = default;
 
-	Theme(u8 inDefaultFontSize = kDefaultFontSize) {
+	// Creates default styles with selector "" using default font "ImGuiInternal"
+	void CreateDefaults(u8 fontSize) {
 		// Create default fallback styles
 		auto& fallback = styles_.emplace("", StyleClass("")).first->second;
 		fallback.Add<LayoutStyle>();
@@ -392,12 +394,12 @@ public:
 		fallback.Add<BoxStyle>().FillColor("#FF00EE");
 
 		auto& text    = fallback.Add<TextStyle>();
-		text.fontSize = inDefaultFontSize;
+		text.fontSize = fontSize;
 		text.color    = Color::FromHex("#ffffff");
-		fallback_    = &fallback;
+		fallback_     = &fallback;
 
 		auto* fontDefault = &*fonts_.emplace_back(Font::FromInternal());
-		fontDefault->RasterizeFace(inDefaultFontSize);
+		fontDefault->RasterizeFace(fontSize);
 		text.font = fontDefault;
 	}
 
@@ -416,20 +418,6 @@ public:
 		}
 		auto [it, isCreated] = styles_.emplace(name, StyleClass(name, parent));
 		return it->second;
-	}
-
-	// Merges two themes together
-	void Merge(const Theme* inTheme, bool bOverride = true) {
-		for(const auto& [id, style]: inTheme->styles_) {
-			auto thisStyleEntry = styles_.find(id);
-
-			if(thisStyleEntry == styles_.end()) {
-				styles_.emplace(id, style);
-
-			} else if(bOverride) {
-				thisStyleEntry->second.Merge(style);
-			}
-		}
 	}
 
 	// Gathers all fonts from styles and try to load them

@@ -82,13 +82,14 @@ public:
 		archive.PushProperty("State", *(StringID)state_);
 	}
 
-	bool UpdateWith(const Widget* newWidget) override {
-		if(auto* w = newWidget->As<Button>()) {
-			CopyConfiguration(*w);
-			return true;
-		}
-		return false;
-	}
+	// TODO: Generally we shouldn't preserve state, but there may be a case
+	// bool UpdateWith(const Widget* newWidget) override {
+	// 	if(auto* w = newWidget->As<Button>()) {
+	// 		CopyConfiguration(*w);
+	// 		return true;
+	// 	}
+	// 	return false;
+	// }
 
 protected:
 	Button(const ButtonEventFunc& eventCallback)
