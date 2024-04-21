@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.29 FATAL_ERROR)
 
 project(PetEngine2 LANGUAGES CXX)
 add_subdirectory(src)
+add_subdirectory(test)
+
+include(CTest)
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
@@ -11,5 +14,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/bin")
+set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}/bin")
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_SOURCE_DIR}/bin")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/Od")
