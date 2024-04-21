@@ -26,7 +26,6 @@ public:
 
 	constexpr StringID();
 	StringID(const char* inNewName);
-	//StringID(const std::string& inNewName): StringID(inNewName.c_str()) {}
 
 	template<StringData T>
 	StringID(const T& inStringData): StringID(inStringData.data()) {}
@@ -175,7 +174,7 @@ public:
 
 
 /*====================================================================================*/
-constexpr inline StringID::StringID()
+constexpr StringID::StringID()
 	: m_CompareIndex(0)
 	, m_DisplayIndex(0) 
 	, m_DebugString("")
@@ -193,7 +192,7 @@ inline StringID::StringID(const char* inNewName)
 	m_DebugString = String().c_str();
 }
 
-constexpr inline bool StringID::FastLess(const StringID& right) const {
+constexpr bool StringID::FastLess(const StringID& right) const {
 	return this->m_CompareIndex < right.m_CompareIndex;
 }
 

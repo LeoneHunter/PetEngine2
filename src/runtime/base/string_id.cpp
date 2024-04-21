@@ -40,13 +40,13 @@ public:
 				return std::tolower(c);
 			}
 		);
+		_intern(compareStr, outCompareIndex);
 
 		if (inString == compareStr) {
 			outDisplayIndex = outCompareIndex;			
 		} else {
 			_intern(std::string(inString), outDisplayIndex);
 		}
-		_intern(compareStr, outCompareIndex);
 	}
 
 	/**
