@@ -3,6 +3,7 @@
 [Bb]uild/
 [Dd]ocs/
 vs/
+src/thirdparty/
 
 # Visual Studio and VSCode cache/options directory
 .vs/
