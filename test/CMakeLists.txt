@@ -1,22 +1,9 @@
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories("../src")
 
-file(GLOB_RECURSE SRC_FILES
-  ../src/editor/*.cpp
-  ../src/runtime/*.cpp
-  ../src/thirdparty/*.cpp
-  test.cpp
-)
-
-file(GLOB_RECURSE H_FILES
-  ../src/editor/*.h
-  ../src/runtime/*.h
-  ../src/thirdparty/*.h
-)
-
-set(FILES ${SRC_FILES} ${H_FILES})
-
 add_executable(Tests)
+
+set(FILES ${MAIN_FILES} ${TEST_FILES} test.cpp)
+
 target_sources(Tests PRIVATE ${FILES})
 
 target_link_libraries(Tests PRIVATE ${CMAKE_SOURCE_DIR}/src/thirdparty/optik/lib/x64/release/OptickCore.lib)
