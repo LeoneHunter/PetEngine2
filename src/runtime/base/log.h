@@ -3,6 +3,7 @@
 #include <mutex>
 #include <map>
 #include <chrono>
+#include <iostream>
 
 #include "runtime/core/types.h"
 
@@ -75,3 +76,9 @@ inline void Logf(std::string_view                      file,
 }
 
 #define LOGF(level, fmt, ...) logging::Logf(__FILE__, __LINE__, __FUNCTION__, logging::Level::##level, fmt, __VA_ARGS__);
+
+// Simple formatter cout print
+template<class ...Types>
+inline void Printf(const std::format_string<Types...> fmt, Types&& ...args) {
+	std::cout << std::format(fmt, std::forward<Types>(args)...) << '\n';
+}

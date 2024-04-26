@@ -4,7 +4,7 @@
 #define WINAPI __stdcall
 #define WINBASEAPI extern "C" __declspec(dllimport)
 
-namespace Windows {
+namespace windows {
 
 	using VOID = void;
 	using LPVOID = void*;
@@ -37,4 +37,6 @@ namespace Windows {
 	PVOID GetCurrentFiber();	
 	void Sleep(u32 inSleepTimeMs);
 	void Pause();
+
+	void SetConsoleCodepageUtf8();
 }

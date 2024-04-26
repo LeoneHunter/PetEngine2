@@ -186,9 +186,9 @@ public:
 
 	bool PollEvents() override {
 		MSG msg;
-		while(::PeekMessageW(&msg, NULL, 0U, 0U, PM_REMOVE)) {
+		while(::PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE)) {
 			::TranslateMessage(&msg);
-			::DispatchMessageW(&msg);
+			::DispatchMessage(&msg);
 			if(msg.message == WM_QUIT)
 				return false;
 		}

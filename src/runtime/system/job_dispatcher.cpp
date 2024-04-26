@@ -155,7 +155,7 @@ struct JobGroup;
 class  Event;
 
 void MasterFiberProc(std::string_view inThreadDebugName);
-void WINAPI WorkerFiberProc(Windows::LPVOID inParameter);
+void WINAPI WorkerFiberProc(windows::LPVOID inParameter);
 
 /*
 * Object referenced by a job group and JobSystem::Fence created by the user
@@ -240,7 +240,7 @@ struct Fiber {
 	// Switch to this fiber
 	// Should be called from master
 	void SwitchTo(ThreadContext* inContext) {
-		Assert(Windows::GetCurrentFiber() != FiberHandle && "Cannot switch into itself");
+		Assert(windows::GetCurrentFiber() != FiberHandle && "Cannot switch into itself");
 		Assert(inContext && "Master fiber context not set");
 		ThreadContext = inContext;
 
@@ -253,11 +253,11 @@ struct Fiber {
 			Assert(ThreadContext->Job);
 			Job = ThreadContext->Job;
 		}
-		Windows::SwitchToFiber(FiberHandle);
+		windows::SwitchToFiber(FiberHandle);
 	}
 
 	void WaitForEvent(Event& inEvent) {
-		Assert(Windows::GetCurrentFiber() == FiberHandle && "Could be called only from itself");
+		Assert(windows::GetCurrentFiber() == FiberHandle && "Could be called only from itself");
 
 		ThreadContext->SwitchCode = FiberSwitchCode::EventWait;
 		ThreadContext->Event = &inEvent;
@@ -289,7 +289,7 @@ private:
 
 	void SwitchToMaster() const {
 		Assert(ThreadContext);
-		Windows::SwitchToFiber(ThreadContext->MasterFiber);
+		windows::SwitchToFiber(ThreadContext->MasterFiber);
 	}
 
 	void OnJobComplete() {
@@ -335,15 +335,15 @@ public:
 			const auto fiberIndex = i;
 			auto& fiber = fibersPool_[i];
 
-			Windows::LPVOID hWorkerFiber;
-			hWorkerFiber = Windows::CreateFiber(0, WorkerFiberProc, (Windows::LPVOID)&fiber);
+			windows::LPVOID hWorkerFiber;
+			hWorkerFiber = windows::CreateFiber(0, WorkerFiberProc, (windows::LPVOID)&fiber);
 			Assert(hWorkerFiber != NULL && "Cannot create a fiber");
 
 			fiber.Init(hWorkerFiber, fiberIndex);
 			fibersFree_.Push(&fiber);
 		}
 
-		readyJobSemaphore_ = Windows::CreateSemaphore(0, 1);
+		readyJobSemaphore_ = windows::CreateSemaphore(0, 1);
 		Assert(readyJobSemaphore_ != NULL && "CreateSemaphore error");
 
 		// Create threads
@@ -366,13 +366,13 @@ public:
 
 		for(u32 i = 0; i != k_FibersNum; ++i) {
 			auto& fiber = fibersPool_[i];
-			Windows::DeleteFiber(fiber.GetHandle());
+			windows::DeleteFiber(fiber.GetHandle());
 		}
 	}
 
 	// If called is a fiber returns it's state
 	Fiber* GetCurrentFiber() {
-		const auto currentFiber = Windows::GetCurrentFiber();
+		const auto currentFiber = windows::GetCurrentFiber();
 		auto it = std::ranges::find_if(fibersPool_, [=](const Fiber& inFiber) { return inFiber.GetHandle() == currentFiber; });
 
 		if(it != fibersPool_.end()) {
@@ -410,12 +410,12 @@ public:
 	// Puts calling thread to sleep
 	void WaitForJob() {
 		// zero-second time-out interval
-		Windows::WaitForSingleObject(readyJobSemaphore_, 0L);           
+		windows::WaitForSingleObject(readyJobSemaphore_, 0L);           
 	}
 
 	void AwakenAll() {
 		//// Notify threads that the job is ready
-		Windows::ReleaseSemaphore(
+		windows::ReleaseSemaphore(
 			readyJobSemaphore_,	// handle to semaphore
 			1,						// increase count by one
 			NULL);
@@ -525,7 +525,7 @@ private:
 	SynchronizedQueue<Fiber*>			resumedFibers_;
 
 	// When there's no awailable work, thread go to sleep and awakened by this object
-	Windows::HANDLE						readyJobSemaphore_;
+	windows::HANDLE						readyJobSemaphore_;
 };
 
 /*
@@ -649,11 +649,11 @@ private:
 void MasterFiberProc(std::string_view inThreadDebugName) {
 	const auto threadDebugName = std::string(inThreadDebugName);
 
-	Windows::SetThreadDescription(Windows::GetCurrentThread(), util::ToWideString(threadDebugName).c_str());
+	windows::SetThreadDescription(windows::GetCurrentThread(), util::ToWideString(threadDebugName).c_str());
 	OPTICK_THREAD(inThreadDebugName.data());
 	
 	ThreadContext context;
-	context.MasterFiber = Windows::ConvertThreadToFiber(nullptr);
+	context.MasterFiber = windows::ConvertThreadToFiber(nullptr);
 	Assert(context.MasterFiber != NULL && "Cannot create master fiber");
 	LOGF(Verbose, "Thread '{}' has started.", threadDebugName);	
 
@@ -726,7 +726,7 @@ void MasterFiberProc(std::string_view inThreadDebugName) {
 }
 
 // Worker Fiber
-void WINAPI WorkerFiberProc(Windows::LPVOID inParameter) {
+void WINAPI WorkerFiberProc(windows::LPVOID inParameter) {
 	// Context containts info about a thread we run on and a pointer to the master fiber that took us from free list
 	// A worker fiber can run on any thread so we need to update this always
 	auto* thisFiber = (Fiber*)inParameter;

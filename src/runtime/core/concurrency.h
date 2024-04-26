@@ -39,7 +39,7 @@ public:
 
 	void lock() {
 		while(!try_lock()) {
-			Windows::Pause();
+			windows::Pause();
 		}
 	}
 

@@ -5,7 +5,7 @@
 #undef min
 #undef CreateSemaphore
 
-namespace Windows {
+namespace windows {
 
 	HANDLE CreateSemaphore(LONG lInitialCount, LONG lMaximumCount) {
 		auto sem = CreateSemaphoreW(
@@ -31,5 +31,9 @@ namespace Windows {
 
 	void Pause() {
 		_mm_pause();
+	}
+	
+	void SetConsoleCodepageUtf8() {
+		::SetConsoleOutputCP(CP_UTF8);
 	}
 }
