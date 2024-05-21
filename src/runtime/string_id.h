@@ -1,5 +1,5 @@
 #pragma once
-#include "runtime/core/core.h"
+#include "core.h"
 
 #include <istream>
 #include <ostream>

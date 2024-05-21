@@ -1,6 +1,6 @@
 #pragma once
 #include <vector>
-#include "runtime/core/types.h"
+#include "types.h"
 
 /**
  * Simple image class

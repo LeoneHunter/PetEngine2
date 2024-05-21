@@ -728,15 +728,14 @@ namespace math {
 		return true;
 	}
 
-	namespace Random {
 
-		template<class T>
-		T Integer(T inMin = 0, T inMax = std::numeric_limits<T>::max()) {
-			std::random_device rd;  // a seed source for the random number engine
-			std::mt19937_64 gen(rd()); // mersenne_twister_engine seeded with rd()
-			std::uniform_int_distribution<T> distrib(inMin, inMax);
-			return distrib(gen);
-		}
+	template<class T>
+		requires std::integral<T>
+	T RandomInteger(T inMin = 0, T inMax = std::numeric_limits<T>::max()) {
+		std::random_device rd;  // a seed source for the random number engine
+		std::mt19937_64 gen(rd()); // mersenne_twister_engine seeded with rd()
+		std::uniform_int_distribution<T> distrib(inMin, inMax);
+		return distrib(gen);
 	}
 }
 

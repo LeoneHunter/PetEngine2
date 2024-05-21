@@ -6,7 +6,7 @@
 #include <dwmapi.h>
 #include <map>
 
-#include "runtime/core/util.h"
+#include "util.h"
 
 #undef max
 

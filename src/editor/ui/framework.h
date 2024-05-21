@@ -2,8 +2,8 @@
 #include <functional>
 #include <ranges>
 
-#include "runtime/core/core.h"
-#include "runtime/core/util.h"
+#include "runtime/core.h"
+#include "runtime/util.h"
 #include "style.h"
 
 using Point = Vec2<float>;
@@ -165,10 +165,6 @@ class FocusNode;
 
 template<typename T>
 concept WidgetSubclass = std::derived_from<T, Widget>;
-
-template<typename T>
-using WeakPtr = util::WeakPtr<T>;
-using WidgetWeakPtr = util::WeakPtr<Widget>;
 
 // User provided function used to spawn other widgets
 // Used in a tooltip and dragdrop 

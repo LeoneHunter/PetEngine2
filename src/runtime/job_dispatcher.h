@@ -7,22 +7,19 @@
 #include <list>
 #include <thread>
 
-#include "runtime/core/types.h"
-#include "runtime/core/defines.h"
-#include "runtime/core/error.h"
-#include "runtime/core/math_util.h"
+#include "types.h"
+#include "error.h"
+#include "math_util.h"
 
 #include "thirdparty/optik/include/optick.config.h"
 #include "thirdparty/optik/include/optick.h"
 
 /*
-* 
-* 
 * TODO:
 *	- Add internable strings
 *	- Add backing storage with pool allocator for jobs
 */
-namespace JobSystem {
+namespace fiber {
 
 	struct ThreadContext;
 	class JobGraph;
@@ -30,15 +27,15 @@ namespace JobSystem {
 	class Event;
 	
 	struct JobContext;
-	using CallableType = std::function<void(JobSystem::JobContext&)>;
+	using CallableType = std::function<void(fiber::JobContext&)>;
 
 	class Builder;
 	void Submit(const Builder& inJobBuilder);
 
 	/*
-	* RAII object that points to a JobSystem event object
-	* An event object is created by the JobSystem and an EventRef is 
-	* returned to caller. After event is signalled the JobSystem destroys it's EventRef instance
+	* RAII object that points to a fiber event object
+	* An event object is created by the fiber and an EventRef is 
+	* returned to caller. After event is signalled the fiber destroys it's EventRef instance
 	* And the caller can quiery the state of the event and safely destroy the EventRef object
 	* 
 	* TODO could be replaced with std::shared_ptr
@@ -108,7 +105,7 @@ namespace JobSystem {
 		* Kick jobs
 		*/
 		void Kick() {			
-			JobSystem::Submit(*this);
+			fiber::Submit(*this);
 		}
 
 	public:

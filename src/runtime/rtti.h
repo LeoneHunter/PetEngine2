@@ -2,8 +2,8 @@
 #include <array>
 #include <string>
 
-#include "runtime/core/types.h"
-#include "runtime/core/error.h"
+#include "types.h"
+#include "error.h"
 
 #define DEFINE_CLASS_META(className, superClassName) \
 	public:\

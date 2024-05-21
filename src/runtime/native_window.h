@@ -2,9 +2,9 @@
 #include <functional>
 #include <string>
 
-#include "runtime/core/types.h"
-#include "runtime/core/math_util.h"
-#include "platform.h"
+#include "types.h"
+#include "math_util.h"
+#include "input_types.h"
 
 /**
  * Interface to the OS window functionality

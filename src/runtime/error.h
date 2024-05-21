@@ -3,7 +3,7 @@
 #include <format>
 
 #include "types.h"
-#include "runtime/base/log.h"
+#include "log.h"
 
 #define Assert(x)                                                        \
 	do {                                                                 \

@@ -1,5 +1,5 @@
 #include "widgets.h"
-#include "runtime/system/renderer/ui_renderer.h"
+#include "runtime/ui_renderer.h"
 
 namespace ui {
 

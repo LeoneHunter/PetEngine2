@@ -30,6 +30,8 @@ namespace windows {
 	}
 
 	void Pause() {
+		// Apparently this can cost up to 140 cycles on modern intel
+		// https://aloiskraus.wordpress.com/2018/06/16/why-skylakex-cpus-are-sometimes-50-slower-how-intel-has-broken-existing-code/
 		_mm_pause();
 	}
 	

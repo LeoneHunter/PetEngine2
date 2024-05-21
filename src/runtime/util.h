@@ -185,6 +185,11 @@ struct ColorFloat4 {
 		a = result.w;
 	}
 
+	constexpr static ColorFloat4 FromHex(std::string_view inStr) {
+		auto vec = HashColorToVec4(inStr);
+		return {vec.x, vec.y, vec.z, vec.w};
+	}
+
 	constexpr explicit operator ColorU32() const { return {r, g, b, a}; }
 
 	float r;
@@ -195,38 +200,7 @@ struct ColorFloat4 {
 
 namespace util {
 
-	/*
-	* Simple timer
-	* Wrapper around std::chrono
-	*/
-	template<typename T = std::chrono::milliseconds>
-	struct Timer {
-
-		using value_type = std::chrono::milliseconds;
-
-		Timer()
-			: SetPointDuration(0)
-			, StartTimePoint()
-		{}
-				
-		void Reset(u32 inValue) {
-			SetPointDuration = value_type(inValue);
-			StartTimePoint = std::chrono::high_resolution_clock::now();
-		}
-
-		bool IsTicking() const { return SetPointDuration.count() != 0; }
-
-		bool IsReady() const { 
-			return IsTicking() ? 
-				std::chrono::duration_cast<value_type>(std::chrono::high_resolution_clock::now() - StartTimePoint) >= SetPointDuration : 
-				false;
-		}
-
-		void Clear() { SetPointDuration = value_type(0); }
-
-		value_type SetPointDuration;
-		std::chrono::high_resolution_clock::time_point StartTimePoint;
-	};
+	
 
 
 	/*
@@ -464,3 +438,5 @@ namespace util {
 		return lhs.Get() == inPtr;
 	}
 }
+
+using util::WeakPtr;

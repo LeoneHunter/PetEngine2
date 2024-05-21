@@ -1,7 +1,7 @@
 #include "string_id.h"
-#include "runtime/core/core.h"
-#include "runtime/core/util.h"
-#include "runtime/core/concurrency.h"
+#include "core.h"
+#include "util.h"
+#include "threading.h"
 
 using int32 = s32;
 

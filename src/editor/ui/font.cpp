@@ -1,7 +1,7 @@
 #include "font.h"
 #include <filesystem>
 
-#include "runtime/core/core.h"
+#include "runtime/core.h"
 #include "thirdparty/imgui/imgui.h"
 #include "thirdparty/imgui/imgui_internal.h"
 

@@ -3,9 +3,9 @@
 #include "containers.h"
 #include "focus.h"
 
-#include "runtime/platform/native_window.h"
-#include "runtime/system/renderer/ui_renderer.h"
-#include "runtime/system/job_dispatcher.h"
+#include "runtime/native_window.h"
+#include "runtime/ui_renderer.h"
+#include "runtime/time_utils.h"
 
 #include "thirdparty/optik/include/optick.config.h"
 #include "thirdparty/optik/include/optick.h"
@@ -15,7 +15,7 @@
 
 namespace ui {
 
-using Timer = util::Timer<std::chrono::milliseconds>;
+using Timer = Timer<std::chrono::milliseconds>;
 using RendererDrawlist = ::DrawList;
 
 class WindowController;

@@ -1,7 +1,7 @@
 #pragma once
-#include "runtime/core/core.h"
-#include "runtime/core/util.h"
-#include "runtime/platform/native_window.h"
+#include "core.h"
+#include "util.h"
+#include "native_window.h"
 
 class Image;
 namespace ui {

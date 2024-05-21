@@ -4,12 +4,11 @@
 #include <chrono>
 #include <concepts>
 
-#include "runtime/core/concurrency.h"
-#include "runtime/core/util.h"
+#include "threading.h"
+#include "util.h"
+#include "windows_platform.h"
 
-#include "runtime/platform/windows_platform.h"
-
-#define JOBSYSTEM_NAMESPACE_BEGIN namespace JobSystem {
+#define JOBSYSTEM_NAMESPACE_BEGIN namespace fiber {
 #define JOBSYSTEM_NAMESPACE_END }
 
 static constexpr u32 k_ThreadNum = 8;
@@ -18,7 +17,7 @@ static constexpr u32 k_FibersNum = 16;
 static std::chrono::high_resolution_clock::time_point ExecutionStartTimepoint{std::chrono::high_resolution_clock::now()};
 
 // Global job system data shared between all fibers
-static JobSystem::Dispatcher* g_Context = nullptr;
+static fiber::Dispatcher* g_Context = nullptr;
 
 constexpr static u32 NOT_AN_INDEX = std::numeric_limits<u32>::max();
 
@@ -158,7 +157,7 @@ void MasterFiberProc(std::string_view inThreadDebugName);
 void WINAPI WorkerFiberProc(windows::LPVOID inParameter);
 
 /*
-* Object referenced by a job group and JobSystem::Fence created by the user
+* Object referenced by a job group and fiber::Fence created by the user
 */
 struct FenceObject {
 
@@ -467,7 +466,7 @@ public:
 	}
 
 	// Creates graph of jobs combined into groups for parallel execution
-	void BuildGraph(const JobSystem::Builder& inBuilder) {
+	void BuildGraph(const fiber::Builder& inBuilder) {
 		Assert(!inBuilder.jobs_.empty() && "Submitted graph is empty!");
 
 		auto jobIt = inBuilder.jobs_.begin();
@@ -734,13 +733,13 @@ void WINAPI WorkerFiberProc(windows::LPVOID inParameter) {
 	thisFiber->Run();
 }
 
-void JobSystem::Init() {
+void fiber::Init() {
 	if(!g_Context) {
 		g_Context = new Dispatcher(k_FibersNum);
 	}	
 }
 
-void JobSystem::Shutdown() {
+void fiber::Shutdown() {
 	LOGF(Verbose, "job system destructor has been called.");
 	if(g_Context) {
 		delete g_Context;
@@ -748,7 +747,7 @@ void JobSystem::Shutdown() {
 	}
 }
 
-void JobSystem::Submit(const Builder& inJobBuilder) {
+void fiber::Submit(const Builder& inJobBuilder) {
 	// Check not empty
 	Assert(g_Context);
 	g_Context->BuildGraph(inJobBuilder);
@@ -762,7 +761,7 @@ void ThisFiber::WaitForEvent(EventRef inEventRef) {
 	g_Context->GetCurrentFiber()->WaitForEvent(*inEventRef.event_);
 }
 
-EventRef JobSystem::CreateEvent() {
+EventRef fiber::CreateEvent() {
 	// Will be deleted by EventRef RAII object
 	auto eventObject = new Event();
 	return EventRef(eventObject);

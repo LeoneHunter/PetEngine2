@@ -1,7 +1,7 @@
 #pragma once
-#include "image.h"
-#include "runtime/core/types.h"
-#include "runtime/core/math_util.h"
+#include "runtime/image.h"
+#include "runtime/types.h"
+#include "runtime/math_util.h"
 
 struct ImFont;
 struct ImFontAtlas;

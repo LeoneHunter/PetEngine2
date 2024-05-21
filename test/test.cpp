@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "thirdparty/doctest/doctest.h"
 
-#include "runtime/base/string_id.h"
+#include "runtime/string_id.h"
 #include "editor/ui/ui.h"
 
 TEST_CASE("[StringID]") {

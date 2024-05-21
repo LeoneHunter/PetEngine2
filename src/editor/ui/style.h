@@ -1,8 +1,8 @@
 #pragma once
 #include "font.h"
-#include "runtime/base/string_id.h"
-#include "runtime/core/core.h"
-#include "runtime/core/util.h"
+#include "runtime/string_id.h"
+#include "runtime/core.h"
+#include "runtime/util.h"
 
 #include <set>
 #include <variant>

@@ -1,5 +1,5 @@
 #pragma once
-#include "runtime/core/types.h"
+#include "types.h"
 
 #define WINAPI __stdcall
 #define WINBASEAPI extern "C" __declspec(dllimport)

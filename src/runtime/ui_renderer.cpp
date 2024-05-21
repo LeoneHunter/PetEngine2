@@ -1,5 +1,5 @@
 #include "ui_renderer.h"
-#include "runtime/core/core.h"
+#include "core.h"
 #include "editor/ui/font.h"
 
 #include <d3d12.h>

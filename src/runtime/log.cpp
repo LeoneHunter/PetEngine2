@@ -5,54 +5,11 @@
 #include <deque>
 #include <semaphore>
 
-#include "runtime/core/concurrency.h"
+#include "threading.h"
 
 namespace logging {
 
 constexpr auto kBufferSize = 100;
-
-std::string FormatTime(logging::time_point inTime, bool bDate, bool bMillis, bool bPathFormat) {
-
-	// using namespace std::chrono;
-	// const std::time_t timer = high_resolution_clock::to_time_t(inTime);	
-	// auto t = std::make_unique<tm>();
-	// auto err = localtime_s(t.get(), &timer);
-
-	// auto ms = duration_cast<milliseconds>(inTime.time_since_epoch()) % 1000;
-
-	// std::stringstream ss;
-	// char buffer[32];
-	// if (bDate) {
-	// 	std::strftime(buffer, 32, "%d/%m/%Y %H:%M:%S", t.get());
-	// } else {
-	// 	std::strftime(buffer, 32, "%H:%M:%S", t.get());
-	// }
-	// ss << buffer;
-	
-	// if (bMillis) {
-	// 	ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
-	// }
-
-	// auto str = ss.str();
-
-	// if (bPathFormat) {
-	// 	std::transform(
-	// 		str.begin(),
-	// 		str.end(),
-	// 		str.begin(),
-	// 		[](unsigned char c)-> unsigned char {
-	// 			if (c == '/') {
-	// 				return '-';
-	// 			} else if (c == ':') {
-	// 				return '.';
-	// 			}
-	// 			return c;
-	// 		}
-	// 	);
-	// }
-
-	return {};
-}
 
 void LogProc();
 
@@ -84,8 +41,8 @@ void Shutdown() {
 	if(!ctx) return;
 	ctx->bFlushFile.store(true, std::memory_order::relaxed);
 	ctx->bShouldExit.store(true, std::memory_order::relaxed);
-	ctx->thread.join();
 	ctx->sema.release();
+	ctx->thread.join();
 }
 
 void Flush() {
@@ -102,11 +59,15 @@ bool ShouldLog(Level level) {
 }
 
 void DoLog(Record&& record) {
-	Spinlock::ScopedLock _{ctx->lock};
-	ctx->queue.push_back(std::move(record));
-
-	if(record.level == Level::Fatal) 
-		ctx->bFlushFile.store(true, std::memory_order::relaxed);
+	{
+		Spinlock::ScopedLock _{ctx->lock};
+		ctx->queue.push_back(std::move(record));
+	}
+	if(record.level == Level::Fatal) {
+		// Block until flushed
+		Shutdown();
+		return;
+	}
 	ctx->sema.release();
 }
 
@@ -145,8 +106,9 @@ void LogProc() {
 			logFile.flush();
 			ctx->bFlushFile.store(false, std::memory_order::relaxed);
 		}
-		if(ctx->bShouldExit.load(std::memory_order::relaxed)) 
+		if(ctx->bShouldExit.load(std::memory_order::relaxed)) {
 			break;
+		}
 	}
 }
 }
