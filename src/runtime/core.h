@@ -5,6 +5,8 @@
 #include "math_util.h"
 #include "serialize.h"
 
+#include <source_location>
+
 #define NONCOPYABLE(TypeName) \
 	TypeName(TypeName&&) = delete; \
 	TypeName(const TypeName&) = delete;

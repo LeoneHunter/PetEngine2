@@ -2,23 +2,20 @@
 #include "windows_platform.h"
 #include "util.h"
 
-namespace thread {
-
 thread_local std::string currentThreadName;
 
-void SetCurrentThreadName(const std::string& name) {
+void Thread::SetCurrentThreadName(const std::string& name) {
     currentThreadName = name;
     auto wname = util::ToWideString(name);
     windows::SetThreadDescription(windows::GetCurrentThread(), wname.c_str());
 }
 
-const std::string& GetCurrentThreadName() {
+const std::string& Thread::GetCurrentThreadName() {
     return currentThreadName;
 }
 
-ThreadID GetCurrentThreadID() {
+ThreadID Thread::GetCurrentThreadID() {
     return windows::GetCurrentThreadId();
 }
 
-} // namespace thread
 

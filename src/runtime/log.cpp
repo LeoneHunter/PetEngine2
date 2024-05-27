@@ -21,7 +21,7 @@ struct Context {
 	std::atomic_bool        bShouldExit;
 	std::atomic_bool		bFlushFile;
 	std::deque<Record>		queue;
-	Spinlock				lock;
+	std::mutex				lock;
 };
 Context* ctx = nullptr;
 
@@ -55,12 +55,15 @@ void SetLevel(Level level) {
 }
 
 bool ShouldLog(Level level) {
+	if(!ctx) {
+		return false;
+	}
 	return level <= ctx->level;
 }
 
 void DoLog(Record&& record) {
 	{
-		Spinlock::ScopedLock _{ctx->lock};
+		std::scoped_lock _{ctx->lock};
 		ctx->queue.push_back(std::move(record));
 	}
 	if(record.level == Level::Fatal) {
@@ -86,7 +89,7 @@ void LogProc() {
 		while(true) {
 			Record rec;
 			{
-				Spinlock::ScopedLock _(ctx->lock);
+				std::scoped_lock _(ctx->lock);
 				if(ctx->queue.empty()) 
 					break;
 				rec = ctx->queue.front();

@@ -15,7 +15,7 @@
 
 namespace ui {
 
-using Timer = Timer<std::chrono::milliseconds>;
+using Timer = ::Timer<std::chrono::milliseconds>;
 using RendererDrawlist = ::DrawList;
 
 class WindowController;
@@ -1348,7 +1348,11 @@ public:
 
 public:
 
-	bool Tick() final {
+	void Run() final {
+		while(Tick()) {}
+	}
+
+	bool Tick() {
 		const auto frameStartTimePoint = std::chrono::high_resolution_clock::now();
 		// Rebuild fonts if needed for different size
 		RebuildFonts();

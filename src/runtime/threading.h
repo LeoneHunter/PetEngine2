@@ -24,7 +24,6 @@ struct std::formatter<std::thread::id, char> {
 	}
 };
 
-
 // From Boost
 class Spinlock {
 public:
@@ -70,18 +69,19 @@ public:
 	};
 };
 
-namespace thread {
-    using ThreadID = windows::DWORD;
+using ThreadID = windows::DWORD;
 
-    void SetCurrentThreadName(const std::string& name);
-    const std::string& GetCurrentThreadName();
-
-    ThreadID GetCurrentThreadID();
-}
-
+// Basic thread wrapper around std::thread
 // Could be created by the user or inside a thread pool
 // Own by the user or thread pool
-class WorkerThread {
+class Thread {
+public:
+
+	static void SetCurrentThreadName(const std::string& name);
+    static const std::string& GetCurrentThreadName();
+
+    static ThreadID GetCurrentThreadID();
+
 public:
 
     class Delegate {
@@ -92,26 +92,11 @@ public:
 
 public:
 
-    WorkerThread(const WorkerThread&) = delete;
-    WorkerThread& operator=(const WorkerThread&) = delete;
-
-    // Because of semaphore and lambda inside Start()
-    WorkerThread(WorkerThread&) = delete;
-    WorkerThread& operator=(WorkerThread&) = delete;
-
-public:
-
-    WorkerThread(Delegate* delegate, const std::string& name = "") {
-        Assert(delegate);
-        delegate_ = delegate;
-        name_ = name;
-    }
-
     void Start() {
         Assert(!thread_);
         Assert(delegate_);
         thread_ = std::make_unique<std::thread>([this]{
-            thread::SetCurrentThreadName(name_);
+            SetCurrentThreadName(name_);
             threadStartedSemaphore_.release();
 
             constexpr bool canSleep = true;
@@ -130,6 +115,21 @@ public:
         Assert(thread_->joinable());
         thread_->join();
     }
+
+public:
+	// TODO: Decide delegate ownership
+    Thread(Delegate* delegate, const std::string& name = "") {
+        Assert(delegate);
+        delegate_ = delegate;
+        name_ = name;
+    }
+
+    Thread(const Thread&) = delete;
+    Thread& operator=(const Thread&) = delete;
+
+    // Because of semaphore and lambda inside Start()
+    Thread(Thread&) = delete;
+    Thread& operator=(Thread&) = delete;
 
 private:
 	Delegate*                    delegate_ = {};

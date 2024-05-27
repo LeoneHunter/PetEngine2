@@ -54,6 +54,7 @@ void SetLevel(Level level);
 bool ShouldLog(Level level);
 void DoLog(Record&& record);
 
+// TODO: Disable during test
 template<typename... ArgTypes>
 inline void Logf(std::string_view                      file,
  				 u32                                   line,

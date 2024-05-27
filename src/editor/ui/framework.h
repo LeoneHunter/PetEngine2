@@ -322,7 +322,7 @@ public:
 
 	virtual void			Shutdown() = 0;
 	// For now we do all ui here
-	virtual bool			Tick() = 0;
+	virtual void			Run() = 0;
 	// Parents a widget to the root of the widget tree
 	// Widgets parented to the root behave like windows and can be reordered
 	virtual void			Parent(std::unique_ptr<Widget>&& widget, Layer layer = Layer::Float) = 0;
