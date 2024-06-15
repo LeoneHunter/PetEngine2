@@ -1,16 +1,30 @@
 #pragma once
-#include "core.h"
+#include "runtime/common.h"
 
 #include <istream>
 #include <ostream>
+#include <filesystem>
 
-#define NAME_ID_DEBUG
 
-inline constexpr u64 g_string_pool_size = 8192;
+constexpr uint64_t kStringPoolSize = 8192;
 
 template<typename T>
 concept StringData = requires(T a) {
 	{ a.data() } -> std::convertible_to<const char*>;
+};
+
+
+template<>
+struct std::formatter<std::filesystem::path>: std::formatter<std::string> {
+    using Base = std::formatter<std::string>;
+
+public:
+    using Base::parse;
+
+	template<class FmtContext>
+	auto format(const std::filesystem::path& val, FmtContext& ctx) const {
+		return Base::format(val.string(), ctx);
+	}
 };
 
 /**
@@ -22,7 +36,7 @@ concept StringData = requires(T a) {
 class StringID {
 public:	
 
-	using index_type = s32;
+	using index_type = int32_t;
 
 	constexpr StringID();
 	StringID(const char* inNewName);
@@ -146,7 +160,7 @@ private:
 	}
 
 private:
-#ifdef NAME_ID_DEBUG
+#ifndef NDEBUG
 	const char* m_DebugString;
 #endif
 	// Index to lower case version of the string.
@@ -177,19 +191,19 @@ public:
 constexpr StringID::StringID()
 	: m_CompareIndex(0)
 	, m_DisplayIndex(0) 
+#ifndef NDEBUG
 	, m_DebugString("")
+#endif
 {}
 
 inline StringID::StringID(const char* inNewName)
 	: m_CompareIndex(0)
-	, m_DisplayIndex(0)
-#ifdef NAME_ID_DEBUG
-	, m_DebugString()
-#endif
-{
+	, m_DisplayIndex(0) {
 	std::string_view s(inNewName);
 	if (!s.empty()) { _intern(s); }
+#ifndef NDEBUG
 	m_DebugString = String().c_str();
+#endif
 }
 
 constexpr bool StringID::FastLess(const StringID& right) const {
@@ -203,3 +217,8 @@ inline bool StringID::LexicalLess(const StringID& right) const {
 NODISCARD inline std::string operator+(const std::string& left, const StringID& right) {
 	return std::move(left + right.String());
 }
+
+
+
+
+

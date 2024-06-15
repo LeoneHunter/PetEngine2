@@ -1,15 +1,21 @@
 #pragma once
-#include "types.h"
+#include <stdint.h>
 
-#define WINAPI __stdcall
-#define WINBASEAPI extern "C" __declspec(dllimport)
+#ifndef WINAPI
+	#define WINAPI __stdcall
+#endif
 
+#ifndef WINBASEAPI
+	#define WINBASEAPI extern "C" __declspec(dllimport)
+#endif
+
+// Minimal windows api
 namespace windows {
 
 	using VOID = void;
 	using LPVOID = void*;
 	using PVOID = void*;
-	using SIZE_T = u64;
+	using SIZE_T = uint64_t;
 	using HANDLE = void*;
 	using DWORD = unsigned long;
 	using LONG = long;
@@ -35,7 +41,7 @@ namespace windows {
 
 	HANDLE CreateSemaphore(LONG lInitialCount, LONG lMaximumCount);
 	PVOID GetCurrentFiber();	
-	void Sleep(u32 inSleepTimeMs);
+	void Sleep(uint32_t inSleepTimeMs);
 	void Pause();
 
 	void SetConsoleCodepageUtf8();

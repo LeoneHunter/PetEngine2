@@ -1,6 +1,8 @@
 #include "future.h"
 #include "thirdparty/doctest/doctest.h"
 
+#include <thread>
+
 TEST_CASE("[Future] Single thread, GetValue()") {
     {
         Promise<void> promise;

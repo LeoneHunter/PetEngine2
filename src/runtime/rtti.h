@@ -2,7 +2,6 @@
 #include <array>
 #include <string>
 
-#include "types.h"
 #include "error.h"
 
 #define DEFINE_CLASS_META(className, superClassName) \

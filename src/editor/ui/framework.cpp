@@ -5,10 +5,10 @@
 
 #include "runtime/native_window.h"
 #include "runtime/ui_renderer.h"
-#include "runtime/time_utils.h"
+#include "runtime/util.h"
 
-#include "thirdparty/optik/include/optick.config.h"
-#include "thirdparty/optik/include/optick.h"
+#include <optick.config.h>
+#include <optick.h>
 
 #include <stack>
 
@@ -22,12 +22,12 @@ class WindowController;
 class Application;
 class ApplicationImpl;
 
-constexpr u32	 g_TooltipDelayMs = 500;
-constexpr u8	 g_DefaultFontSize = 13;
+constexpr uint32_t	 kTooltipDelayMs = 500;
+constexpr uint8_t	 kFontSizeDefault = 13;
 
-INativeWindow* g_OSWindow = nullptr;
-Renderer* g_Renderer = nullptr;
-ApplicationImpl* g_Application = nullptr;
+INativeWindow* nativeWindow = nullptr;
+Renderer* renderer = nullptr;
+ApplicationImpl* application = nullptr;
 
 
 namespace names {
@@ -53,13 +53,13 @@ public:
 	struct Timer {
 		WeakPtr<Object>	object;
 		TimerCallback	callback;
-		u64				periodMs;
+		uint64_t		periodMs;
 		TimePoint		timePoint;
 	};
 
 public:
 
-	TimerHandle AddTimer(Object* object, const TimerCallback& callback, u64 periodMs) {
+	TimerHandle AddTimer(Object* object, const TimerCallback& callback, uint64_t periodMs) {
 		timers_.emplace_back(Timer(object->GetWeak(), callback, periodMs, Now()));
 		return (TimerHandle)&timers_.back();
 	}
@@ -89,9 +89,9 @@ public:
 			}
 
 			if(DurationMs(timer.timePoint, now) >= timer.periodMs) {
-				const auto bContinue = timer.callback();
+				const auto shouldContinue = timer.callback();
 
-				if(bContinue) {
+				if(shouldContinue) {
 					timer.timePoint = now;
 				} else {
 					pendingDelete.push_back(it);
@@ -108,7 +108,7 @@ public:
 
 private:
 
-	constexpr u64 DurationMs(const TimePoint& p0, const TimePoint& p1) {
+	constexpr uint64_t DurationMs(const TimePoint& p0, const TimePoint& p1) {
 		return p1 >= p0
 			? std::chrono::duration_cast<std::chrono::milliseconds>(p1 - p0).count()
 			: std::chrono::duration_cast<std::chrono::milliseconds>(p0 - p1).count();
@@ -560,8 +560,8 @@ public:
 
 	void Init() {
 		OPTICK_EVENT("ui Init");
-		g_Renderer = CreateRendererDX12();
-		g_Renderer->Init(g_OSWindow);
+		renderer = CreateRendererDX12();
+		renderer->Init(nativeWindow);
 
 		theme_.reset(new Theme());
 		theme_->CreateDefaults(kDefaultFontSize);
@@ -574,14 +574,14 @@ public:
 		debugOverlay_ = std::make_unique<DebugOverlayWindow>();
 		Parent(StatefulWidget::New(debugOverlay_.get()), Layer::Overlay);
 
-		g_OSWindow->SetOnCursorMoveCallback([](float x, float y) { g_Application->DispatchMouseMoveEvent({x, y}); });
-		g_OSWindow->SetOnMouseButtonCallback([](KeyCode button, bool bPressed) { g_Application->DispatchMouseButtonEvent(button, bPressed); });
-		g_OSWindow->SetOnMouseScrollCallback([](float scroll) { g_Application->DispatchMouseScrollEvent(scroll); });
-		g_OSWindow->SetOnWindowResizedCallback([](float2 windowSize) { g_Application->DispatchOSWindowResizeEvent(windowSize); });
-		g_OSWindow->SetOnKeyboardButtonCallback([](KeyCode button, bool bPressed) { g_Application->DispatchKeyEvent(button, bPressed); });
-		g_OSWindow->SetOnCharInputCallback([](wchar_t character) { g_Application->DispatchCharInputEvent(character); });
+		nativeWindow->SetOnCursorMoveCallback([](float x, float y) { application->DispatchMouseMoveEvent({x, y}); });
+		nativeWindow->SetOnMouseButtonCallback([](KeyCode button, bool bPressed) { application->DispatchMouseButtonEvent(button, bPressed); });
+		nativeWindow->SetOnMouseScrollCallback([](float scroll) { application->DispatchMouseScrollEvent(scroll); });
+		nativeWindow->SetOnWindowResizedCallback([](float2 windowSize) { application->DispatchOSWindowResizeEvent(windowSize); });
+		nativeWindow->SetOnKeyboardButtonCallback([](KeyCode button, bool bPressed) { application->DispatchKeyEvent(button, bPressed); });
+		nativeWindow->SetOnCharInputCallback([](wchar_t character) { application->DispatchCharInputEvent(character); });
 
-		DispatchOSWindowResizeEvent(g_OSWindow->GetSize());
+		DispatchOSWindowResizeEvent(nativeWindow->GetSize());
 	}
 
 	void DispatchMouseMoveEvent(Point mousePosGlobal) {
@@ -850,7 +850,7 @@ public:
 		for(auto& [window, layer] : widgetStack_) {
 			UpdateLayout(window.get());
 		}
-		g_Renderer->ResizeFramebuffers(windowSize);
+		renderer->ResizeFramebuffers(windowSize);
 	}
 
 	void DispatchCharInputEvent(wchar_t ch) {}
@@ -1002,7 +1002,7 @@ public:
 		return out;
 	}
 
-	std::string PrintHitStack(u32 indent = 1) {
+	std::string PrintHitStack(uint32_t indent = 1) {
 		std::string out;
 		util::StringBuilder sb(&out);
 		sb.PushIndent(indent);
@@ -1043,10 +1043,10 @@ public:
 				Image fontImageAtlas;
 				font->Build(&fontImageAtlas);
 				auto oldTexture = (TextureHandle)font->GetAtlasTexture();
-				TextureHandle fontTexture = g_Renderer->CreateTexture(fontImageAtlas);
+				TextureHandle fontTexture = renderer->CreateTexture(fontImageAtlas);
 
 				font->SetAtlasTexture(fontTexture);
-				g_Renderer->DeleteTexture(oldTexture);
+				renderer->DeleteTexture(oldTexture);
 			}
 		}
 	}
@@ -1128,7 +1128,7 @@ public:
 		const bool isRoot = parentLayout == nullptr;
 
 		if(isRoot) {
-			e.rect = Rect(float2(0), g_OSWindow->GetSize());
+			e.rect = Rect(float2(0), nativeWindow->GetSize());
 		} else {
 			const auto layoutInfo = *layoutWidget->GetLayoutStyle();
 			e.parent = parentLayout;
@@ -1362,7 +1362,7 @@ public:
 			bResetState_ = false;
 		}
 
-		if(!g_OSWindow->PollEvents()) {
+		if(!nativeWindow->PollEvents()) {
 			return false;
 		}
 		timers_.Tick();
@@ -1385,9 +1385,9 @@ public:
 		UpdateDebugOverlay();
 
 		// Draw
-		g_Renderer->ResetDrawLists();
-		auto* frameDrawList = g_Renderer->GetFrameDrawList();
-		frameDrawList->PushFont(theme_->GetDefaultFont(), g_DefaultFontSize);
+		renderer->ResetDrawLists();
+		auto* frameDrawList = renderer->GetFrameDrawList();
+		frameDrawList->PushFont(theme_->GetDefaultFont(), kFontSizeDefault);
 		for(auto& [window, layer] : widgetStack_) {
 			DrawWindow(window.get(), frameDrawList, theme_.get());
 		}
@@ -1399,7 +1399,7 @@ public:
 		// Kick actual rendering
 		// TODO: make async with two contexts
 		// so that we can start updating next frame while previous is rendering
-		g_Renderer->RenderFrame(true);
+		renderer->RenderFrame(true);
 		return true;
 	}
 	
@@ -1521,12 +1521,12 @@ public:
 		state.mouseButtonsPressedBitField = mouseButtonsPressedBitField_;
 		state.mousePosGlobal = mousePosGlobal_;
 		state.mousePosOnCaptureGlobal = mousePosOnCaptureGlobal_;
-		state.windowSize = g_OSWindow->GetSize();
+		state.windowSize = nativeWindow->GetSize();
 		state.theme = theme_.get();
 		return state;
 	}
 
-	TimerHandle	AddTimer(Object* object, const TimerCallback& callback, u64 periodMs) override {
+	TimerHandle	AddTimer(Object* object, const TimerCallback& callback, uint64_t periodMs) override {
 		return timers_.AddTimer(object, callback, periodMs);
 	}
 
@@ -1535,7 +1535,7 @@ public:
 	}
 
 private:
-	u64						frameNum_ = 0;
+	uint64_t						frameNum_ = 0;
 	float					lastFrameTimeMs_ = 0;
 	
 	// Whether the native window is minimized
@@ -1547,7 +1547,7 @@ private:
 	Point					mousePosGlobal_;
 
 	// Number of buttons currently held
-	u8						mouseButtonHeldNum_ = 0;
+	uint8_t						mouseButtonHeldNum_ = 0;
 	// We allow only one button to be pressed simultaniously
 	MouseButton				pressedMouseButton_ = MouseButton::None;
 	MouseButtonMask			mouseButtonsPressedBitField_ = MouseButtonMask::None;
@@ -1589,19 +1589,19 @@ private:
 
 };
 
-ui::Application* ui::Application::Create(std::string_view windowTitle, u32 width, u32 height) {
-	if(!g_OSWindow) { g_OSWindow = INativeWindow::createWindow(windowTitle, width, height); }
-	if(!g_Application) g_Application = new ApplicationImpl();
-	g_Application->Init();
-	return g_Application;
+ui::Application* ui::Application::Create(std::string_view windowTitle, uint32_t width, uint32_t height) {
+	if(!nativeWindow) { nativeWindow = INativeWindow::createWindow(windowTitle, width, height); }
+	if(!application) application = new ApplicationImpl();
+	application->Init();
+	return application;
 }
 
 ui::Application* ui::Application::Get() {
-	return g_Application;
+	return application;
 }
 
 ui::FrameState ui::Application::GetState() {
-	return g_Application->GetFrameStateImpl();
+	return application->GetFrameStateImpl();
 }
 
 } // namespace ui

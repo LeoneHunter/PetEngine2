@@ -1,9 +1,20 @@
 #pragma once
-#include <Assert.h>
 #include <format>
 
-#include "types.h"
+#include <Assert.h>
 #include "log.h"
+
+// TODO: Refactor: ASSERT(cond, ...), INVARIANT(cond, ...)
+// - Remove in release buid
+
+#define ASSERT_MSG(x, msg)                                                       \
+	do {                                                                         \
+		if(!(x)) {                                                               \
+			LOGF(Fatal, "Assert failed! {}", msg); \
+			/*Flush logs here*/ __debugbreak();                                  \
+			std::abort();                                                        \
+		}                                                                        \
+	} while(0)
 
 #define Assert(x)                                                        \
 	do {                                                                 \
@@ -13,6 +24,7 @@
 			std::abort();                                                \
 		}                                                                \
 	} while(0)
+
 
 #define Assertm(x, msg)                                                          \
 	do {                                                                         \
@@ -33,3 +45,13 @@
 		PLATFORM_BREAK();             \
 	} else                            \
 		((void)0)
+
+
+#define UNREACHABLE() ASSERT_MSG(false, "Unreachable statement has been reached!")
+
+
+#ifndef NDEBUG
+	#define DASSERT(cond) Assert(cond)
+#else
+	#define DASSERT(cond)
+#endif // NDEBUG

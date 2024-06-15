@@ -3,9 +3,9 @@
 #include <thread>
 #include <mutex>
 
-#include "core.h"
+#include "common.h"
 #include "util.h"
-#include "windows_platform.h"
+#include "win_minimal.h"
 
 template<>
 struct std::formatter<std::thread::id, char> {

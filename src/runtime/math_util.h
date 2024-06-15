@@ -2,31 +2,11 @@
 #include <random>
 #include <format>
 #include <array>
+#include <numeric>
 
-#include "types.h"
 #include "error.h"
 
-/**
- * Simple class storing two indices
- */
-template<class T>
-class Span {
-public:
 
-	constexpr Span(): start(0), end(0) {}
-	constexpr Span(T start, T end) : start(start), end(end) {}
-
-	constexpr T size() const { return end - start; }
-
-	constexpr operator bool() const { return end - start == 0; }
-
-	T start, end;
-};
-
-template<class T>
-constexpr bool operator== (const Span<T>& left, const Span<T>& right) {
-	return left.start == right.start && left.end == right.end;
-}
 
 enum class Axis{ X, Y };
 
@@ -52,7 +32,7 @@ public:
 	template<typename OtherT>
 	constexpr Vec2<T>& operator=(const Vec2<OtherT>& in) { x = static_cast<T>(in.x); y = static_cast<T>(in.y); return *this; }
 
-	constexpr T& operator[](u8 inAxisIndex) noexcept {
+	constexpr T& operator[](uint8_t inAxisIndex) noexcept {
 		switch(inAxisIndex) {
 			case 0: return x;
 			case 1: return y;
@@ -61,7 +41,7 @@ public:
 		return x;
 	}
 
-	constexpr T const& operator[](u8 inAxisIndex) const {
+	constexpr T const& operator[](uint8_t inAxisIndex) const {
 		switch(inAxisIndex) {
 			case 0: return x;
 			case 1: return y;
@@ -113,9 +93,9 @@ struct std::formatter<Vec2<T>, char> {
 };
 
 using float2 = Vec2<float>;
-using uint2 = Vec2<u32>;
-using uint64_2 = Vec2<u64>;
-using int2 = Vec2<s32>;
+using uint2 = Vec2<uint32_t>;
+using uint64_2 = Vec2<uint64_t>;
+using int2 = Vec2<int32_t>;
 
 template<typename T>
 concept Number = std::is_arithmetic_v<T>;
@@ -400,7 +380,7 @@ struct Rect {
 	}
 
 	constexpr void		ClosestPoint(point_type inPoint, point_type& outClosest) const {
-		for(u8 i = 0; i < 2; i++) {
+		for(uint8_t i = 0; i < 2; i++) {
 			auto v = inPoint[i];
 			if(v < min[i]) v = min[i];
 			if(v > max[i]) v = max[i];
@@ -759,4 +739,20 @@ constexpr void Rect::BuildFromPoints(point_type inP0, point_type inP1) {
 		min = min - point_type(0.f, rectHeight);
 		max = max + point_type(0.f, rectHeight);
 	}
+}
+
+inline void alignment_should_be_power_of_two() {}
+
+template <class T>
+    requires std::is_unsigned_v<T>
+constexpr T AlignUp(T val, T alignment) {
+	Assert(std::has_single_bit(alignment));
+    return (val + alignment - 1) & ~(alignment - 1);
+}
+
+template <class T>
+    requires std::is_unsigned_v<T>
+constexpr T AlignDown(T val, T alignment) {
+	Assert(std::has_single_bit(alignment));
+    return (val) & ~(alignment - 1);
 }

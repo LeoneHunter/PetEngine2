@@ -1,5 +1,40 @@
 #pragma once
-#include "types.h"
+#include "rtti.h"
+#include "error.h"
+#include "log.h"
+
+#ifndef NDEBUG
+	constexpr bool kDebugBuild = true;
+#else
+	constexpr bool kDebugBuild = false;
+#endif
+
+#define NONCOPYABLE(TypeName) \
+	TypeName(TypeName&&) = delete; \
+	TypeName(const TypeName&) = delete;
+
+#define NODISCARD [[nodiscard]]
+
+// Defines all bitwise operators for enum classes so it can be (mostly) used as a regular flags enum
+#define DEFINE_ENUM_FLAGS_OPERATORS(Enum) \
+	inline constexpr Enum& operator|=(Enum& Lhs, Enum Rhs) { return Lhs = (Enum)((std::underlying_type_t<Enum>)Lhs | (std::underlying_type_t<Enum>)Rhs); }	\
+	inline constexpr Enum& operator&=(Enum& Lhs, Enum Rhs) { return Lhs = (Enum)((std::underlying_type_t<Enum>)Lhs & (std::underlying_type_t<Enum>)Rhs); }	\
+	inline constexpr Enum& operator^=(Enum& Lhs, Enum Rhs) { return Lhs = (Enum)((std::underlying_type_t<Enum>)Lhs ^ (std::underlying_type_t<Enum>)Rhs); }	\
+	inline constexpr Enum  operator| (Enum  Lhs, Enum Rhs) { return (Enum)((std::underlying_type_t<Enum>)Lhs | (std::underlying_type_t<Enum>)Rhs); }		\
+	inline constexpr bool  operator& (Enum  Lhs, Enum Rhs) { return (bool)((std::underlying_type_t<Enum>)Lhs & (std::underlying_type_t<Enum>)Rhs); }		\
+	inline constexpr Enum  operator^ (Enum  Lhs, Enum Rhs) { return (Enum)((std::underlying_type_t<Enum>)Lhs ^ (std::underlying_type_t<Enum>)Rhs); }		\
+	inline constexpr bool  operator! (Enum  E)             { return !(std::underlying_type_t<Enum>)E; }														\
+	inline constexpr Enum  operator~ (Enum  E)             { return (Enum)~(std::underlying_type_t<Enum>)E; }
+
+#define DEFINE_ENUM_FLAGS_OPERATORS_FRIEND(Enum) \
+friend	inline constexpr Enum& operator|=(Enum& Lhs, Enum Rhs) { return Lhs = (Enum)((std::underlying_type_t<Enum>)Lhs | (std::underlying_type_t<Enum>)Rhs); }	\
+friend	inline constexpr Enum& operator&=(Enum& Lhs, Enum Rhs) { return Lhs = (Enum)((std::underlying_type_t<Enum>)Lhs & (std::underlying_type_t<Enum>)Rhs); }	\
+friend	inline constexpr Enum& operator^=(Enum& Lhs, Enum Rhs) { return Lhs = (Enum)((std::underlying_type_t<Enum>)Lhs ^ (std::underlying_type_t<Enum>)Rhs); }	\
+friend	inline constexpr Enum  operator| (Enum  Lhs, Enum Rhs) { return (Enum)((std::underlying_type_t<Enum>)Lhs | (std::underlying_type_t<Enum>)Rhs); }		\
+friend	inline constexpr bool  operator& (Enum  Lhs, Enum Rhs) { return (bool)((std::underlying_type_t<Enum>)Lhs & (std::underlying_type_t<Enum>)Rhs); }		\
+friend	inline constexpr Enum  operator^ (Enum  Lhs, Enum Rhs) { return (Enum)((std::underlying_type_t<Enum>)Lhs ^ (std::underlying_type_t<Enum>)Rhs); }		\
+friend	inline constexpr bool  operator! (Enum  E)             { return !(std::underlying_type_t<Enum>)E; }														\
+friend	inline constexpr Enum  operator~ (Enum  E)             { return (Enum)~(std::underlying_type_t<Enum>)E; }
 
 #define DEFINE_ENUMFLAGS_ENTRY(type, entry) if(inEnum & type::entry) { out.empty() ? out.append(#entry) : out.append(" | "#entry); }
 
@@ -68,12 +103,6 @@
 
 
 
-
-
-
-
-
-
 #define DEFINE_ENUM_TOSTRING_1(type, e1)\
 	constexpr std::string ToString(type inEnum) {\
 		if(inEnum == e1) { return #e1; }\
@@ -113,3 +142,23 @@
 		else if(inEnum == type::e5) { return #e5; }\
 		return {};\
 	}
+
+
+template<class T>
+concept HasToString = requires (const T& val) { 
+    { to_string(val) } -> std::convertible_to<std::string>;
+};
+
+template<HasToString T>
+struct std::formatter<T, char> {	
+
+    template<class ParseContext>
+    constexpr ParseContext::iterator parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template<class FmtContext>
+    FmtContext::iterator format(const T& val, FmtContext& ctx) const {
+        return std::ranges::copy(to_string(val), ctx.out()).out;
+    }
+};

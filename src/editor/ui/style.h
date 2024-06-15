@@ -1,9 +1,10 @@
 #pragma once
 #include "font.h"
-#include "runtime/string_id.h"
-#include "runtime/core.h"
+#include "runtime/string_utils.h"
+#include "runtime/common.h"
 #include "runtime/util.h"
 
+#include <map>
 #include <set>
 #include <variant>
 
@@ -74,7 +75,7 @@ public:
 class BoxStyle: public Style {
 	DEFINE_CLASS_META(BoxStyle, Style)
 public:
-	using Sides = RectSides<u16>;
+	using Sides = RectSides<uint16_t>;
 
 	BoxStyle(const BoxStyle* inParent = nullptr)
 		: opacity(1.f)
@@ -108,22 +109,22 @@ public:
 		return *this;
 	}
 
-	BoxStyle& Rounding(u8 inRounding) {
+	BoxStyle& Rounding(uint8_t inRounding) {
 		rounding = inRounding;
 		return *this;
 	}
 
-	BoxStyle& Borders(u8 inCommon) {
+	BoxStyle& Borders(uint8_t inCommon) {
 		borders = inCommon;
 		return *this;
 	}
 
-	BoxStyle& Borders(u8 inHorizontal, u8 inVertical) {
+	BoxStyle& Borders(uint8_t inHorizontal, uint8_t inVertical) {
 		borders = {inHorizontal, inVertical};
 		return *this;
 	}
 
-	BoxStyle& Borders(u8 inTop, u8 inRight, u8 inBottom, u8 inLeft) {
+	BoxStyle& Borders(uint8_t inTop, uint8_t inRight, uint8_t inBottom, uint8_t inLeft) {
 		borders = {inTop, inRight, inBottom, inLeft};
 		return *this;
 	}
@@ -139,7 +140,7 @@ public:
 
 public:
 	float      opacity;
-	u8         rounding;
+	uint8_t         rounding;
 	CornerMask roundingMask;
 	Sides      borders;
 	Color      backgroundColor;
@@ -178,7 +179,7 @@ public:
 		return *this;
 	}
 
-	TextStyle& Size(u16 inDefaultSize) {
+	TextStyle& Size(uint16_t inDefaultSize) {
 		fontSize = inDefaultSize;
 		return *this;
 	}
@@ -197,7 +198,7 @@ public:
 public:
 	std::string filename;
 	ui::Font*   font;
-	u32         fontSize;
+	uint32_t         fontSize;
 	ColorU32    color;
 	bool        fontWeightBold;
 	bool        fontStyleItalic;
@@ -216,16 +217,16 @@ public:
 
 //	//virtual void Draw(DrawList* inDrawList) override;
 
-//	u32			ImageTexture;
-//	u32			Padding;
-//	u32			Border;
+//	uint32_t			ImageTexture;
+//	uint32_t			Padding;
+//	uint32_t			Border;
 
 //	Color		TintColor;
 //	Color		BackgroundColor;
 //	Color		BorderColor;
 //};
 
-using Sides = RectSides<u32>;
+using Sides = RectSides<uint32_t>;
 
 /*
  * Handles separatly from other styles
@@ -249,32 +250,32 @@ public:
 		return new LayoutStyle(*this);
 	}
 
-	LayoutStyle& Paddings(u8 inCommon) {
+	LayoutStyle& Paddings(uint8_t inCommon) {
 		paddings = inCommon;
 		return *this;
 	}
 
-	LayoutStyle& Paddings(u8 inHorizontal, u8 inVertical) {
+	LayoutStyle& Paddings(uint8_t inHorizontal, uint8_t inVertical) {
 		paddings = {inHorizontal, inVertical};
 		return *this;
 	}
 
-	LayoutStyle& Paddings(u8 inTop, u8 inRight, u8 inBottom, u8 inLeft) {
+	LayoutStyle& Paddings(uint8_t inTop, uint8_t inRight, uint8_t inBottom, uint8_t inLeft) {
 		paddings = {inTop, inRight, inBottom, inLeft};
 		return *this;
 	}
 
-	LayoutStyle& Margins(u8 inCommon) {
+	LayoutStyle& Margins(uint8_t inCommon) {
 		margins = inCommon;
 		return *this;
 	}
 
-	LayoutStyle& Margins(u8 inHorizontal, u8 inVertical) {
+	LayoutStyle& Margins(uint8_t inHorizontal, uint8_t inVertical) {
 		margins = {inHorizontal, inVertical};
 		return *this;
 	}
 
-	LayoutStyle& Margins(u8 inTop, u8 inRight, u8 inBottom, u8 inLeft) {
+	LayoutStyle& Margins(uint8_t inTop, uint8_t inRight, uint8_t inBottom, uint8_t inLeft) {
 		margins = {inTop, inRight, inBottom, inLeft};
 		return *this;
 	}
@@ -386,7 +387,7 @@ public:
 	Theme() = default;
 
 	// Creates default styles with selector "" using default font "ImGuiInternal"
-	void CreateDefaults(u8 fontSize) {
+	void CreateDefaults(uint8_t fontSize) {
 		// Create default fallback styles
 		auto& fallback = styles_.emplace("", StyleClass("")).first->second;
 		fallback.Add<LayoutStyle>();

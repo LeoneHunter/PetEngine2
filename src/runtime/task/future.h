@@ -1,5 +1,7 @@
 #pragma once
-#include "runtime/core.h"
+#include "runtime/common.h"
+
+#include <functional>
 
 template<class F, class T = F::value_type>
 concept IsFuture = 
@@ -63,7 +65,7 @@ public:
     using storage_type = std::conditional_t<std::is_void_v<T>, int, T>;
     using callback_type = internal::CallbackType<T>::type;
 
-    enum class State: u8 {
+    enum class State: uint8_t {
         Pending,
         PendingWithCallback,
         Ready,

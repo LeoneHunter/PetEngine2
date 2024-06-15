@@ -130,7 +130,7 @@ static KeyCode keyMap(WPARAM wParam) {
 class NativeWindow_Windows: public INativeWindow {
 public:
 
-	NativeWindow_Windows(const char* inWindowTitle, u32 inWidth, u32 inHeight) {
+	NativeWindow_Windows(const char* inWindowTitle, uint32_t inWidth, uint32_t inHeight) {
 		bool bMaximize = false;
 		const auto windowMaxWidth = GetSystemMetrics(SM_CXSCREEN);
 		const auto windowMaxHeight = GetSystemMetrics(SM_CYSCREEN);
@@ -439,7 +439,7 @@ private:
 
 };
 
-INativeWindow* INativeWindow::createWindow(std::string_view inWindowTitle, u32 inWidth, u32 inHeight) {
+INativeWindow* INativeWindow::createWindow(std::string_view inWindowTitle, uint32_t inWidth, uint32_t inHeight) {
 	auto window = new NativeWindow_Windows{inWindowTitle.data(), inWidth, inHeight};
 	g_Windows.emplace((HWND)window->GetNativeHandle(), window);
 	return window;

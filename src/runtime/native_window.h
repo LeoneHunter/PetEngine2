@@ -2,7 +2,6 @@
 #include <functional>
 #include <string>
 
-#include "types.h"
 #include "math_util.h"
 #include "input_types.h"
 
@@ -13,7 +12,7 @@
 class INativeWindow {
 public:
 
-	static INativeWindow* createWindow(std::string_view inWindowTitle, u32 inWidth, u32 inHeight);
+	static INativeWindow* createWindow(std::string_view inWindowTitle, uint32_t inWidth, uint32_t inHeight);
 
 	virtual ~INativeWindow() = default;
 

@@ -2,7 +2,7 @@
 #include <functional>
 #include <ranges>
 
-#include "runtime/core.h"
+#include "runtime/common.h"
 #include "runtime/util.h"
 #include "style.h"
 
@@ -49,12 +49,12 @@ public:
 		}
 
 		bool Visit(const Visitor& visitor) {
-			const auto bContinue = visitor(*this);
-			if(!bContinue) return false;
+			const auto shouldContinue = visitor(*this);
+			if(!shouldContinue) return false;
 
 			for(auto& child : children_) { 
-				const auto bContinue = child->Visit(visitor);
-				if(!bContinue) return false;
+				const auto shouldContinue = child->Visit(visitor);
+				if(!shouldContinue) return false;
 			}
 			return true;
 		}
@@ -74,8 +74,8 @@ public:
 		if(rootObjects_.empty()) return;
 
 		for(auto& child : rootObjects_) { 
-			const auto bContinue = child->Visit(visitor);
-			if(!bContinue) return;
+			const auto shouldContinue = child->Visit(visitor);
+			if(!shouldContinue) return;
 		}
 	}
 
@@ -170,8 +170,8 @@ concept WidgetSubclass = std::derived_from<T, Widget>;
 // Used in a tooltip and dragdrop 
 using SpawnerFunction = std::function<LayoutWidget*()>;
 
-using Margins = RectSides<u32>;
-using Paddings = RectSides<u32>;
+using Margins = RectSides<uint32_t>;
+using Paddings = RectSides<uint32_t>;
 using WidgetSlot = size_t;
 
 constexpr auto defaultWidgetSlot = WidgetSlot();
@@ -193,7 +193,7 @@ enum class EventCategory {
 };
 
 // Mask to check pressed buttons
-enum class MouseButtonMask: u8 {
+enum class MouseButtonMask: uint8_t {
 	None			= 0,
 	ButtonLeft		= 0x1,
 	ButtonRight		= 0x2,
@@ -203,7 +203,7 @@ enum class MouseButtonMask: u8 {
 };
 DEFINE_ENUM_FLAGS_OPERATORS(MouseButtonMask)
 
-enum class MouseButton: u8 {
+enum class MouseButton: uint8_t {
 	None,
 	ButtonLeft,
 	ButtonRight,
@@ -286,7 +286,7 @@ constexpr bool operator==(const SizeMode& lhs, const SizeMode& rhs) {
 struct FrameState {
 	Point					mousePosGlobal;
 	// Number of buttons currently held
-	u8						mouseButtonHeldNum = 0;
+	uint8_t						mouseButtonHeldNum = 0;
 	MouseButtonMask			mouseButtonsPressedBitField = MouseButtonMask::None;
 	// Position of the mouse cursor when the first mouse button has been pressed
 	Point					mousePosOnCaptureGlobal;
@@ -316,7 +316,7 @@ public:
 
 	virtual ~Application() = default;
 
-	static Application* 	Create(std::string_view windowTitle, u32 width, u32 height);
+	static Application* 	Create(std::string_view windowTitle, uint32_t width, uint32_t height);
 	static Application* 	Get();
 	static FrameState		GetState();
 
@@ -332,7 +332,7 @@ public:
 
 	virtual Theme* 			GetTheme() = 0;
 
-	virtual TimerHandle		AddTimer(Object* object, const TimerCallback& callback, u64 periodMs) = 0;
+	virtual TimerHandle		AddTimer(Object* object, const TimerCallback& callback, uint64_t periodMs) = 0;
 	virtual void			RemoveTimer(TimerHandle handle) = 0;
 
 	virtual void 			RequestRebuild(StatefulWidget* widget) = 0;
@@ -371,7 +371,7 @@ class Notification: public IEvent {
 public:
 	virtual EventCategory GetCategory() const override { return EventCategory::Notification; }
 
-	u32 depth = 0;
+	uint32_t depth = 0;
 };
 
 /*
@@ -539,7 +539,7 @@ public:
 	bool bHoverEnter = false;
 	bool bHoverLeave = false;
 	// Number of items hovered before
-	u32  depth = 0;
+	uint32_t  depth = 0;
 };
 
 
@@ -601,9 +601,9 @@ public:
 // Returned by the callback to instruct iteration
 struct VisitResult {
 	// If false stops iteration and exit from all visit calls
-	bool bContinue = true;
+	bool shouldContinue = true;
 	// Skip iterating children of a current widget
-	bool bSkipChildren = false;		
+	bool shouldSkipChildren = false;		
 
 	static auto Continue() { return VisitResult{true, false}; }
 	static auto Exit() { return VisitResult{false, false}; }
@@ -670,7 +670,7 @@ public:
 	void VisitParent(const WidgetVisitor& visitor, bool bRecursive = true) {
 		for(auto parent = parent_; parent; parent = parent->GetParent()) {
 			const auto result = visitor(parent);
-			if(!result.bContinue || !bRecursive) return;
+			if(!result.shouldContinue || !bRecursive) return;
 		}
 	}
 
@@ -813,11 +813,11 @@ public:
 		if(!child_) return VisitResult::Continue();
 
 		const auto result = visitor(child_.get());
-		if(!result.bContinue) return VisitResult::Exit();
+		if(!result.shouldContinue) return VisitResult::Exit();
 
-		if(bRecursive && !result.bSkipChildren) {
+		if(bRecursive && !result.shouldSkipChildren) {
 			const auto result = child_->VisitChildren(visitor, bRecursive);
-			if(!result.bContinue) return VisitResult::Exit();
+			if(!result.shouldContinue) return VisitResult::Exit();
 		}
 		return VisitResult::Continue();
 	}
@@ -1010,8 +1010,8 @@ public:
 
 	void DebugSerialize(PropertyArchive& archive) override {
 		Super::DebugSerialize(archive);
-		archive.PushProperty("Visible", !bHidden_);
-		archive.PushProperty("FloatLayout", (bool)bFloatLayout_);
+		archive.PushProperty("Visible", !isHidden_);
+		archive.PushProperty("FloatLayout", (bool)isFloatLayout_);
 		archive.PushProperty("AxisMode", std::format("{}", axisMode_));
 		archive.PushProperty("Origin", origin_);
 		archive.PushProperty("Size", size_);
@@ -1051,8 +1051,8 @@ public:
 
 	// Hiddent objects won't draw themselves and won't handle hovering 
 	// but layout update should be managed by the parent
-	void SetVisibility(bool bVisible) { bHidden_ = !bVisible; }
-	bool IsVisible() const { return !bHidden_; }
+	void SetVisibility(bool bVisible) { isHidden_ = !bVisible; }
+	bool IsVisible() const { return !isHidden_; }
 
 	// Should be called by subclasses
 	void SetOrigin(Point pos) { origin_ = pos; }
@@ -1093,8 +1093,8 @@ public:
 	const LayoutStyle* GetLayoutStyle() const { return layoutStyle_; }
 
 	// Widget's position won't be affected by parent's layout events
-	void SetFloatLayout(bool bEnable = true) { bFloatLayout_ = bEnable; }
-	bool IsFloatLayout() const { return bFloatLayout_; }
+	void SetFloatLayout(bool bEnable = true) { isFloatLayout_ = bEnable; }
+	bool IsFloatLayout() const { return isFloatLayout_; }
 
 public:
 
@@ -1114,7 +1114,7 @@ public:
 	virtual float2 OnLayout(const LayoutConstraints& event) { 
 		const auto margins = GetLayoutStyle()->margins;
 
-		if(!bFloatLayout_) {
+		if(!isFloatLayout_) {
 			SetOrigin(event.rect.TL() + margins.TL());
 		}
 		for(auto axis: axes2D) {
@@ -1132,7 +1132,7 @@ public:
 
 	// Should be called by subclasses at the end of their OnLayout()
 	void OnPostLayout() {
-		if(bNotifyOnUpdate_) {
+		if(notifyOnUpdate_) {
 			LayoutNotification e;
 			e.rectLocal = GetRect();
 			e.source = this;
@@ -1146,26 +1146,26 @@ protected:
 					bool               notifyOnUpdate = false,
 					StringID           id             = {})
 		: Widget(id)
-		, bHidden_(false)
-		, bFloatLayout_(false)
-		, bNotifyOnUpdate_(notifyOnUpdate)
+		, isHidden_(false)
+		, isFloatLayout_(false)
+		, notifyOnUpdate_(notifyOnUpdate)
 		, axisMode_(axisMode)
 		, layoutStyle_(style) 
 	{}
 
 	void CopyConfiguration(const LayoutWidget& other) {
 		Super::CopyConfiguration(other);
-		bFloatLayout_ = other.bFloatLayout_;
-		bNotifyOnUpdate_ = other.bNotifyOnUpdate_;
+		isFloatLayout_ = other.isFloatLayout_;
+		notifyOnUpdate_ = other.notifyOnUpdate_;
 		axisMode_ = other.axisMode_;
 		layoutStyle_ = other.layoutStyle_;
 	}
 
 private:
-	u8					bHidden_:1;
-	u8					bFloatLayout_:1;
+	uint8_t				isHidden_:1;
+	uint8_t				isFloatLayout_:1;
 	// Send notifications to ancestors when updated
-	u8					bNotifyOnUpdate_:1;
+	uint8_t				notifyOnUpdate_:1;
 	SizeMode			axisMode_;
 	// Position in pixels relative to parent origin
 	Point				origin_;
@@ -1208,11 +1208,11 @@ public:
 		if(!child_) return VisitResult::Continue();
 
 		const auto result = visitor(child_.get());
-		if(!result.bContinue) return VisitResult::Exit();
+		if(!result.shouldContinue) return VisitResult::Exit();
 
-		if(bRecursive && !result.bSkipChildren) {
+		if(bRecursive && !result.shouldSkipChildren) {
 			const auto result = child_->VisitChildren(visitor, bRecursive);
-			if(!result.bContinue) return VisitResult::Exit();
+			if(!result.shouldContinue) return VisitResult::Exit();
 		}
 		return VisitResult::Continue();
 	}
@@ -1349,11 +1349,11 @@ public:
 	VisitResult VisitChildren(const WidgetVisitor& visitor, bool bRecursive = false) final {
 		for(auto& child : children_) {
 			const auto result = visitor(child.get());
-			if(!result.bContinue) return VisitResult::Exit();
+			if(!result.shouldContinue) return VisitResult::Exit();
 
-			if(bRecursive && !result.bSkipChildren) {
+			if(bRecursive && !result.shouldSkipChildren) {
 				const auto result = child->VisitChildren(visitor, bRecursive);
-				if(!result.bContinue) return VisitResult::Exit();
+				if(!result.shouldContinue) return VisitResult::Exit();
 			}
 		}
 		return VisitResult::Continue();

@@ -1,5 +1,6 @@
 #pragma once
 #include "widgets.h"
+#include "runtime/common.h"
 
 namespace ui {
 
@@ -56,7 +57,7 @@ class ContainerBuilder {
 public:
 	auto& ID(StringID inID) { id = inID; return *this; }
 	auto& SizeFixed(float2 inSize) { bSizeFixed = true; axisMode = SizeMode::Fixed(); size = inSize; return *this; }	
-	auto& SizeFixed(u32 x, u32 y) { bSizeFixed = true; axisMode = SizeMode::Fixed(); size = float2((float)x, (float)y); return *this; }	
+	auto& SizeFixed(uint32_t x, uint32_t y) { bSizeFixed = true; axisMode = SizeMode::Fixed(); size = float2((float)x, (float)y); return *this; }	
 	auto& SizeMode(SizeMode inMode) { axisMode = inMode; return *this;  }
 	auto& SizeMode(AxisMode x, AxisMode y) { axisMode = ui::SizeMode(x, y); return *this;  }
 	auto& Size(float2 inSize) { size = inSize; return *this; }
@@ -92,10 +93,10 @@ public:
 	}
 
 private:
-	u8                      bSizeFixed : 1   = false;
-	u8                      bPosFloat : 1    = false;
-	u8                      bClipContent : 1 = false;
-	u8						bNotifyOnLayout:1 = false;
+	uint8_t                      bSizeFixed : 1   = false;
+	uint8_t                      bPosFloat : 1    = false;
+	uint8_t                      bClipContent : 1 = false;
+	uint8_t						bNotifyOnLayout:1 = false;
 	float2                  size;
 	Point                   pos;
 	ui::SizeMode            axisMode = SizeMode::Shrink();

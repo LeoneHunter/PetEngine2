@@ -1,9 +1,11 @@
 #include "font.h"
-#include <filesystem>
-
-#include "runtime/core.h"
+#include "runtime/common.h"
+#include "runtime/string_utils.h"
 #include "thirdparty/imgui/imgui.h"
 #include "thirdparty/imgui/imgui_internal.h"
+
+#include <filesystem>
+#include <map>
 
 using namespace ui;
 
@@ -149,7 +151,7 @@ public:
 			}
 
 			const float char_width = ((int)c < m_ImFont->IndexAdvanceX.Size ? m_ImFont->IndexAdvanceX.Data[c] : m_ImFont->FallbackAdvanceX);
-			if(ImCharIsBlankW((u32)c)) {
+			if(ImCharIsBlankW((uint32_t)c)) {
 				if(inside_word) {
 					line_width += blank_width;
 					blank_width = 0.0f;
@@ -233,7 +235,7 @@ private:
  * Key used for quick search
  */
 struct FontKey {
-	FontKey(u8 inSize, bool bBold, bool bItalic)
+	FontKey(uint8_t inSize, bool bBold, bool bItalic)
 		: size(inSize)
 		, bBold(bBold)
 		, bItalic(bItalic)
@@ -241,12 +243,12 @@ struct FontKey {
 
 	union {
 		struct {
-			u16 size : 8;
-			u16 bBold : 1;
-			u16 bItalic : 1;
-			u16 _unused : 6;
+			uint16_t size : 8;
+			uint16_t bBold : 1;
+			uint16_t bItalic : 1;
+			uint16_t _unused : 6;
 		};
-		u16 key;
+		uint16_t key;
 	};
 };
 
@@ -263,7 +265,7 @@ namespace fs = std::filesystem;
  */
 class ImGuiFont final: public Font {
 public:
-	ImGuiFont(const Path& inFilepath)
+	ImGuiFont(const std::filesystem::path& inFilepath)
 		: m_Filepath(inFilepath)
 		, m_Flags(Flags::None) {
 		m_FontAtlas.Flags |= ImFontAtlasFlags_NoMouseCursors;
@@ -305,7 +307,7 @@ public:
 		}
 	}
 
-	bool RasterizeFace(u8 inSize, bool bBold = false, bool bItalic = false) override {
+	bool RasterizeFace(uint8_t inSize, bool bBold = false, bool bItalic = false) override {
 		const auto key = FontKey(inSize, bBold, bItalic);
 
 		// Check if it's already pending
@@ -447,7 +449,7 @@ public:
 		return m_FontAtlas.TexID;
 	}
 
-	const Face* GetFace(u8 inSize, bool bBold = false, bool bItalic = false) const override {
+	const Face* GetFace(uint8_t inSize, bool bBold = false, bool bItalic = false) const override {
 		const auto key = FontKey(inSize, bBold, bItalic);
 		auto it = m_Faces.find(key);
 
@@ -484,7 +486,7 @@ public:
 		return nullptr;
 	}
 
-	float2 CalculateTextSize(const std::string_view& inText, u8 inFontSize, bool bBold, bool bItalic, float inMaxTextWidth, float inWrapWidth) const override {
+	float2 CalculateTextSize(const std::string_view& inText, uint8_t inFontSize, bool bBold, bool bItalic, float inMaxTextWidth, float inWrapWidth) const override {
 		auto* face = GetFace(inFontSize, bBold, bItalic);
 		if(!face) {
 			return {};
@@ -492,7 +494,7 @@ public:
 		return face->CalculateTextSize(inText, inMaxTextWidth, inWrapWidth);
 	}
 
-	float2 CalculateTextSize(const std::wstring_view& inText, u8 inFontSize, bool bBold, bool bItalic, float inMaxTextWidth, float inWrapWidth) const override {
+	float2 CalculateTextSize(const std::wstring_view& inText, uint8_t inFontSize, bool bBold, bool bItalic, float inMaxTextWidth, float inWrapWidth) const override {
 		auto* face = GetFace(inFontSize, bBold, bItalic);
 		if(!face) {
 			return {};
@@ -501,7 +503,7 @@ public:
 	}
 
 private:
-	ImFontFace* FindFace(u8 inSize, bool bBold = false, bool bItalic = false) {
+	ImFontFace* FindFace(uint8_t inSize, bool bBold = false, bool bItalic = false) {
 		const auto key = FontKey(inSize, bBold, bItalic);
 		auto it = m_Faces.find(key);
 
@@ -511,7 +513,7 @@ private:
 		return nullptr;
 	}
 
-	const ImFontFace* FindFace(u8 inSize, bool bBold = false, bool bItalic = false) const {
+	const ImFontFace* FindFace(uint8_t inSize, bool bBold = false, bool bItalic = false) const {
 		const auto key = FontKey(inSize, bBold, bItalic);
 		auto it = m_Faces.find(key);
 
@@ -532,7 +534,7 @@ private:
 	DEFINE_ENUM_FLAGS_OPERATORS_FRIEND(Flags)
 
 private:
-	Path m_Filepath;
+	std::filesystem::path m_Filepath;
 	Flags m_Flags;
 	// Contains image with all glyphs used for rendering
 	ImFontAtlas m_FontAtlas;
@@ -549,6 +551,6 @@ Font* ui::Font::FromInternal() {
 	return new ImGuiFont("");
 }
 
-Font* ui::Font::FromFile(const Path& inFilepath) {
+Font* ui::Font::FromFile(const std::filesystem::path& inFilepath) {
 	return new ImGuiFont(inFilepath);
 }

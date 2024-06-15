@@ -1,9 +1,12 @@
 #pragma once
-#include "runtime/core.h"
-#include "runtime/time_utils.h"
+#include "runtime/common.h"
+#include "runtime/util.h"
 #include "runtime/threading.h"
 
-using TaskID = u64;
+#include <functional>
+#include <source_location>
+
+using TaskID = uint64_t;
 
 
 
@@ -144,7 +147,7 @@ public:
         requires IsValidCallable<Func, Args...> && IsArgumentsValid<Args...>
     static Task Bind(std::source_location location, Func&& func, Args&&... args) {
         auto out = Task(std::forward<Func>(func), std::forward<Args>(args)...);
-        out.metaInfo_.id = math::RandomInteger<u64>();
+        out.metaInfo_.id = math::RandomInteger<uint64_t>();
         out.metaInfo_.location = location;
         out.metaInfo_.postedThread = Thread::GetCurrentThreadName();
         out.metaInfo_.timePoint = TimePoint::Now();
@@ -158,7 +161,7 @@ public:
     Task(std::source_location location, Func&& func) 
         : callback_(std::move(func))
         , metaInfo_{
-            .id = math::RandomInteger<u64>(),
+            .id = math::RandomInteger<uint64_t>(),
             .timePoint = TimePoint::Now(),
             .location = location,
             .postedThread = Thread::GetCurrentThreadName(),

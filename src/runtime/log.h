@@ -1,15 +1,10 @@
 #pragma once
 #include <string>
-#include <mutex>
-#include <map>
 #include <chrono>
-#include <iostream>
-
-#include "types.h"
 
 namespace logging {
 
-enum class Level: u8 {
+enum class Level: uint8_t {
 	NoLogging = 0,
 	Fatal,
 	Error,
@@ -39,8 +34,8 @@ struct Record {
 	Level            level;
 	std::string_view file;
 	std::string_view func;
-	u32              line;
-	u32              frameNum;
+	uint32_t         line;
+	uint32_t         frameNum;
 	time_point       timePoint;
 	std::string      message;
 	// TODO add thread id
@@ -57,7 +52,7 @@ void DoLog(Record&& record);
 // TODO: Disable during test
 template<typename... ArgTypes>
 inline void Logf(std::string_view                      file,
- 				 u32                                   line,
+ 				 uint32_t                              line,
 				 std::string_view                      func,
 				 Level                                 level,
 				 const std::format_string<ArgTypes...> fmt,
@@ -78,8 +73,12 @@ inline void Logf(std::string_view                      file,
 
 #define LOGF(level, fmt, ...) logging::Logf(__FILE__, __LINE__, __FUNCTION__, logging::Level::##level, fmt, __VA_ARGS__);
 
+namespace internal {
+void PrintString(const std::string& str);
+}
+
 // Simple formatter cout print
 template<class ...Types>
-inline void Printf(const std::format_string<Types...> fmt, Types&& ...args) {
-	std::cout << std::format(fmt, std::forward<Types>(args)...) << '\n';
+inline void Println(const std::format_string<Types...> fmt, Types&& ...args) {
+	internal::PrintString(std::format(fmt, std::forward<Types>(args)...));
 }

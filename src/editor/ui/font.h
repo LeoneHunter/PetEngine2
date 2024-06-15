@@ -1,7 +1,8 @@
 #pragma once
 #include "runtime/image.h"
-#include "runtime/types.h"
 #include "runtime/math_util.h"
+
+#include <filesystem>
 
 struct ImFont;
 struct ImFontAtlas;
@@ -22,7 +23,7 @@ namespace ui {
 class Font {
 public:
 	static Font* FromInternal();
-	static Font* FromFile(const Path& inFilepath);
+	static Font* FromFile(const std::filesystem::path& inFilepath);
 
 	/**
 	 * Font slice parameters needed for rendering
@@ -41,9 +42,9 @@ public:
 		// For now ImGuiGlyph
 		// Used in rendering
 		struct Glyph {
-			u32 Colored : 1;
-			u32 Visible : 1;
-			u32 Codepoint : 30;
+			uint32_t Colored : 1;
+			uint32_t Visible : 1;
+			uint32_t Codepoint : 30;
 			float AdvanceX;
 			float X0, Y0, X1, Y1;
 			float U0, V0, U1, V1;
@@ -75,7 +76,7 @@ public:
 	virtual ~Font() = default;
 
 	// Rasterize this font into a new face with different parameters
-	virtual bool RasterizeFace(u8 inSize, bool bBold = false, bool bItalic = false) = 0;
+	virtual bool RasterizeFace(uint8_t inSize, bool bBold = false, bool bItalic = false) = 0;
 	virtual bool NeedsRebuild() const = 0;
 
 	// Build internal font data and stores it inside the Image
@@ -83,9 +84,9 @@ public:
 	virtual void SetAtlasTexture(void* inTextureHandle) = 0;
 	virtual void* GetAtlasTexture() const = 0;
 
-	virtual const Face* GetFace(u8 inSize, bool bBold = false, bool bItalic = false) const = 0;
+	virtual const Face* GetFace(uint8_t inSize, bool bBold = false, bool bItalic = false) const = 0;
 
-	virtual float2 CalculateTextSize(const std::string_view& inText, u8 inFontSize, bool bBold = false, bool bItalic = false, float inMaxTextWidth = FLT_MAX, float inWrapWidth = 0.f) const = 0;
-	virtual float2 CalculateTextSize(const std::wstring_view& inText, u8 inFontSize, bool bBold = false, bool bItalic = false, float inMaxTextWidth = FLT_MAX, float inWrapWidth = 0.f) const = 0;
+	virtual float2 CalculateTextSize(const std::string_view& inText, uint8_t inFontSize, bool bBold = false, bool bItalic = false, float inMaxTextWidth = FLT_MAX, float inWrapWidth = 0.f) const = 0;
+	virtual float2 CalculateTextSize(const std::wstring_view& inText, uint8_t inFontSize, bool bBold = false, bool bItalic = false, float inMaxTextWidth = FLT_MAX, float inWrapWidth = 0.f) const = 0;
 };
 }  // namespace ui

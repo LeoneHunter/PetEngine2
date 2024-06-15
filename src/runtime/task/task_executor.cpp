@@ -142,22 +142,19 @@ ThreadPool& ThreadPool::GetDefault() {
 }
 
 ThreadPool::ThreadPool(std::unique_ptr<TaskExecutor>&& executor,
-                       u64                             threadNum,
-                       const std::string&              threadNamePrefix)
-    : executor_(std::move(executor))
-    , namePrefix_(threadNamePrefix)
-    , threadNum_(threadNum) {
+                       uint64_t threadNum,
+                       const std::string& threadNamePrefix)
+    : executor_(std::move(executor)),
+      namePrefix_(threadNamePrefix),
+      threadNum_(threadNum) {
     Assert(executor_);
     if(threadNum_ == kThreadNumAuto) {
         threadNum_ = std::thread::hardware_concurrency();
     }
 }
 
-ThreadPool::ThreadPool(u64                threadNum,
-                       const std::string& threadNamePrefix)
-    : executor_()
-    , namePrefix_(threadNamePrefix)
-    , threadNum_(threadNum) {
+ThreadPool::ThreadPool(uint64_t threadNum, const std::string& threadNamePrefix)
+    : executor_(), namePrefix_(threadNamePrefix), threadNum_(threadNum) {
     if(threadNum_ == kThreadNumAuto) {
         threadNum_ = std::thread::hardware_concurrency();
     }
@@ -167,7 +164,7 @@ ThreadPool::ThreadPool(u64                threadNum,
 
 void ThreadPool::Start() {
     threadsStartedEvent_ = std::make_unique<std::latch>(threadNum_);
-    for(u32 i = 0; i < threadNum_; ++i) {
+    for(uint32_t i = 0; i < threadNum_; ++i) {
         std::string threadName = std::format("{} {}", namePrefix_, i);
         threads_.emplace_back(std::make_unique<Thread>(this, threadName));
         threads_.back()->Start();

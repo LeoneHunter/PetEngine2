@@ -1,9 +1,11 @@
 #include <iostream>
 #include <ranges>
 
-#include "runtime/core/types.h"
-#include "runtime/system/job_dispatcher.h"
 #include "editor/ui/ui.h"
+#include "runtime/win_minimal.h"
+#include "runtime/threading.h"
+#include "runtime/rtti.h"
+
 
 using namespace ui;
 ui::Application* g_Application = nullptr;
@@ -294,7 +296,7 @@ public:
 		StringID		 state;
 		FilesystemView*  parent;
 		std::path        filename;
-		std::vector<u64> childrenIndices;
+		std::vector<uint64_t> childrenIndices;
 	};
 
 	void SetRootDirectory(const std::path& dir) {
@@ -449,15 +451,9 @@ void BuildTestWidgets() {
 	g_Application->Parent(StatefulWidget::New(app));
 }
 
-}
+} // namespace test_focus
 
-
-int main(int argc, char* argv[]) {
-	const auto commandLine = std::vector<std::string>(argv, argv + argc);
-	const auto workingDir = std::path(commandLine[0]).parent_path();
-	logging::Init(workingDir.string());
-	logging::SetLevel(logging::Level::All);
-
+void RunUI() {
 	g_Application = Application::Create("App", 1800, 900);
 	SetDarkTheme(g_Application->GetTheme());
 
@@ -465,5 +461,17 @@ int main(int argc, char* argv[]) {
 	g_Application->Parent(StatefulWidget::New(app.get()));
 	// test_focus::BuildTestWidgets();
 
-	while(g_Application->Tick());
+	g_Application->Run();
+}
+
+
+int main(int argc, char* argv[]) {
+	CommandLine::Set(argc, argv);
+	windows::SetConsoleCodepageUtf8();
+	Thread::SetCurrentThreadName("Main Thread");
+
+	logging::Init(CommandLine::GetWorkingDir().string());
+	logging::SetLevel(logging::Level::All);
+
+	RunUI();
 }

@@ -1,11 +1,10 @@
 #pragma once
 #include <string>
-#include <assert.h>
 #include <chrono>
+#include <filesystem>
 
-#include "types.h"
+#include <assert.h>
 #include "math_util.h"
-
 
 constexpr Vec4 HashColorToVec4(std::string_view inHexCode) {
 	assert(!inHexCode.empty() && inHexCode.starts_with('#') && (inHexCode.size() == 7 || inHexCode.size() == 9));
@@ -108,10 +107,10 @@ public:
 	}
 
 	constexpr ColorU32(float R, float G, float B, float A): rgb() {
-		rgb = ((u32)F32toInt8(R)) << BitOffsets::R;
-		rgb |= ((u32)F32toInt8(G)) << BitOffsets::G;
-		rgb |= ((u32)F32toInt8(B)) << BitOffsets::B;
-		rgb |= ((u32)F32toInt8(A)) << BitOffsets::A;
+		rgb = ((uint32_t)F32toInt8(R)) << BitOffsets::R;
+		rgb |= ((uint32_t)F32toInt8(G)) << BitOffsets::G;
+		rgb |= ((uint32_t)F32toInt8(B)) << BitOffsets::B;
+		rgb |= ((uint32_t)F32toInt8(A)) << BitOffsets::A;
 	}
 
 	constexpr ColorU32(): rgb(0xff) {}
@@ -139,18 +138,18 @@ public:
 	}
 
 	constexpr float GetComponentAsFloat(BitOffsets inComponent) const {
-		return (float)((rgb >> inComponent) & (u8)0xff) / 255.f;
+		return (float)((rgb >> inComponent) & (uint8_t)0xff) / 255.f;
 	}
 
 	constexpr void SetComponent(BitOffsets inComponent, float inValue) {
-		rgb &= ~((u8)0xff << inComponent);
-		rgb |= ((u32)F32toInt8(inValue)) << inComponent;
+		rgb &= ~((uint8_t)0xff << inComponent);
+		rgb |= ((uint32_t)F32toInt8(inValue)) << inComponent;
 	}
 
-	constexpr operator u32() const { return rgb; }
+	constexpr operator uint32_t() const { return rgb; }
 
 private:
-	u32 rgb;
+	uint32_t rgb;
 };
 
 /**
@@ -200,64 +199,62 @@ struct ColorFloat4 {
 
 namespace util {
 
-	
-
-
 	/*
 	* Helper to create string of serialized data
 	*/
 	class StringBuilder {
 	public:
 
-		StringBuilder(std::string* inBuffer, u32 inIndentSize = 2)
+		constexpr StringBuilder(std::string* inBuffer, uint32_t inIndentSize = 2)
 			: buffer_(inBuffer)
 			, indent_(0)
 			, indentSize_(inIndentSize)
 		{}
 
-		template <typename... ArgTypes>
-		StringBuilder& Line(const std::format_string<ArgTypes...> inFormat, ArgTypes&&... inArgs) {
-			AppendIndent();
+        template <typename... ArgTypes>
+        constexpr StringBuilder& Line(const std::format_string<ArgTypes...> inFormat,
+            						  ArgTypes&&... inArgs) {
+            AppendIndent();
 			buffer_->append(std::format(inFormat, std::forward<ArgTypes>(inArgs)...));
 			EndLine();
 			return *this;
-		}
+        }
 
-		StringBuilder& Line(std::string_view inStr) {
+        constexpr StringBuilder& Line(std::string_view inStr) {
 			AppendIndent();
 			buffer_->append(inStr);
 			EndLine();
 			return *this;
 		}
 
-		StringBuilder& Line() {
+		constexpr StringBuilder& Line() {
 			EndLine();
 			return *this;
 		}
 
-		StringBuilder& SetIndent(u32 inIndent = 1) {
+		constexpr StringBuilder& SetIndent(uint32_t inIndent = 1) {
 			indent_ = inIndent;
 			return *this;
 		}
 
-		StringBuilder& PushIndent(u32 inIndent = 1) {
+		constexpr StringBuilder& PushIndent(uint32_t inIndent = 1) {
 			indent_ += inIndent;
 			return *this;
 		}
 
-		StringBuilder& PopIndent(u32 inIndent = 1) {
+		constexpr StringBuilder& PopIndent(uint32_t inIndent = 1) {
 			if(indent_) indent_ -= inIndent;
 			return *this;
 		}
 
-		StringBuilder& EndLine() {
+		constexpr StringBuilder& EndLine() {
 			buffer_->append("\n");
 			return *this;
 		}
 
 	private:
 
-		void AppendIndent() {
+		constexpr void AppendIndent() {
 			if(!indent_) return;
 			for(auto i = indent_ * indentSize_; i; --i) {
 				buffer_->append(" ");
@@ -265,8 +262,8 @@ namespace util {
 		}
 
 	private:
-		u32			 indentSize_;
-		u32			 indent_;
+		uint32_t			 indentSize_;
+		uint32_t			 indent_;
 		std::string* buffer_;
 	};
 
@@ -324,7 +321,7 @@ namespace util {
 			return !bDestructed;
 		}
 
-		u64  Weaks = 0;
+		uint64_t  Weaks = 0;
 		bool bDestructed = false;
 	};
 
@@ -440,3 +437,569 @@ namespace util {
 }
 
 using util::WeakPtr;
+
+
+template<class T>
+concept CanBeRefCounted = requires (T* ptr) {
+	ptr->AddRef();
+	ptr->Release();
+};
+
+// Calls AddRef() and Release()
+// Similar to boost::intrusive_ptr
+template<class T>
+	requires CanBeRefCounted<T>
+class RefCountedPtr {
+public:
+
+	template<class U>
+		requires CanBeRefCounted<U>
+	friend class RefCountedPtr;
+
+	constexpr RefCountedPtr() : ptr(nullptr) {}
+
+    constexpr RefCountedPtr(nullptr_t) {}
+
+	explicit RefCountedPtr(T* ptr) {
+		this->ptr = ptr;
+		if(ptr) {
+			ptr->AddRef();
+		}
+	}
+
+	RefCountedPtr(const RefCountedPtr& rhs) {
+        ptr = rhs.ptr;
+		if(ptr) {
+			ptr->AddRef();
+		}
+	}
+
+	template<typename Other>
+		requires std::convertible_to<Other*, T*>
+	RefCountedPtr(const RefCountedPtr<Other>& rhs) {
+        ptr = rhs.ptr;
+		if(ptr) {
+			ptr->AddRef();
+		}
+	}
+
+	RefCountedPtr(RefCountedPtr&& rhs) {
+		ptr = rhs.ptr;
+		rhs.ptr = nullptr;
+	}
+
+	template<typename Other>
+		requires std::convertible_to<Other*, T*>
+	explicit RefCountedPtr(RefCountedPtr<Other>&& rhs) {
+		ptr = rhs.ptr;
+		rhs.ptr = nullptr;
+	}
+
+	~RefCountedPtr() {
+		if(ptr) {
+			ptr->Release();
+		}
+	}
+
+	RefCountedPtr& operator=(T* rhs) {
+		if (ptr != rhs) {
+			T* old = ptr;
+			ptr = rhs;
+			if (ptr) {
+				ptr->AddRef();
+			}
+			if (old) {
+				old->Release();
+			}
+		}
+		return *this;
+	}
+
+	RefCountedPtr& operator=(const RefCountedPtr& rhs) {
+        RefCountedPtr(rhs).Swap(*this);
+        return *this;
+	}
+
+	template<typename Other>
+		requires std::convertible_to<Other*, T*>
+	RefCountedPtr& operator=(const RefCountedPtr<Other>& rhs) {
+        RefCountedPtr(rhs).Swap(*this);
+        return *this;
+	}
+
+	RefCountedPtr& operator=(RefCountedPtr&& rhs) {
+        RefCountedPtr(std::move(rhs)).Swap(*this);
+        return *this;
+	}
+
+	template<typename Other>
+		requires std::convertible_to<Other*, T*>
+	RefCountedPtr& operator=(RefCountedPtr<Other>&& rhs) {
+        RefCountedPtr(std::move(rhs)).Swap(*this);
+        return *this;
+	}
+
+	constexpr T* operator->() const { return ptr; }
+
+	constexpr operator T() const { return ptr; }
+
+	constexpr T* Get() const { return ptr; }
+
+	constexpr operator bool() const { return !!ptr; }
+
+	// For windows IID_PPV
+	constexpr T** operator& () { return &ptr; }
+
+	void Swap(RefCountedPtr& rhs) { std::swap(ptr, rhs.ptr); }
+
+private:
+	T* ptr;
+};
+
+template<class T1, class T2>
+constexpr bool operator==(const RefCountedPtr<T1>& left, const RefCountedPtr<T2>& right) {
+    return left.Get() == right.Get();
+}
+
+template <class T1, class T2>
+constexpr std::strong_ordering operator<=>(const RefCountedPtr<T1>& left, const RefCountedPtr<T2>& right) {
+    return left.Get() <=> right.Get();
+}
+
+
+
+
+template<class T>
+concept IsListNode = requires(T node) {
+    { node.next } -> std::convertible_to<T*>;
+};
+
+template <class T>
+concept IsDListNode = IsListNode<T> && requires(T node) {
+    { node.prev } -> std::convertible_to<T*>;
+};
+
+
+template<class T>
+    requires IsListNode<T>
+constexpr void ListPush(T*& head, T* node) {
+    node->next = head;
+    head = node;
+}
+
+template<class T>
+    requires IsListNode<T>
+constexpr T* ListPop(T*& head) {
+	if(!head) {
+		return nullptr;
+	}
+    T* pop = head;
+    head = head->next;
+    pop->next = nullptr;
+	return pop;
+}
+
+
+template<class T>
+    requires IsListNode<T>
+constexpr void ListDelete(T*& head) {
+	while(T* node = ListPop(head)) {
+		delete node;
+	}
+}
+
+template<class T>
+    requires IsListNode<T>
+constexpr bool ListContains(T* head, T* entry) {
+	for(T* node = head; node; node = node->next) {
+		if(node == entry) {
+			return true;
+		}
+	}
+	return false;
+}
+
+template<class T>
+    requires IsListNode<T>
+constexpr size_t ListSize(T* head) {
+	size_t out = 0;
+	for(T* node = head; node; node = node->next) {
+		++out;
+	}
+	return out;
+}
+
+// Remove a node from double linked list
+template<class T>
+    requires IsDListNode<T>
+constexpr void DListRemove(T*& head, T* node) {
+    if(node->prev) {
+        node->prev->next = node->next;
+    }
+    if(node->next) {
+        node->next->prev = node->prev;
+    }
+    if(head == node) {
+        head = node->next;
+    }
+    node->next = nullptr;
+    node->prev = nullptr;
+}
+
+template<class T>
+    requires IsDListNode<T>
+constexpr void DListPush(T*& head, T* node) {
+    node->next = head;
+	if(head) {
+		head->prev = node;
+	}
+    head = node;
+}
+
+template<class T>
+    requires IsDListNode<T>
+constexpr T* DListPop(T*& head) {
+	if(!head) {
+		return nullptr;
+	}
+    T* oldHead = head;
+    head = head->next;
+	if(head) {
+		head->prev = nullptr;
+	}
+    oldHead->next = nullptr;
+	return oldHead;
+}
+
+template<class T>
+    requires IsListNode<T>
+constexpr auto ListIterate(T* node) {
+
+	struct ListIterator {
+
+		constexpr ListIterator(T* node): node(node) {}
+
+		struct iterator {
+
+			constexpr iterator() = default;
+			
+			constexpr iterator(T* node): node(node) {}
+
+			constexpr iterator& operator++() { 
+				node = node->next;
+				return *this;
+			}
+
+			constexpr iterator operator++(int) {
+				iterator tmp = *this;
+				this->operator++();
+				return tmp;
+			}
+
+			constexpr T* operator*() const {
+				return node;
+			}
+
+			constexpr T* operator->() const {
+				return node;
+			}
+
+			constexpr bool operator==(const iterator& right) const {
+				return node == right.node;
+			}
+
+			T* node = nullptr;
+		};
+
+		iterator begin() { return {node}; }
+		iterator end() { return {}; }
+
+		T* node = nullptr;
+	};
+
+	return ListIterator{node};
+}
+
+
+// Simple pooled allocator
+// Manages a collection of pages with each page containing kPageSize slots
+// Object's destructors are not called so they should be trivial types
+template<size_t kSlotSize, size_t kPageSize>
+class PooledAllocator {
+public:
+    // Also used as a sentinel index if no more free slots
+    static constexpr size_t kSlotsPerPage = kPageSize;
+    // Align Page to the power of two
+	// Should be larger than Page::slots array
+    static constexpr size_t kPageAlignment = std::bit_ceil(kSlotSize * kSlotsPerPage);
+
+public:
+
+    constexpr PooledAllocator() {
+        activePagesHead_ = new Page();
+    }
+
+    constexpr ~PooledAllocator() {
+		ListDelete(activePagesHead_);
+		ListDelete(fullPagesHead_);
+        if(emptyPage_) {
+            delete emptyPage_;
+        }
+    }
+
+    PooledAllocator(const PooledAllocator&) = delete;
+    PooledAllocator& operator=(const PooledAllocator&) = delete;
+
+    PooledAllocator(PooledAllocator&&) = delete;
+    PooledAllocator& operator=(PooledAllocator&&) = delete;
+
+    constexpr void* Allocate() {
+        Page* activePage = GetActive();
+        if(!activePage) {
+			if(!emptyPage_) {
+	            activePage = new Page();
+			} else {
+				activePage = emptyPage_;
+				emptyPage_ = nullptr;
+			}
+            ListPush(activePagesHead_, activePage);
+        }
+        void* out = activePage->Allocate();
+        if(activePage->Full()) {
+            DListRemove(activePagesHead_, activePage);
+            ListPush(fullPagesHead_, activePage);
+        }
+        return out;
+    }
+
+    constexpr void Free(void* object) {
+        Page* page = Page::FromObject(object);
+        const bool wasFull = page->Full();
+        page->Free(object);
+
+        if(wasFull) {
+            DListRemove(fullPagesHead_, page);
+            ListPush(activePagesHead_, page);
+
+        } else if(page->Empty()) {
+            if(emptyPage_) {
+                delete emptyPage_;
+            }
+            emptyPage_ = page;
+            DListRemove(activePagesHead_, page);
+        }
+    }
+
+private:
+
+    struct alignas(kPageAlignment) Page {
+
+        union Slot {
+            size_t next;
+			char   mem[kSlotSize]{};
+        };
+
+        Slot        slots[kSlotsPerPage]{};
+        size_t      nextFreeSlot = 0;
+        size_t      freeSlotsNum = kSlotsPerPage;
+
+        Page*       next = nullptr;
+        Page*       prev = nullptr;
+
+        // For xor validation
+        uintptr_t   self = 0;
+
+        static constexpr Page* FromObject(void* object) {
+            const uintptr_t pagePtr = AlignDown((size_t)object, kPageAlignment);
+            Page* page = reinterpret_cast<Page*>(pagePtr);
+            Assert((pagePtr ^ page->self) == 0);
+            return page;
+        }
+
+        constexpr Page() {
+            for(size_t i = 0; i < kSlotsPerPage; ++i) {
+                slots[i].next = EncodeNext(i + 1);
+            }
+            self = reinterpret_cast<uintptr_t>(this);
+        }
+
+        constexpr void Free(void* object) {
+            const ptrdiff_t slotIndex = reinterpret_cast<Slot*>(object) - slots;
+            Assert(slotIndex < kSlotsPerPage && slotIndex >= 0);
+            Slot& slot = slots[slotIndex];
+			Assertf(DecodeNext(slot.next) > kSlotsPerPage,
+					"Next slot index encoded into the slot is inside the valid range. "
+					"Could be a double free");
+            slot.next = EncodeNext(nextFreeSlot);
+            nextFreeSlot = slotIndex;
+            ++freeSlotsNum;
+        }
+
+        constexpr void* Allocate() {
+            if(nextFreeSlot == kSlotsPerPage) {
+                return nullptr;
+            }
+			Slot& slot = slots[nextFreeSlot];
+            nextFreeSlot = DecodeNext(slot.next);
+			Assertf(nextFreeSlot <= kSlotsPerPage, 
+				  "Next slot index out of range. Could be use-after-free");
+			slot.next = 0;
+            --freeSlotsNum;
+            return &slot;
+        }
+
+        constexpr bool Full() const { 
+            return nextFreeSlot == kSlotsPerPage;
+        }
+
+        constexpr bool Empty() const {
+            return freeSlotsNum == kSlotsPerPage;
+        }
+		
+	private:
+		// For validation
+		static constexpr uint32_t kFreeIndexOffset = 0xABCDEFEDU;
+
+		constexpr size_t EncodeNext(size_t index) {
+			return index + kFreeIndexOffset;
+		}
+
+		constexpr size_t DecodeNext(size_t index) {
+			return index - kFreeIndexOffset;
+		}
+    };
+
+    constexpr Page* GetActive() {
+        return activePagesHead_;
+    }
+
+private:
+    Page* activePagesHead_ = nullptr;
+    Page* fullPagesHead_ = nullptr;
+    Page* emptyPage_ = nullptr;
+};
+
+
+
+class CommandLine {
+public:
+
+	static void Set(int argc, char* argv[]) {
+		args_ = {argv, argv + argc};
+	}
+
+	static std::filesystem::path GetWorkingDir() {
+		Assert(!args_.empty());
+		return std::filesystem::path(args_.front()).parent_path();
+	}
+
+private:
+	static inline std::vector<std::string> args_;
+};
+
+
+class Duration {
+public:
+    using duration_type = std::chrono::nanoseconds;
+
+    Duration() = default;
+
+    Duration(std::chrono::nanoseconds ns)
+        : nanos(ns)
+    {}
+
+    static Duration Seconds(float secs) {
+        Duration out;
+        out.nanos = std::chrono::nanoseconds(static_cast<uint64_t>(secs * 1e9));
+        return out;
+    }
+    
+    static Duration Millis(float millis) {
+        Duration out;
+        out.nanos = std::chrono::nanoseconds(static_cast<uint64_t>(millis * 1e6));
+        return out;
+    }
+
+    static Duration Micros(float micros) {
+        Duration out;
+        out.nanos = std::chrono::nanoseconds(static_cast<uint64_t>(micros * 1e6));
+        return out;
+    }
+
+    std::chrono::microseconds ToMicros() const {
+        return std::chrono::duration_cast<std::chrono::microseconds>(nanos);
+    }
+
+    std::chrono::microseconds ToMillis() const {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(nanos);
+    }
+
+    std::chrono::microseconds ToSeconds() const {
+        return std::chrono::duration_cast<std::chrono::seconds>(nanos);
+    }
+
+    float ToMicrosFloat() const {
+        return nanos.count() / 1000.f;
+    }
+
+    float ToMillisFloat() const {
+        return nanos.count() / 1'000'000.f;
+    }
+
+    float ToSecondsFloat() const {
+        return nanos.count() / 1'000'000'000.f;
+    }
+
+private:
+    duration_type nanos;
+};
+
+class TimePoint {
+public:
+
+    static TimePoint Now() { 
+        TimePoint out;
+        out.timePoint_ = std::chrono::high_resolution_clock::now();
+        return out;
+    }
+
+    friend Duration operator-(const TimePoint& lhs, const TimePoint& rhs) {
+        return {lhs.timePoint_ - rhs.timePoint_};
+    }
+
+private:
+    std::chrono::high_resolution_clock::time_point timePoint_ = {};
+};
+
+/*
+* Simple timer
+* Wrapper around std::chrono
+*/
+template<typename T = std::chrono::milliseconds>
+struct Timer {
+
+    using value_type = std::chrono::milliseconds;
+
+    Timer()
+        : SetPointDuration(0)
+        , StartTimePoint()
+    {}
+            
+    void Reset(uint32_t inValue) {
+        SetPointDuration = value_type(inValue);
+        StartTimePoint = std::chrono::high_resolution_clock::now();
+    }
+
+    bool IsTicking() const { return SetPointDuration.count() != 0; }
+
+    bool IsReady() const { 
+        return IsTicking() ? 
+            std::chrono::duration_cast<value_type>(std::chrono::high_resolution_clock::now() - StartTimePoint) >= SetPointDuration : 
+            false;
+    }
+
+    void Clear() { SetPointDuration = value_type(0); }
+
+    value_type SetPointDuration;
+    std::chrono::high_resolution_clock::time_point StartTimePoint;
+};

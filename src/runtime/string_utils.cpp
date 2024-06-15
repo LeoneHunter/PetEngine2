@@ -1,9 +1,11 @@
-#include "string_id.h"
-#include "core.h"
+#include "string_utils.h"
+#include "common.h"
 #include "util.h"
 #include "threading.h"
 
-using int32 = s32;
+#include <map>
+
+using int32 = int32_t;
 
 #define check(a) Assert(a)
 
@@ -12,7 +14,7 @@ public:
 
 	// Reserve 0 index
 	StringPool() { 
-		m_StringPool.reserve(g_string_pool_size); 
+		m_StringPool.reserve(kStringPoolSize); 
 		m_StringPool.emplace_back(); 
 	}
 

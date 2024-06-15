@@ -115,3 +115,8 @@ void LogProc() {
 	}
 }
 }
+
+
+void internal::PrintString(const std::string& str) {
+	std::cerr << str << '\n';
+}

@@ -1,5 +1,5 @@
 #include "threading.h"
-#include "windows_platform.h"
+#include "win_minimal.h"
 #include "util.h"
 
 thread_local std::string currentThreadName;

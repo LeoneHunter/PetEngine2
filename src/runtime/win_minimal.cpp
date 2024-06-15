@@ -1,4 +1,4 @@
-#include "windows_platform.h"
+#include "win_minimal.h"
 #include <Windows.h>
 
 #undef max
@@ -25,7 +25,7 @@ namespace windows {
 		return ::GetCurrentFiber();
 	}
 
-	void Sleep(u32 inSleepTime) {
+	void Sleep(uint32_t inSleepTime) {
 		::Sleep(1);
 	}
 

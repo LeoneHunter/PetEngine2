@@ -1,5 +1,5 @@
 #include "ui_renderer.h"
-#include "core.h"
+#include "common.h"
 #include "editor/ui/font.h"
 
 #include <d3d12.h>
@@ -7,6 +7,7 @@
 #include <tchar.h>
 
 #include <random>
+#include <map>
 #include <stack>
 
 #ifdef _DEBUG
@@ -35,9 +36,9 @@
 
 
 
-using uint8 = u8;
-using uint32 = u32;
-using uint64 = u64;
+using uint8 = uint8_t;
+using uint32 = uint32_t;
+using uint64 = uint64_t;
 
 #define check(hResult) Assertf(!FAILED(hResult), "HRESULT failed")
 #define checkhr(hResult) Assertf(!FAILED(hResult), "HRESULT failed")
@@ -133,7 +134,7 @@ public:
 		m_ImDrawList->AddRectFilled(inMin += ErrorOffset, inMax += ErrorOffset, ErrorColor1);
 	}
 
-	void DrawRect(const Rect& inRect, ColorU32 inColor, u8 inRounding, Corner inCornerMask, float inThickness) final {
+	void DrawRect(const Rect& inRect, ColorU32 inColor, uint8_t inRounding, Corner inCornerMask, float inThickness) final {
 
 		if(inRect.Size().x <= 0 || inRect.Size().y <= 0) {
 			return DrawErrorRect(inRect.min, inRect.max);
@@ -161,11 +162,11 @@ public:
 		m_ImDrawList->AddRect(min, max, inColor.MultiplyAlpha(m_Alpha), (float)inRounding, cornerMask, inThickness);
 	}
 	
-	void DrawRectFilled(const Rect& inRect, ColorU32 inColor, u8 inRounding, Corner inCornerMask) final {
+	void DrawRectFilled(const Rect& inRect, ColorU32 inColor, uint8_t inRounding, Corner inCornerMask) final {
 		DrawRectFilled(inRect.min, inRect.max, inColor, inRounding, inCornerMask);
 	}
 
-	void DrawRectFilled(float2 inMin, float2 inMax, ColorU32 inColor, u8 inRounding, Corner inCornerMask) final {
+	void DrawRectFilled(float2 inMin, float2 inMax, ColorU32 inColor, uint8_t inRounding, Corner inCornerMask) final {
 		const float2 size = inMax - inMin;
 
 		if(size.x <= 0 || size.y <= 0) {
@@ -194,11 +195,11 @@ public:
 		m_ImDrawList->AddRectFilled(min, max, inColor.MultiplyAlpha(m_Alpha), (float)inRounding, cornerMask);
 	}
 
-	void DrawText(const float2& inPos, ColorU32 inColor, const std::string_view& inText, u8 inFontSize, bool bBold, bool bItalic)  final {
+	void DrawText(const float2& inPos, ColorU32 inColor, const std::string_view& inText, uint8_t inFontSize, bool bBold, bool bItalic)  final {
 		DrawTextExt<char>(inPos, inColor, inText, inFontSize, bBold, bItalic);
 	}
 
-	void DrawText(const float2& inMin, ColorU32 inColor, const std::wstring_view& inText, u8 inFontSize, bool bBold, bool bItalic) final {
+	void DrawText(const float2& inMin, ColorU32 inColor, const std::wstring_view& inText, uint8_t inFontSize, bool bBold, bool bItalic) final {
 		DrawTextExt<wchar_t>(inMin, inColor, inText, inFontSize, bBold, bItalic);
 	}
 
@@ -224,7 +225,7 @@ public:
 		m_ImDrawList->PopClipRect();
 	}
 
-	void PushFont(const ui::Font* inFont, u8 inDefaultSize, bool bBold = false, bool bItalic = false) final {
+	void PushFont(const ui::Font* inFont, uint8_t inDefaultSize, bool bBold = false, bool bItalic = false) final {
 		const auto* face = inFont->GetFace(inDefaultSize, bBold, bItalic);
 		assert(face && "Pushing a font which is not rasterized");
 
@@ -658,7 +659,7 @@ public:
 
 		// Allocate descriptor heap for textures
 		{
-			D3D12_DESCRIPTOR_HEAP_DESC props;
+			D3D12_DESCRIPTOR_HEAP_DESC props{};
 			props.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 			props.NumDescriptors = 128;
 			props.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
@@ -715,13 +716,14 @@ public:
 		UINT backBufferIdx = g_pSwapChain->GetCurrentBackBufferIndex();
 		frameCtx->CommandAllocator->Reset();
 
-		D3D12_RESOURCE_BARRIER barrier = {};
+		D3D12_RESOURCE_BARRIER barrier{};
 		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 		barrier.Transition.pResource = g_mainRenderTargetResource[backBufferIdx];
 		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
 		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
 		g_pd3dCommandList->Reset(frameCtx->CommandAllocator, NULL);
 		g_pd3dCommandList->ResourceBarrier(1, &barrier);
 
@@ -729,6 +731,7 @@ public:
 		const float clear_color_with_alpha[4] = {clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w};
 		g_pd3dCommandList->ClearRenderTargetView(g_mainRenderTargetDescriptor[backBufferIdx], clear_color_with_alpha, 0, NULL);
 		g_pd3dCommandList->OMSetRenderTargets(1, &g_mainRenderTargetDescriptor[backBufferIdx], FALSE, NULL);
+
 		const auto ptr = m_DescriptorHeap_SRV.getNative();
 		g_pd3dCommandList->SetDescriptorHeaps(1, &ptr);
 
@@ -761,7 +764,7 @@ public:
 		WaitForLastSubmittedFrame();
 		CleanupRenderTarget();
 
-		DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
+		DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
 		auto hr = g_pSwapChain->GetDesc1(&swapChainDesc);
 		checkhr(hr);
 		//swapChainDesc.Scaling = DXGI_SCALING_ASPECT_RATIO_STRETCH;
@@ -783,14 +786,12 @@ public:
 		// Allocate a texture resource
 		ID3D12Resource* pTexture = nullptr;
 		{
-			D3D12_HEAP_PROPERTIES props;
-			memset(&props, 0, sizeof(D3D12_HEAP_PROPERTIES));
+			D3D12_HEAP_PROPERTIES props{};
 			props.Type = D3D12_HEAP_TYPE_DEFAULT;
 			props.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
 			props.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
 
-			D3D12_RESOURCE_DESC desc;
-			ZeroMemory(&desc, sizeof(desc));
+			D3D12_RESOURCE_DESC desc{};
 			desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 			desc.Alignment = 0;
 			desc.Width = inImage.Width;
@@ -808,14 +809,13 @@ public:
 		}
 
 		// Allocate an upload heap
-		D3D12_TEXTURE_COPY_LOCATION srcLocation = {};
+		D3D12_TEXTURE_COPY_LOCATION srcLocation{};
 		ID3D12Resource* uploadBuffer = nullptr;
 		{
 			UINT uploadPitch = (inImage.Width * 4 + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u) & ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u);
 			UINT uploadSize = (UINT)inImage.Height * uploadPitch;
 
-			D3D12_RESOURCE_DESC desc;
-			ZeroMemory(&desc, sizeof(desc));
+			D3D12_RESOURCE_DESC desc{};
 			desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
 			desc.Alignment = 0;
 			desc.Width = uploadSize;
@@ -828,15 +828,20 @@ public:
 			desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 			desc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
-			D3D12_HEAP_PROPERTIES props;
-			ZeroMemory(&props, sizeof(props));
+			D3D12_HEAP_PROPERTIES props{};
 			props.Type = D3D12_HEAP_TYPE_UPLOAD;
 			props.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
 			props.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
 
 			
-			HRESULT hr = g_pd3dDevice->CreateCommittedResource(&props, D3D12_HEAP_FLAG_NONE, &desc,
-															   D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(&uploadBuffer));
+			HRESULT hr = g_pd3dDevice->CreateCommittedResource(
+				&props, 
+				D3D12_HEAP_FLAG_NONE, 
+				&desc,
+				D3D12_RESOURCE_STATE_GENERIC_READ, 
+				NULL, 
+				IID_PPV_ARGS(&uploadBuffer)
+			);
 			IM_ASSERT(SUCCEEDED(hr));
 
 			// Copy texture data into the upload buffer
@@ -845,8 +850,14 @@ public:
 				D3D12_RANGE range = {0, uploadSize};
 				hr = uploadBuffer->Map(0, &range, &mapped);
 				IM_ASSERT(SUCCEEDED(hr));
-				for(int y = 0; y < inImage.Height; y++)
-					memcpy((void*)((uintptr_t)mapped + y * uploadPitch), inImage.Data.data() + y * inImage.Width * 4, inImage.Width * 4);
+
+				for(int y = 0; y < inImage.Height; y++) {
+					memcpy(
+						(void*)((uintptr_t)mapped + y * uploadPitch), 
+						inImage.Data.data() + y * inImage.Width * 4, 
+						inImage.Width * 4
+					);
+				}
 				uploadBuffer->Unmap(0, &range);
 				
 				srcLocation.pResource = uploadBuffer;
@@ -917,10 +928,9 @@ public:
 		uploadBuffer->Release();
 
 		// Create a texture view
-		Descriptor textureDescriptor;
+		Descriptor textureDescriptor{};
 		{
-			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
-			ZeroMemory(&srvDesc, sizeof(srvDesc));
+			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
 			srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 			srvDesc.Texture2D.MipLevels = 1;
@@ -947,9 +957,8 @@ private:
 
 	bool CreateDeviceD3D(HWND hWnd) {
 	// Setup swap chain
-		DXGI_SWAP_CHAIN_DESC1 sd;
+		DXGI_SWAP_CHAIN_DESC1 sd{};
 		{
-			ZeroMemory(&sd, sizeof(sd));
 			sd.BufferCount = NUM_BACK_BUFFERS;
 			sd.Width = 0;
 			sd.Height = 0;
@@ -1083,8 +1092,12 @@ private:
 	void CleanupRenderTarget() {
 		WaitForLastSubmittedFrame();
 
-		for(UINT i = 0; i < NUM_BACK_BUFFERS; i++)
-			if(g_mainRenderTargetResource[i]) { g_mainRenderTargetResource[i]->Release(); g_mainRenderTargetResource[i] = NULL; }
+		for(UINT i = 0; i < NUM_BACK_BUFFERS; i++) {
+			if(g_mainRenderTargetResource[i]) { 
+				g_mainRenderTargetResource[i]->Release(); 
+				g_mainRenderTargetResource[i] = nullptr; 
+			}
+		}
 	}
 
 	bool CreateRootSignature() {
@@ -1097,7 +1110,8 @@ private:
 		descRange.RegisterSpace = 0;
 		descRange.OffsetInDescriptorsFromTableStart = 0;
 
-		D3D12_ROOT_PARAMETER param[2] = {};
+		// D3D12_ROOT_PARAMETER param[2] = {};
+		std::array<D3D12_ROOT_PARAMETER, 2> param{};
 
 		param[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
 		param[0].Constants.ShaderRegister = 0;
@@ -1127,8 +1141,8 @@ private:
 		staticSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 		D3D12_ROOT_SIGNATURE_DESC desc = {};
-		desc.NumParameters = _countof(param);
-		desc.pParameters = param;
+		desc.NumParameters = static_cast<UINT>(param.size());
+		desc.pParameters = param.data();
 		desc.NumStaticSamplers = 1;
 		desc.pStaticSamplers = &staticSampler;
 		desc.Flags =
@@ -1180,8 +1194,7 @@ private:
 		//  2) use code to detect any version of the DLL and grab a pointer to D3DCompile from the DLL.
 		// See https://github.com/ocornut/imgui/pull/638 for sources and details.
 
-		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
-		memset(&psoDesc, 0, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
 		psoDesc.NodeMask = 1;
 		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 		psoDesc.pRootSignature = m_pRootSignature;
@@ -1356,7 +1369,7 @@ private:
 
 		// Setup orthographic projection matrix into our constant buffer
 		// Our visible imgui space lies from draw_data->DisplayPos (top left) to draw_data->DisplayPos+data_data->DisplaySize (bottom right).
-		VERTEX_CONSTANT_BUFFER vertex_constant_buffer;
+		VERTEX_CONSTANT_BUFFER vertex_constant_buffer{};
 		{
 			float L = draw_data->DisplayPos.x;
 			float R = draw_data->DisplayPos.x + draw_data->DisplaySize.x;
@@ -1364,17 +1377,16 @@ private:
 			float B = draw_data->DisplayPos.y + draw_data->DisplaySize.y;
 			float mvp[4][4] =
 			{
-				{ 2.0f / (R - L),   0.0f,           0.0f,       0.0f },
-				{ 0.0f,         2.0f / (T - B),     0.0f,       0.0f },
-				{ 0.0f,         0.0f,           0.5f,       0.0f },
-				{ (R + L) / (L - R),  (T + B) / (B - T),    0.5f,       1.0f },
+				{ 2.0f / (R - L),  		0.0f,           	0.0f,       0.0f },
+				{ 0.0f,         		2.0f / (T - B),     0.0f,       0.0f },
+				{ 0.0f,         		0.0f,           	0.5f,       0.0f },
+				{ (R + L) / (L - R),  	(T + B) / (B - T),  0.5f,       1.0f },
 			};
 			memcpy(&vertex_constant_buffer.mvp, mvp, sizeof(mvp));
 		}
 
 		// Setup viewport
-		D3D12_VIEWPORT vp;
-		memset(&vp, 0, sizeof(D3D12_VIEWPORT));
+		D3D12_VIEWPORT vp{};
 		vp.Width = draw_data->DisplaySize.x;
 		vp.Height = draw_data->DisplaySize.y;
 		vp.MinDepth = 0.0f;
@@ -1382,29 +1394,32 @@ private:
 		vp.TopLeftX = vp.TopLeftY = 0.0f;
 		ctx->RSSetViewports(1, &vp);
 
+		// State
+		ctx->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		ctx->SetPipelineState(m_pPipelineState);
+		ctx->SetGraphicsRootSignature(m_pRootSignature);
+		// Setup blend factor
+		const float blend_factor[4] = {0.f, 0.f, 0.f, 0.f};
+		ctx->OMSetBlendFactor(blend_factor);
+
+		// Arguments
 		// Bind shader and vertex buffers
 		unsigned int stride = sizeof(ImDrawVert);
 		unsigned int offset = 0;
-		D3D12_VERTEX_BUFFER_VIEW vbv;
-		memset(&vbv, 0, sizeof(D3D12_VERTEX_BUFFER_VIEW));
+
+		D3D12_VERTEX_BUFFER_VIEW vbv{};
 		vbv.BufferLocation = fr->VertexBuffer->GetGPUVirtualAddress() + offset;
 		vbv.SizeInBytes = fr->VertexBufferSize * stride;
 		vbv.StrideInBytes = stride;
 		ctx->IASetVertexBuffers(0, 1, &vbv);
-		D3D12_INDEX_BUFFER_VIEW ibv;
-		memset(&ibv, 0, sizeof(D3D12_INDEX_BUFFER_VIEW));
+
+		D3D12_INDEX_BUFFER_VIEW ibv{};
 		ibv.BufferLocation = fr->IndexBuffer->GetGPUVirtualAddress();
 		ibv.SizeInBytes = fr->IndexBufferSize * sizeof(ImDrawIdx);
 		ibv.Format = sizeof(ImDrawIdx) == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
 		ctx->IASetIndexBuffer(&ibv);
-		ctx->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		ctx->SetPipelineState(m_pPipelineState);
-		ctx->SetGraphicsRootSignature(m_pRootSignature);
-		ctx->SetGraphicsRoot32BitConstants(0, 16, &vertex_constant_buffer, 0);
 
-		// Setup blend factor
-		const float blend_factor[4] = {0.f, 0.f, 0.f, 0.f};
-		ctx->OMSetBlendFactor(blend_factor);
+		ctx->SetGraphicsRoot32BitConstants(0, 16, &vertex_constant_buffer, 0);
 	}
 
 	void RenderDrawData(ImDrawData* draw_data, ID3D12GraphicsCommandList* ctx) {
@@ -1428,13 +1443,13 @@ private:
 		if(fr->VertexBuffer == NULL || fr->VertexBufferSize < draw_data->TotalVtxCount) {
 			SafeRelease(fr->VertexBuffer);
 			fr->VertexBufferSize = draw_data->TotalVtxCount + 5000;
-			D3D12_HEAP_PROPERTIES props;
-			memset(&props, 0, sizeof(D3D12_HEAP_PROPERTIES));
+
+			D3D12_HEAP_PROPERTIES props{};
 			props.Type = D3D12_HEAP_TYPE_UPLOAD;
 			props.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
 			props.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-			D3D12_RESOURCE_DESC desc;
-			memset(&desc, 0, sizeof(D3D12_RESOURCE_DESC));
+
+			D3D12_RESOURCE_DESC desc{};
 			desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
 			desc.Width = fr->VertexBufferSize * sizeof(ImDrawVert);
 			desc.Height = 1;
@@ -1444,19 +1459,20 @@ private:
 			desc.SampleDesc.Count = 1;
 			desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 			desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
 			if(g_pd3dDevice->CreateCommittedResource(&props, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(&fr->VertexBuffer)) < 0)
 				return;
 		}
 		if(fr->IndexBuffer == NULL || fr->IndexBufferSize < draw_data->TotalIdxCount) {
 			SafeRelease(fr->IndexBuffer);
 			fr->IndexBufferSize = draw_data->TotalIdxCount + 10000;
-			D3D12_HEAP_PROPERTIES props;
-			memset(&props, 0, sizeof(D3D12_HEAP_PROPERTIES));
+
+			D3D12_HEAP_PROPERTIES props{};
 			props.Type = D3D12_HEAP_TYPE_UPLOAD;
 			props.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
 			props.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-			D3D12_RESOURCE_DESC desc;
-			memset(&desc, 0, sizeof(D3D12_RESOURCE_DESC));
+
+			D3D12_RESOURCE_DESC desc{};
 			desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
 			desc.Width = fr->IndexBufferSize * sizeof(ImDrawIdx);
 			desc.Height = 1;
@@ -1466,20 +1482,27 @@ private:
 			desc.SampleDesc.Count = 1;
 			desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 			desc.Flags = D3D12_RESOURCE_FLAG_NONE;
-			if(g_pd3dDevice->CreateCommittedResource(&props, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(&fr->IndexBuffer)) < 0)
-				return;
+
+			auto result = g_pd3dDevice->CreateCommittedResource(
+				&props, D3D12_HEAP_FLAG_NONE, 
+				&desc, 
+				D3D12_RESOURCE_STATE_GENERIC_READ, 
+				NULL, 
+				IID_PPV_ARGS(&fr->IndexBuffer)
+			);
+			Assert(SUCCEEDED(result));		
 		}
 
 		// Upload vertex/index data into a single contiguous GPU buffer
 		void* vtx_resource, * idx_resource;
-		D3D12_RANGE range;
-		memset(&range, 0, sizeof(D3D12_RANGE));
+		D3D12_RANGE range{};
 		if(fr->VertexBuffer->Map(0, &range, &vtx_resource) != S_OK)
 			return;
 		if(fr->IndexBuffer->Map(0, &range, &idx_resource) != S_OK)
 			return;
 		ImDrawVert* vtx_dst = (ImDrawVert*)vtx_resource;
 		ImDrawIdx* idx_dst = (ImDrawIdx*)idx_resource;
+
 		for(int n = 0; n < draw_data->CmdListsCount; n++) {
 			const ImDrawList* cmd_list = draw_data->CmdLists[n];
 			memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
