@@ -34,30 +34,27 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86|x86_64|AMD64|amd64|i386|i686")
 endif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86|x86_64|AMD64|amd64|i386|i686")
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-add_compile_options(/W3)
 
-# Find files on Configure
-file(GLOB_RECURSE FOUND_FILES
-  src/editor/*.cpp
-  src/editor/*.h
-  src/runtime/*.cpp
-  src/runtime/*.h
-  src/thirdparty/*.cpp
-  src/thirdparty/*.h
+add_compile_options(
+	/W4
+	# nonstandard extension used: nameless struct/union
+    /wd4201 
+	# confitional is always true. used in macros and loops
+	/wd4127 
+	# Unreferenced formal function parameter. used in interface declarations
+    /wd4100 
+	# Disable warning about alignment padding
+	/wd4324 
+	# local variable is initialized but not referenced
+    /wd4189 
+	# declaration of 'identifier' hides class member. 
+	# class members is suffixed with _ so this shouldn't be a problem
+	# detected in tests
+    /wd4458 
+	# declaration of 'identifier' hides local declaration
+    /wd4456
+	# unreachable code
+    /wd4702
 )
 
-# Files with "_test.*" go into test project
-# Other files into main project
-foreach(FILE ${FOUND_FILES})
-    get_filename_component(FILENAME "${FILE}" NAME_WLE)
-    string(FIND ${FILENAME} "_test" IS_TEST_FILE)
-
-    if(NOT ${IS_TEST_FILE} EQUAL -1)
-        set(TEST_FILES ${TEST_FILES} ${FILE})
-    else()
-        set(MAIN_FILES ${MAIN_FILES} ${FILE})
-    endif()
-endforeach()
-
 add_subdirectory(src)
-add_subdirectory(test)
