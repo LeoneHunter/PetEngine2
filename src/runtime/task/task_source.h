@@ -87,7 +87,7 @@ protected:
 
 private:
     Task TakeTask(Handle* handle) {
-        Assert(handle->taskSource_ == this);
+        DASSERT(handle->taskSource_ == this);
         return TakeTask();
     }
 
@@ -128,7 +128,7 @@ public:
                                 Callback&&                 callback,
                                 std::source_location       location = std::source_location::current()) {
 
-        Assertf(target, "Provided target EventLoop should not be empty");
+        DASSERT_F(target, "Provided target EventLoop should not be empty");
         using result_type = std::invoke_result_t<Func>;
 
         auto task = Task(
@@ -138,7 +138,7 @@ public:
              callback = std::move(callback),
              func     = std::move(func)]() mutable {
                 std::shared_ptr<EventLoop> current = EventLoop::GetForCurrentThread();
-                Assert(current);
+                DASSERT(current);
 
                 if constexpr(std::is_void_v<result_type>) {
                     std::invoke(std::move(func));
@@ -209,7 +209,7 @@ public:
     EventLoop(const EventLoop&) = delete;
     EventLoop& operator=(const EventLoop&) = delete;
     EventLoop() = default;
-    ~EventLoop() { Assert(!hasUser_); }
+    ~EventLoop() { DASSERT(!hasUser_); }
 
 private:
 	void PostTaskInternal(Task&& task);
@@ -252,12 +252,12 @@ public:
     auto ThenOnCurrent(Func&& onCompletion) {
         // Schefule a func on current event loop when ready
         std::shared_ptr<EventLoop> current = EventLoop::GetForCurrentThread();
-        Assert(current);
+        DASSERT(current);
 
         if constexpr(std::is_void_v<T>) {
             this->Then([target = current, onCompletion = std::move(onCompletion)]() mutable {
                 std::shared_ptr<EventLoop> current = EventLoop::GetForCurrentThread();
-                Assert(current);
+                DASSERT(current);
                 if (target == current) {
                     std::invoke(std::move(onCompletion));
                 } else {
@@ -267,7 +267,7 @@ public:
         } else {
             this->Then([target = current, onCompletion = std::move(onCompletion)](auto&& result) mutable {
                 std::shared_ptr<EventLoop> current = EventLoop::GetForCurrentThread();
-                Assert(current);
+                DASSERT(current);
                 if (target == current) {
                     std::invoke(std::move(onCompletion), std::move(result));
                 } else {
@@ -314,13 +314,13 @@ struct EventLoopCoroutine {
 
         void await_suspend(std::coroutine_handle<> handle) noexcept {
             std::shared_ptr<EventLoop> current = EventLoop::GetForCurrentThread();
-            Assert(current);
+            DASSERT(current);
 
             if constexpr(!std::is_void_v<value_type>) {
                 future.Then([this, handle = handle, target = current](value_type&& result) {
                     this->result.emplace(std::move(result));
                     std::shared_ptr<EventLoop> current = EventLoop::GetForCurrentThread();
-                    Assert(current);
+                    DASSERT(current);
 
                     if(current == target) {
                         handle.resume();
@@ -331,7 +331,7 @@ struct EventLoopCoroutine {
             } else {
                 future.Then([this, handle = handle, target = current]() {
                     std::shared_ptr<EventLoop> current = EventLoop::GetForCurrentThread();
-                    Assert(current);
+                    DASSERT(current);
 
                     if(current == target) {
                         handle.resume();
@@ -346,7 +346,7 @@ struct EventLoopCoroutine {
         // After this function returns 'this' is destroyed
         value_type await_resume() noexcept {
             if constexpr(!std::is_void_v<value_type>) {
-                Assert(result.has_value());
+                DASSERT(result.has_value());
                 return std::move(result).value();
             }
         }

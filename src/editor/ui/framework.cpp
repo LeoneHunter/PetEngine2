@@ -227,7 +227,7 @@ public:
 	}
 
 	void ClipRect(Rect clipRect) override {
-		Assert(!clipRect.Empty());
+		DASSERT(!clipRect.Empty());
 		clipRect = Transform(clipRect);
 		context.clipRect = clipRect;
 		context.hasClipRect = true;
@@ -259,7 +259,7 @@ public:
 	}
 
 	void RestoreContext() {
-		Assert(!contextStack.empty());
+		DASSERT(!contextStack.empty());
 		auto& frame = contextStack.back();
 		cummulativeTransform -= frame.transform;
 
@@ -273,7 +273,7 @@ public:
 		while(!contextStack.empty()) {
 			RestoreContext();
 		}
-		Assert(float2(std::round(cummulativeTransform.x), std::round(cummulativeTransform.y)) == float2());
+		DASSERT(float2(std::round(cummulativeTransform.x), std::round(cummulativeTransform.y)) == float2());
 	}
 
 	bool HasClipRect() const {
@@ -1066,7 +1066,7 @@ public:
 		drawFunc = [&](Widget* widget) {
 			if(auto* layout = widget->As<LayoutWidget>()) {
 				const auto rect = layout->GetRect();
-				Assertf(!rect.Empty(), 
+				DASSERT_F(!rect.Empty(), 
 						"A widget with 0 size encountered in DrawWindow().\n"
 						"Widget: {}\nAncestors:\n{}",
 						layout->GetDebugID(),
@@ -1161,7 +1161,7 @@ public:
 
 			if(!state) {
 				auto s = PrintAncestors(widget);
-				Assertf(state != nullptr, 
+				DASSERT_F(state != nullptr, 
 						"Stafeful widget without state found during Build. Ancestor tree:\n{}\nContext:\n{}", 
 						s, 
 						PrintContext());
@@ -1171,7 +1171,7 @@ public:
 			if(!widget->NeedsRebuild()) {
 				if(!oldWidget || !oldWidget->GetChild()) {
 					auto ancestors = PrintAncestors(widget);
-					Assertf(oldWidget != nullptr, 
+					DASSERT_F(oldWidget != nullptr, 
 							"A widget with clear state and no old children is found while building the widget {}. Ancestor tree:\n{}\nContext:\n{}", 
 							requestedWidget->GetDebugID(),
 							ancestors,
@@ -1254,8 +1254,8 @@ public:
 				});
 
 				for(size_t index = 0; index < newWidgets.size(); ++index) {
-					auto* oldWidget = index < oldWidgets.size() ? oldWidgets[index] : nullptr;
-					diff(oldWidget, newWidgets[index], newParent);
+					auto* old = index < oldWidgets.size() ? oldWidgets[index] : nullptr;
+					diff(old, newWidgets[index], newParent);
 				}
 				if(parent == oldWidget->GetParent() && oldWidgets.size() > newWidgets.size()) {
 					auto oldWidgetsToDeleteNum = oldWidgets.size() - newWidgets.size();
@@ -1510,7 +1510,7 @@ public:
 	void Shutdown() final {}
 
 	Theme* GetTheme() final {
-		Assertm(theme_, "A theme should be set before creating widgets");
+		DASSERT_M(theme_, "A theme should be set before creating widgets");
 		return theme_.get();
 	}
 

@@ -22,13 +22,13 @@ public:
     {}
 
     void RequestFocus() {
-        Assertf(widgets_.size() == 1, 
+        DASSERT_F(widgets_.size() == 1, 
                 "There should be only one Focused when requesting focus.");
         Application::Get()->RequestFocus(this);
     }
 
     Focused* GetWidget() {
-        Assertf(widgets_.size() == 1, 
+        DASSERT_F(widgets_.size() == 1, 
                 "There should be only one Focused when requesting focus.");
         return widgets_.back();
     }

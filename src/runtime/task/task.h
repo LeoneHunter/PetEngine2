@@ -169,7 +169,7 @@ public:
     {}
 
     void Run() && {
-        Assertf(!!callback_, "Callback is empty");
+        DASSERT_F(!!callback_, "Callback is empty");
         std::move(callback_).operator()();
         callback_ = {};
     }

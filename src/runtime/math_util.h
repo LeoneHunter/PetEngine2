@@ -8,7 +8,7 @@
 
 
 
-enum class Axis{ X, Y };
+enum class Axis: uint8_t { X, Y };
 
 constexpr Axis FlipAxis(Axis axis) { return axis == Axis::X ? Axis::Y : Axis::X; }
 constexpr Axis operator!(Axis axis) { return FlipAxis(axis); }
@@ -37,7 +37,7 @@ public:
 			case 0: return x;
 			case 1: return y;
 		}
-		assert(false && "Index out of bounds");
+		DASSERT(false && "Index out of bounds");
 		return x;
 	}
 
@@ -46,7 +46,7 @@ public:
 			case 0: return x;
 			case 1: return y;
 		}
-		assert(false && "Index out of bounds");
+		DASSERT(false && "Index out of bounds");
 		return x;
 	}
 
@@ -55,7 +55,7 @@ public:
 			case Axis::X: return x;
 			case Axis::Y: return y;
 		}
-		assert(false && "Index out of bounds");
+		DASSERT(false && "Index out of bounds");
 		return x;
 	}
 
@@ -64,7 +64,7 @@ public:
 			case Axis::X: return x;
 			case Axis::Y: return y;
 		}
-		assert(false && "Index out of bounds");
+		DASSERT(false && "Index out of bounds");
 		return x;
 	}
 
@@ -619,7 +619,7 @@ namespace math {
 
 	constexpr float2 Clamp(float2 inVal, float2 inMin = float2(FLT_MIN), float2 inMax = float2(FLT_MAX)) {
 		float2 out;
-		for(auto axis = 0; axis != 2; ++axis) {
+		for(uint8_t axis = 0; axis != 2; ++axis) {
 			out[axis] = inVal[axis] < inMin[axis] ? inMin[axis] : inVal[axis] > inMax[axis] ? inMax[axis] : inVal[axis];
 		}
 		return out;
@@ -627,7 +627,7 @@ namespace math {
 
 	constexpr float2 Clamp(float2 inVal, float inMin = FLT_MIN, float inMax = FLT_MAX) {
 		float2 out;
-		for(auto axis = 0; axis != 2; ++axis) {
+		for(uint8_t axis = 0; axis != 2; ++axis) {
 			out[axis] = inVal[axis] < inMin ? inMin : inVal[axis] > inMax ? inMax : inVal[axis];
 		}
 		return out;
@@ -635,7 +635,7 @@ namespace math {
 
 	constexpr Vec4 Clamp(Vec4 inVal, float inMin = FLT_MIN, float inMax = FLT_MAX) {
 		Vec4 out;
-		for(auto axis = 0; axis != 4; ++axis) {
+		for(uint8_t axis = 0; axis != 4; ++axis) {
 			out[axis] = inVal[axis] < inMin ? inMin : inVal[axis] > inMax ? inMax : inVal[axis];
 		}
 		return out;
@@ -746,13 +746,13 @@ inline void alignment_should_be_power_of_two() {}
 template <class T>
     requires std::is_unsigned_v<T>
 constexpr T AlignUp(T val, T alignment) {
-	Assert(std::has_single_bit(alignment));
+	DASSERT(std::has_single_bit(alignment));
     return (val + alignment - 1) & ~(alignment - 1);
 }
 
 template <class T>
     requires std::is_unsigned_v<T>
 constexpr T AlignDown(T val, T alignment) {
-	Assert(std::has_single_bit(alignment));
+	DASSERT(std::has_single_bit(alignment));
     return (val) & ~(alignment - 1);
 }

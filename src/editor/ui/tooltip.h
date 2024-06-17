@@ -130,7 +130,7 @@ private:
 		auto widget 	   = builder_(TooltipBuildContext{ctx.mousePosGlobal, this});
 		sharedState.widget = widget.get();
 		auto* layout       = LayoutWidget::FindNearest(sharedState.widget);
-		Assertf(layout, "Tooltip widget {} has no LayoutWidget child, so it won't be visible.", sharedState.widget->GetDebugID());
+		DASSERT_F(layout, "Tooltip widget {} has no LayoutWidget child, so it won't be visible.", sharedState.widget->GetDebugID());
 
 		layout->SetOrigin(ctx.mousePosGlobal + float2(15));
 		layout->SetFloatLayout(true);

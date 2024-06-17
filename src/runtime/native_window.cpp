@@ -131,7 +131,6 @@ class NativeWindow_Windows: public INativeWindow {
 public:
 
 	NativeWindow_Windows(const char* inWindowTitle, uint32_t inWidth, uint32_t inHeight) {
-		bool bMaximize = false;
 		const auto windowMaxWidth = GetSystemMetrics(SM_CXSCREEN);
 		const auto windowMaxHeight = GetSystemMetrics(SM_CYSCREEN);
 		const auto windowWidth = math::Clamp((int)inWidth, 100, windowMaxWidth);

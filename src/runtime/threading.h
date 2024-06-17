@@ -7,23 +7,6 @@
 #include "util.h"
 #include "win_minimal.h"
 
-template<>
-struct std::formatter<std::thread::id, char> {
-	bool quoted = false;
-
-	template<class ParseContext>
-	constexpr ParseContext::iterator parse(ParseContext& ctx) {
-		return ctx.begin();
-	}
-
-	template<class FmtContext>
-	FmtContext::iterator format(std::thread::id s, FmtContext& ctx) const {
-		std::ostringstream out;
-		out << s;
-		return std::ranges::copy(std::move(out).str(), ctx.out()).out;
-	}
-};
-
 // From Boost
 class Spinlock {
 public:
@@ -93,8 +76,8 @@ public:
 public:
 
     void Start() {
-        Assert(!thread_);
-        Assert(delegate_);
+        DASSERT(!thread_);
+        DASSERT(delegate_);
         thread_ = std::make_unique<std::thread>([this]{
             SetCurrentThreadName(name_);
             threadStartedSemaphore_.release();
@@ -106,20 +89,20 @@ public:
 
     // For testing
     void WaitUntilStarted() {
-        Assert(thread_);
+        DASSERT(thread_);
         threadStartedSemaphore_.acquire();
     }
 
     void Join() {
-        Assert(thread_);
-        Assert(thread_->joinable());
+        DASSERT(thread_);
+        DASSERT(thread_->joinable());
         thread_->join();
     }
 
 public:
 	// TODO: Decide delegate ownership
     Thread(Delegate* delegate, const std::string& name = "") {
-        Assert(delegate);
+        DASSERT(delegate);
         delegate_ = delegate;
         name_ = name;
     }

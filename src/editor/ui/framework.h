@@ -49,11 +49,11 @@ public:
 		}
 
 		bool Visit(const Visitor& visitor) {
-			const auto shouldContinue = visitor(*this);
+			auto shouldContinue = visitor(*this);
 			if(!shouldContinue) return false;
 
 			for(auto& child : children_) { 
-				const auto shouldContinue = child->Visit(visitor);
+				shouldContinue = child->Visit(visitor);
 				if(!shouldContinue) return false;
 			}
 			return true;
@@ -91,42 +91,42 @@ public:
 				}
 			}
 		}
-		assert(cursorObject_);
+		DASSERT(cursorObject_);
 		cursorObject_ = cursorObject_->EmplaceChild(debugName, (ObjectID)widget);
 	}
 
 	// Push formatter property string
 	void PushProperty(std::string_view name, Point property) {
-		Assertm(cursorObject_, "PushObject() should be called first");
-		Assert(!name.empty());
+		DASSERT_M(cursorObject_, "PushObject() should be called first");
+		DASSERT(!name.empty());
 		cursorObject_->PushProperty(name, std::format("{:.0f}:{:.0f}", property.x, property.y));
 	}
 
 	void PushProperty(std::string_view name, const std::string& property) {
-		Assertm(cursorObject_, "PushObject() should be called first");
-		Assert(!name.empty());
+		DASSERT_M(cursorObject_, "PushObject() should be called first");
+		DASSERT(!name.empty());
 		cursorObject_->PushProperty(name, std::format("{}", property));
 	}
 	
 	void PushStringProperty(std::string_view name, const std::string& property) {
-		Assertm(cursorObject_, "PushObject() should be called first");
-		Assert(!name.empty());
+		DASSERT_M(cursorObject_, "PushObject() should be called first");
+		DASSERT(!name.empty());
 		cursorObject_->PushProperty(name, std::format("\"{}\"", property));
 	}
 
 	template<typename Enum> 
 		requires std::is_enum_v<Enum>
 	void PushProperty(std::string_view name, Enum property) {
-		Assertm(cursorObject_, "PushObject() should be called first");
-		Assert(!name.empty());
+		DASSERT_M(cursorObject_, "PushObject() should be called first");
+		DASSERT(!name.empty());
 		cursorObject_->PushProperty(name, ToString(property));
 	}
 
 	template<typename T> 
 		requires std::is_arithmetic_v<T>
 	void PushProperty(std::string_view name, T property) {
-		Assertm(cursorObject_, "PushObject() should be called first");
-		Assert(!name.empty());
+		DASSERT_M(cursorObject_, "PushObject() should be called first");
+		DASSERT(!name.empty());
 
 		if constexpr(std::is_integral_v<T>) {
 			cursorObject_->PushProperty(name, std::format("{}", property));
@@ -248,7 +248,7 @@ constexpr std::string to_string(AxisMode value) {
 		case AxisMode::Fixed: return "Fixed";
 		case AxisMode::Expand: return "Expand";
 		case AxisMode::Shrink: return "Shrink";
-		default: Assertm(false, "Enum value out of range"); return "";
+		default: DASSERT_M(false, "Enum value out of range"); return "";
 	}
 }
 
@@ -626,7 +626,7 @@ public:
 
 	template<class T>
 	WeakPtr<T> GetWeakAs() {
-		Assertf(this->As<T>(), "Cannot cast {} to the class {}", GetDebugID(), T::GetStaticClassName());
+		DASSERT_F(this->As<T>(), "Cannot cast {} to the class {}", GetDebugID(), T::GetStaticClassName());
 		if(!refCounter_) {
 			refCounter_ = new util::RefCounter();
 		}
@@ -675,8 +675,8 @@ public:
 	}
 
 	// Attaches this widget to a parent slot
-	virtual void Parent(std::unique_ptr<Widget>&& widget) { Assertf(false, "Class {} cannot have children.", GetClassName()); }
-	NODISCARD virtual std::unique_ptr<Widget> Orphan(Widget* widget) { Assertf(false, "Class {} cannot have children.", GetClassName()); return {}; }
+	virtual void Parent(std::unique_ptr<Widget>&& widget) { DASSERT_F(false, "Class {} cannot have children.", GetClassName()); }
+	NODISCARD virtual std::unique_ptr<Widget> Orphan(Widget* widget) { DASSERT_F(false, "Class {} cannot have children.", GetClassName()); return {}; }
 
 	virtual void OnParented(Widget* parent) { parent_ = parent; };
 	virtual void OnOrphaned() { parent_ = nullptr; }
@@ -782,13 +782,13 @@ class SingleChildWidget: public Widget {
 public:
 
 	void Parent(std::unique_ptr<Widget>&& widget) override {
-		Assert(widget && !widget->GetParent() && !child_);
+		DASSERT(widget && !widget->GetParent() && !child_);
 		child_ = std::move(widget);
 		child_->OnParented(this);
 	}
 
 	NODISCARD std::unique_ptr<Widget> Orphan(Widget* widget) override {
-		Assert(widget);
+		DASSERT(widget);
 		if(child_.get() == widget) {
 			child_->OnOrphaned();
 			return std::move(child_);
@@ -812,11 +812,11 @@ public:
 	VisitResult VisitChildren(const WidgetVisitor& visitor, bool bRecursive = true) final {
 		if(!child_) return VisitResult::Continue();
 
-		const auto result = visitor(child_.get());
+		auto result = visitor(child_.get());
 		if(!result.shouldContinue) return VisitResult::Exit();
 
 		if(bRecursive && !result.shouldSkipChildren) {
-			const auto result = child_->VisitChildren(visitor, bRecursive);
+			result = child_->VisitChildren(visitor, bRecursive);
 			if(!result.shouldContinue) return VisitResult::Exit();
 		}
 		return VisitResult::Continue();
@@ -933,7 +933,7 @@ public:
 	}
 
 	std::unique_ptr<Widget> Build() {
-		Assertf(state_, "{} doesn't have a state.", GetDebugID());
+		DASSERT_F(state_, "{} doesn't have a state.", GetDebugID());
 		// If we are rebuilding this widget we need to provide old [child] into state_.Build()
 		// because on first build it's provided from the owner but on rebuild we need to provide it here
 		const auto isRebuilding = state_->GetWidget() == this;
@@ -947,7 +947,7 @@ public:
 	}
 
 	bool NeedsRebuild() const {
-		Assertf(state_, "{} doesn't have a state.", GetDebugID());
+		DASSERT_F(state_, "{} doesn't have a state.", GetDebugID());
 		// If the child is provided by the owner, we need to force the state rebuild
 		if(child_) {
 			state_->needsRebuild_ = true;
@@ -957,7 +957,7 @@ public:
 
 	// Bind this widget to the state and unbind the old one
 	void RebindToState() {
-		Assertf(state_, "{} doesn't have a state.", GetDebugID());
+		DASSERT_F(state_, "{} doesn't have a state.", GetDebugID());
 		auto* old = state_->GetWidget();
 		state_->SetWidget(this);
 
@@ -975,7 +975,7 @@ private:
 };
 
 inline void WidgetState::MarkNeedsRebuild() { 
-	Assertf(widget_, "State doesn't have a widget.");
+	DASSERT_F(widget_, "State doesn't have a widget.");
 	widget_->MarkNeedsRebuild();
 }
 
@@ -1119,7 +1119,7 @@ public:
 		}
 		for(auto axis: axes2D) {
 			if(GetAxisMode()[axis] == AxisMode::Expand) {
-				Assertf(!event.parent || event.parent->GetAxisMode()[axis] != AxisMode::Shrink, 
+				DASSERT_F(!event.parent || event.parent->GetAxisMode()[axis] != AxisMode::Shrink, 
 						"{} axis {} mode is set to AxisMode::Expand while parent's {} axis mode is set to AxisMode::Shrink.",
 						GetDebugID(),
 						axis == Axis::X ? "X" : "Y",
@@ -1183,13 +1183,13 @@ class SingleChildLayoutWidget: public LayoutWidget {
 public:		
 
 	void Parent(std::unique_ptr<Widget>&& widget) override {
-		Assert(widget && !widget->GetParent() && !child_);
+		DASSERT(widget && !widget->GetParent() && !child_);
 		child_ = std::move(widget);
 		child_->OnParented(this);
 	}
 
 	NODISCARD std::unique_ptr<Widget> Orphan(Widget* widget) override {
-		Assert(widget);
+		DASSERT(widget);
 		if(child_.get() == widget) {
 			child_->OnOrphaned();
 			return std::move(child_);
@@ -1225,7 +1225,7 @@ public:
 			return true;
 		} 
 		if(event->IsA<HitTestEvent>()) {
-			Assertm(false, "Deprecated");
+			DASSERT_M(false, "Deprecated");
 			return false;
 		} 
 		return Super::OnEvent(event);
@@ -1300,14 +1300,14 @@ class MultiChildLayoutWidget: public LayoutWidget {
 public:
 
 	void Parent(std::unique_ptr<Widget>&& widget) override {
-		Assert(widget && !widget->GetParent());
+		DASSERT(widget && !widget->GetParent());
 		auto* w = widget.get();
 		children_.push_back(std::move(widget));
 		w->OnParented(this);
 	}
 
 	std::unique_ptr<Widget> Orphan(Widget* widget) override {
-		Assert(widget);
+		DASSERT(widget);
 		for(auto it = children_.begin(); it != children_.end(); ++it) {
 			if(it->get() == widget) {
 				auto out = std::move(*it);
@@ -1497,7 +1497,7 @@ public:
 	}
 
 	bool UpdateWith(const Widget* newWidget) override {
-		Assertf(GetClass() == MouseRegion::GetStaticClass(), "UpdateWith() must be overriden in subclasses, "
+		DASSERT_F(GetClass() == MouseRegion::GetStaticClass(), "UpdateWith() must be overriden in subclasses, "
 				"otherwise during widget rebuilding and diffing only superclass part will be updated, which leads to ub. "
 				"This widget class is '{}'.",
 				GetClassName());
@@ -1579,7 +1579,7 @@ public:
 	auto& Child(std::unique_ptr<Widget>&& child) { child_ = std::move(child); return *this; }
 
 	std::unique_ptr<MouseRegion> New() { 
-		Assertf([&]() {
+		DASSERT_F([&]() {
 			if(config_.onMouseHover || config_.onMouseEnter) {
 				return (bool)config_.onMouseLeave;
 			}

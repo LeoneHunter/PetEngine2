@@ -179,7 +179,7 @@ public:
 		return *this;
 	}
 
-	TextStyle& Size(uint16_t inDefaultSize) {
+	TextStyle& Size(uint8_t inDefaultSize) {
 		fontSize = inDefaultSize;
 		return *this;
 	}
@@ -198,7 +198,7 @@ public:
 public:
 	std::string filename;
 	ui::Font*   font;
-	uint32_t         fontSize;
+	uint8_t     fontSize;
 	ColorU32    color;
 	bool        fontWeightBold;
 	bool        fontStyleItalic;
@@ -322,7 +322,7 @@ public:
 
 		if(!copyStyleName.empty()) {
 			copyStyle = Find<StyleType>(copyStyleName);
-			Assertf(copyStyle, "Style to copy from with the name '{}' not found", copyStyleName);
+			DASSERT_F(copyStyle, "Style to copy from with the name '{}' not found", copyStyleName);
 		}
 		for(auto& style: styles_) {
 			if(style->IsA<StyleType>() && style->name == name) {
@@ -348,7 +348,7 @@ public:
 		if(!out && parent_) {
 			out = parent_->Find<StyleType>(name);
 		}
-		Assertf(out, 
+		DASSERT_F(out, 
 				"Style class '{}' does not contain a style of type '{}' and name '{}'", 
 				*name_, 
 				StyleType::GetStaticClassName(), 
@@ -415,7 +415,7 @@ public:
 
 		if(!parentName.Empty()) {
 			parent = Find(parentName);
-			Assertf(parent, "Cannot find parent style with the name {}", inParentStyle);
+			DASSERT_F(parent, "Cannot find parent style with the name {}", inParentStyle);
 		}
 		auto [it, isCreated] = styles_.emplace(name, StyleClass(name, parent));
 		return it->second;
@@ -443,7 +443,7 @@ public:
 
 					} else {
 						textStyle->font = Font::FromFile(textStyle->filename);
-						Assertf(textStyle->font, "Font with filename {} not found", textStyle->filename);
+						DASSERT_F(textStyle->font, "Font with filename {} not found", textStyle->filename);
 
 						if(textStyle->font) {
 							fonts_.emplace_back(textStyle->font);

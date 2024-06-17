@@ -96,7 +96,7 @@ public:
             } else if(auto* i = item->As<PopupSubmenuItem>()) {
                 i->Bind(this, index);
             } else {
-                Assertm(false, "Popup menu content items should be of class PopupMenuItem or PopupSubmenuItem");
+                DASSERT_M(false, "Popup menu content items should be of class PopupMenuItem or PopupSubmenuItem");
             }
             ++index;
         }
@@ -165,7 +165,7 @@ public:
         constexpr auto timerDelayMs = 500;
         if(bEnter) {
             auto timerCallback = [this, index = itemIndex]()->bool {
-                Assert(index < items_.size());		
+                DASSERT(index < items_.size());		
                 if(auto* item = items_[index]->As<PopupSubmenuItem>()) {
                     OpenSubmenu(*item, index);
                 } else {
@@ -180,7 +180,7 @@ public:
     }
 
     void OnItemPressed(uint32_t itemIndex) { 
-        Assert(itemIndex < items_.size());		
+        DASSERT(itemIndex < items_.size());		
         if(auto* item = items_[itemIndex]->As<PopupSubmenuItem>()) {
             OpenSubmenu(*item, itemIndex);
         } else {
@@ -414,6 +414,6 @@ inline void ui::PopupState::Close() {
     } else if(previousPopup_) {
         previousPopup_->Close();
     } else {
-        Assertm(false, "PopupState has no owner.");
+        DASSERT_M(false, "PopupState has no owner.");
     }
 }

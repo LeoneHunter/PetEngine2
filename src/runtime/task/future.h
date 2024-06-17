@@ -93,8 +93,8 @@ public:
     }
 
     storage_type GetValue() { 
-        Assert(state_.load(std::memory_order_acquire) == State::Ready);
-        Assert(value_);
+        DASSERT(state_.load(std::memory_order_acquire) == State::Ready);
+        DASSERT(value_);
         return std::move(value_).value();
     }
 
@@ -103,7 +103,7 @@ public:
     void EmplaceValue(Args&&... args) {
         value_.emplace(std::forward<Args>(args)...);
         State old = state_.exchange(State::Ready, std::memory_order_acq_rel);
-        Assert(old < State::Ready);
+        DASSERT(old < State::Ready);
 
         if(old == State::PendingWithCallback) {
             internal::CallbackType<T>::Call(std::move(callback_), value_);
@@ -113,10 +113,10 @@ public:
 
     template<class Func>
     void SetCallback(Func&& callback) {
-        Assert(!callback_);
+        DASSERT(!callback_);
 
         if(IsReady()) {
-            Assert(value_);
+            DASSERT(value_);
             internal::CallbackType<T>::Call(std::move(callback), value_);
             state_.store(State::Finished, std::memory_order_relaxed);
             return;
@@ -167,7 +167,7 @@ public:
     }
 
     T GetValue() {
-        Assert(state_->IsReady());
+        DASSERT(state_->IsReady());
         return std::move(state_->GetValue());
     }
 
@@ -250,7 +250,7 @@ public:
     }
 
     Future<T> GetFuture() {
-        Assertf(!hasFuture_, 
+        DASSERT_F(!hasFuture_, 
                "Future for this promise has already been created");
         hasFuture_ = true;
         return {state_};
@@ -290,7 +290,7 @@ public:
     }
 
     Future<void> GetFuture() {
-        Assertf(!hasFuture_, 
+        DASSERT_F(!hasFuture_, 
                "Future for this promise has already been created");
         hasFuture_ = true;
         return {state_};

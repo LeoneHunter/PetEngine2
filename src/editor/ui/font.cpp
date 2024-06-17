@@ -185,7 +185,7 @@ public:
 	}
 
 	void GetRenderParameters(Font::FaceRenderParameters* outParameters) const {
-		assert(outParameters);
+		DASSERT(outParameters);
 		outParameters->TexUvLinesArrayPtr = (float*)m_ImFont->ContainerAtlas->TexUvLines;
 		outParameters->TexUvWhitePixelCoords = m_ImFont->ContainerAtlas->TexUvWhitePixel;
 	}
@@ -475,14 +475,11 @@ public:
 
 		// If such style is not available fall back to the normal face of the same size
 		if(!bStyleAvailable) {
-			const auto key = FontKey(inSize, false, false);
-			auto it = m_Faces.find(key);
-
-			if(it != m_Faces.end()) {
+			auto it2 = m_Faces.find(FontKey(inSize, false, false));
+			if(it2 != m_Faces.end()) {
 				return it->second;
 			}
 		}
-
 		return nullptr;
 	}
 

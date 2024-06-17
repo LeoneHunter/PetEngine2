@@ -78,7 +78,7 @@ public:
 	// Called statically before main
 	// Which means call order is unspecified
 	const ClassMeta* RegisterClass(std::string_view inClassName, std::string_view inSuperClassName) {
-		assert(tail_ < BufferSize);
+		DASSERT(tail_ < BufferSize);
 		ClassMeta* superClassPtr = nullptr;
 
 		if(!inSuperClassName.empty()) {

@@ -25,7 +25,7 @@ void TaskExecutor::RegisterTaskSource(std::shared_ptr<TaskSource> taskSource) {
 }
 
 void TaskExecutor::NotifyHasWork(TaskSource* source) {
-    Assert(source);
+    DASSERT(source);
     {
         std::scoped_lock _(lock_);
         auto it = std::ranges::find_if(
@@ -34,7 +34,7 @@ void TaskExecutor::NotifyHasWork(TaskSource* source) {
                 return e.get() == source; 
             }
         );
-        Assertf(it != sources_.end(), "Invalid task source");
+        DASSERT_F(it != sources_.end(), "Invalid task source");
     }
     {
         std::scoped_lock _(lock_);
@@ -81,23 +81,23 @@ void TaskExecutor::Stop() {
 }
 
 void TaskExecutor::RunUntilIdle() {
-    Assert(tracker_);
+    DASSERT(tracker_);
     WorkerMain(false); 
 }
 
 void TaskExecutor::RunUntilStopped(bool canSleep) {
-    Assert(tracker_);
+    DASSERT(tracker_);
     WorkerMain(canSleep);
 }
 
 void TaskExecutor::WorkerMain(bool canSleep) {
-    Assert(tracker_);
+    DASSERT(tracker_);
     currentThreadExecutor = this;
     threadsNum_.fetch_add(1, std::memory_order_relaxed);
 
     for(;;) {
         if(shouldExit.load(std::memory_order_relaxed)) {
-            return;
+            break;
         }
         TaskSource::Handle handle = TryOpenHandle();
         // No work to do:
@@ -107,7 +107,7 @@ void TaskExecutor::WorkerMain(bool canSleep) {
                 semaphore_.acquire();
                 continue;
             } else {
-                return;
+                break;
             }
         }
         // Process tasks accesible by the handle
@@ -132,12 +132,12 @@ void TaskExecutor::WorkerMain(bool canSleep) {
 ThreadPool* defaultPool{};
 
 void ThreadPool::SetDefault(ThreadPool* pool) {
-    Assert(!defaultPool);
+    DASSERT(!defaultPool);
     defaultPool = pool;
 }
 
 ThreadPool& ThreadPool::GetDefault() { 
-    Assert(defaultPool);
+    DASSERT(defaultPool);
     return *defaultPool;
 }
 
@@ -147,7 +147,7 @@ ThreadPool::ThreadPool(std::unique_ptr<TaskExecutor>&& executor,
     : executor_(std::move(executor)),
       namePrefix_(threadNamePrefix),
       threadNum_(threadNum) {
-    Assert(executor_);
+    DASSERT(executor_);
     if(threadNum_ == kThreadNumAuto) {
         threadNum_ = std::thread::hardware_concurrency();
     }

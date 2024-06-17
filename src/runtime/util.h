@@ -3,11 +3,10 @@
 #include <chrono>
 #include <filesystem>
 
-#include <assert.h>
 #include "math_util.h"
 
 constexpr Vec4 HashColorToVec4(std::string_view inHexCode) {
-	assert(!inHexCode.empty() && inHexCode.starts_with('#') && (inHexCode.size() == 7 || inHexCode.size() == 9));
+	DASSERT(!inHexCode.empty() && inHexCode.starts_with('#') && (inHexCode.size() == 7 || inHexCode.size() == 9));
 	Vec4 out;
 	out.x = 0.f;
 	out.y = 0.f;
@@ -72,7 +71,7 @@ public:
 	template <class Ty> requires std::convertible_to<const Ty&, std::string_view>
 	consteval HexCodeString(const Ty& Str_val)
 		: Str(Str_val) {
-		assert(Str.size() == 7 || Str.size() == 9 && Str.starts_with('#') &&
+		DASSERT(Str.size() == 7 || Str.size() == 9 && Str.starts_with('#') &&
 			"Hex color wrong format. String should start with a # and contain 7 or 9 characters");
 	}
 
@@ -82,6 +81,28 @@ public:
 
 private:
 	std::string_view Str;
+};
+
+// RGBA color 
+// 0 - 1 normalized
+class Color4f {
+public:
+	float r, g, b, a;
+
+	constexpr static Color4f FromHex(std::string_view str) {
+		DASSERT(str.starts_with('#'));
+		DASSERT(str.size() == 7 || str.size() == 9);
+		const int numComponents = ((int)str.size() - 1) / 2;
+		const char* ptr = str.data() + 1;
+		uint8_t out[4]{};
+		for(int i = 0; i < numComponents; ++i) {
+            std::from_chars_result result = std::from_chars(ptr, ptr + 2, out[i], 16);
+            DASSERT(result.ec == std::errc());
+			ptr += 2;
+        }
+		return {out[0] / 255.f, out[1] / 255.f, out[2] / 255.f, out[3] / 255.f};
+	}
+
 };
 
 constexpr float Saturate(float f) { return (f < 0.0f) ? 0.0f : (f > 1.0f) ? 1.0f : f; }
@@ -569,16 +590,17 @@ constexpr std::strong_ordering operator<=>(const RefCountedPtr<T1>& left, const 
 
 
 
-template<class T>
-concept IsListNode = requires(T node) {
-    { node.next } -> std::convertible_to<T*>;
-};
 
 template <class T>
-concept IsDListNode = IsListNode<T> && requires(T node) {
+concept IsDListNode = requires(T node) {
+    { node.next } -> std::convertible_to<T*>;
     { node.prev } -> std::convertible_to<T*>;
 };
 
+template<class T>
+concept IsListNode = !IsDListNode<T> && requires(T node) {
+    { node.next } -> std::convertible_to<T*>;
+};
 
 template<class T>
     requires IsListNode<T>
@@ -599,17 +621,18 @@ constexpr T* ListPop(T*& head) {
 	return pop;
 }
 
-
 template<class T>
     requires IsListNode<T>
 constexpr void ListDelete(T*& head) {
 	while(T* node = ListPop(head)) {
 		delete node;
 	}
+	head = nullptr;
 }
 
+
 template<class T>
-    requires IsListNode<T>
+    requires IsListNode<T> || IsDListNode<T>
 constexpr bool ListContains(T* head, T* entry) {
 	for(T* node = head; node; node = node->next) {
 		if(node == entry) {
@@ -620,7 +643,7 @@ constexpr bool ListContains(T* head, T* entry) {
 }
 
 template<class T>
-    requires IsListNode<T>
+    requires IsListNode<T> || IsDListNode<T>
 constexpr size_t ListSize(T* head) {
 	size_t out = 0;
 	for(T* node = head; node; node = node->next) {
@@ -672,7 +695,16 @@ constexpr T* DListPop(T*& head) {
 }
 
 template<class T>
-    requires IsListNode<T>
+    requires IsDListNode<T>
+constexpr void ListDelete(T*& head) {
+	while(T* node = DListPop(head)) {
+		delete node;
+	}
+	head = nullptr;
+}
+
+template<class T>
+    requires IsListNode<T> || IsDListNode<T>
 constexpr auto ListIterate(T* node) {
 
 	struct ListIterator {
@@ -762,12 +794,12 @@ public:
 				activePage = emptyPage_;
 				emptyPage_ = nullptr;
 			}
-            ListPush(activePagesHead_, activePage);
+            DListPush(activePagesHead_, activePage);
         }
         void* out = activePage->Allocate();
         if(activePage->Full()) {
             DListRemove(activePagesHead_, activePage);
-            ListPush(fullPagesHead_, activePage);
+            DListPush(fullPagesHead_, activePage);
         }
         return out;
     }
@@ -779,7 +811,7 @@ public:
 
         if(wasFull) {
             DListRemove(fullPagesHead_, page);
-            ListPush(activePagesHead_, page);
+            DListPush(activePagesHead_, page);
 
         } else if(page->Empty()) {
             if(emptyPage_) {
@@ -812,7 +844,7 @@ private:
         static constexpr Page* FromObject(void* object) {
             const uintptr_t pagePtr = AlignDown((size_t)object, kPageAlignment);
             Page* page = reinterpret_cast<Page*>(pagePtr);
-            Assert((pagePtr ^ page->self) == 0);
+            DASSERT((pagePtr ^ page->self) == 0);
             return page;
         }
 
@@ -825,9 +857,9 @@ private:
 
         constexpr void Free(void* object) {
             const ptrdiff_t slotIndex = reinterpret_cast<Slot*>(object) - slots;
-            Assert(slotIndex < kSlotsPerPage && slotIndex >= 0);
+            DASSERT(slotIndex < kSlotsPerPage && slotIndex >= 0);
             Slot& slot = slots[slotIndex];
-			Assertf(DecodeNext(slot.next) > kSlotsPerPage,
+			DASSERT_F(DecodeNext(slot.next) > kSlotsPerPage,
 					"Next slot index encoded into the slot is inside the valid range. "
 					"Could be a double free");
             slot.next = EncodeNext(nextFreeSlot);
@@ -841,7 +873,7 @@ private:
             }
 			Slot& slot = slots[nextFreeSlot];
             nextFreeSlot = DecodeNext(slot.next);
-			Assertf(nextFreeSlot <= kSlotsPerPage, 
+			DASSERT_F(nextFreeSlot <= kSlotsPerPage, 
 				  "Next slot index out of range. Could be use-after-free");
 			slot.next = 0;
             --freeSlotsNum;
@@ -889,7 +921,7 @@ public:
 	}
 
 	static std::filesystem::path GetWorkingDir() {
-		Assert(!args_.empty());
+		DASSERT(!args_.empty());
 		return std::filesystem::path(args_.front()).parent_path();
 	}
 
@@ -930,11 +962,11 @@ public:
         return std::chrono::duration_cast<std::chrono::microseconds>(nanos);
     }
 
-    std::chrono::microseconds ToMillis() const {
+    std::chrono::milliseconds ToMillis() const {
         return std::chrono::duration_cast<std::chrono::milliseconds>(nanos);
     }
 
-    std::chrono::microseconds ToSeconds() const {
+    std::chrono::seconds ToSeconds() const {
         return std::chrono::duration_cast<std::chrono::seconds>(nanos);
     }
 

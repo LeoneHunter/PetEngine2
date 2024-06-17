@@ -37,6 +37,10 @@ void Init(const std::string& logDirectory) {
 	};
 }
 
+bool IsInitialized() {
+	return ctx != nullptr;
+}
+
 void Shutdown() {
 	if(!ctx) return;
 	ctx->bFlushFile.store(true, std::memory_order::relaxed);
@@ -116,7 +120,6 @@ void LogProc() {
 }
 }
 
-
-void internal::PrintString(const std::string& str) {
+void PrintToCerr(const std::string& str) {
 	std::cerr << str << '\n';
 }

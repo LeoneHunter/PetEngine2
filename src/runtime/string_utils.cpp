@@ -7,7 +7,7 @@
 
 using int32 = int32_t;
 
-#define check(a) Assert(a)
+#define check(a) DASSERT(a)
 
 class StringPool {
 public:
@@ -55,7 +55,7 @@ public:
 	 * Returns intern or NULL for specified index
 	 */
 	const std::string& string(int32 inIndex) {
-		Assert(inIndex < m_StringPool.size());
+		DASSERT(inIndex < m_StringPool.size());
 		return m_StringPool[inIndex];
 	}
 

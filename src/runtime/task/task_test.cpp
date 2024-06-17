@@ -15,7 +15,6 @@ public:
     void OnTaskFinish(const Task::MetaInfo& taskInfo) override {}
 };
 
-int data = 0;
 void FreestandingFunc(int arg) {}
 
 struct MyClass {

@@ -13,8 +13,8 @@ std::shared_ptr<EventLoop> EventLoop::GetForCurrentThread() {
 }
 
 void EventLoop::OnExecutorSet(TaskExecutor* executor) {
-    Assertf(!executor_, "Only one TaskExecutor can be assigned");
-    Assertf(!hasUser_, "Cannot change TaskExecutor while processing tasks");
+    DASSERT_F(!executor_, "Only one TaskExecutor can be assigned");
+    DASSERT_F(!hasUser_, "Cannot change TaskExecutor while processing tasks");
     executor_ = executor;
 }
 

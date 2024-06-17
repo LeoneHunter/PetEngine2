@@ -40,8 +40,8 @@ using uint8 = uint8_t;
 using uint32 = uint32_t;
 using uint64 = uint64_t;
 
-#define check(hResult) Assertf(!FAILED(hResult), "HRESULT failed")
-#define checkhr(hResult) Assertf(!FAILED(hResult), "HRESULT failed")
+#define check(hResult) DASSERT_F(!FAILED(hResult), "HRESULT failed")
+#define checkhr(hResult) DASSERT_F(!FAILED(hResult), "HRESULT failed")
 
 template<typename T>
 static inline void SafeRelease(T*& res) {
@@ -115,15 +115,13 @@ public:
 
 	// Draws error indication when size is 0
 	void DrawErrorRect(float2 inMin, float2 inMax) {
-
 		constexpr auto ErrorColor1 = ColorU32::FromHex("#FF36B4");
 		constexpr auto ErrorColor2 = ColorU32::FromHex("#FFF61F");
 		constexpr auto ErrorSize = 4;
 		constexpr auto ErrorOffset = float2(4);
 
 		// If the caller tries to draw a box with 0 size, draw a purple rect as an indication
-		for(auto axis = 0; axis < 2; axis++) {
-
+		for(uint8_t axis = 0; axis < 2; axis++) {
 			if(inMax[axis] - inMin[axis] <= 0) {
 				inMax[axis] = inMin[axis] + ErrorSize;
 			}
@@ -227,7 +225,7 @@ public:
 
 	void PushFont(const ui::Font* inFont, uint8_t inDefaultSize, bool bBold = false, bool bItalic = false) final {
 		const auto* face = inFont->GetFace(inDefaultSize, bBold, bItalic);
-		assert(face && "Pushing a font which is not rasterized");
+		DASSERT(face && "Pushing a font which is not rasterized");
 
 		ui::Font::FaceRenderParameters params;
 		face->GetRenderParameters(&params);
@@ -240,9 +238,9 @@ public:
 	}
 
 	void PopFont() final {
-		assert(!m_FontFaceStack.empty() && "Font stack is empty!");
+		DASSERT(!m_FontFaceStack.empty() && "Font stack is empty!");
 		m_FontFaceStack.pop();
-		assert(!m_FontFaceStack.empty() && "Font stack is empty!");
+		DASSERT(!m_FontFaceStack.empty() && "Font stack is empty!");
 
 		const auto* slice = m_FontFaceStack.top();
 
@@ -291,7 +289,7 @@ private:
 			return;
 		}
 
-		assert(!m_FontFaceStack.empty() && "No font has been set. PushFont() should be called to set a default font");
+		DASSERT(!m_FontFaceStack.empty() && "No font has been set. PushFont() should be called to set a default font");
 		auto* activeFontFace = m_FontFaceStack.top();
 
 		if(inFontSize == 0.0f) {
@@ -640,7 +638,7 @@ public:
 		// Initialize Direct3D
 		if(!CreateDeviceD3D((HWND)m_NativeWindow->GetNativeHandle())) {
 			CleanupDeviceD3D();
-			assert(true);
+			DASSERT(true);
 			return false;
 		}
 
@@ -683,10 +681,10 @@ public:
 
 		// Create Objects
 		auto result = CreateRootSignature();
-		assert(result);
+		DASSERT(result);
 
 		result = CreatePSO();
-		assert(result);
+		DASSERT(result);
 		return true;
 	}
 
@@ -1490,7 +1488,7 @@ private:
 				NULL, 
 				IID_PPV_ARGS(&fr->IndexBuffer)
 			);
-			Assert(SUCCEEDED(result));		
+			DASSERT(SUCCEEDED(result));		
 		}
 
 		// Upload vertex/index data into a single contiguous GPU buffer

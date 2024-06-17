@@ -90,7 +90,7 @@ void Flexbox::LayOutChildren(const LayoutConstraints& event) {
 		if(hasFlexible) {
 			childData.mainAxisSize = -flexFactor;
 			totalFlexFactor += childData.mainAxisSize;
-			Assertf(axisMode[mainAxisIndex] != AxisMode::Shrink,
+			DASSERT_F(axisMode[mainAxisIndex] != AxisMode::Shrink,
 					"{} main axis set to AxisMode::Shrink, but the child {} has axis set to AxisMode::Expand.",
 					GetDebugID(),
 					layoutChild->GetDebugID());
@@ -99,7 +99,7 @@ void Flexbox::LayOutChildren(const LayoutConstraints& event) {
 			const auto mainAxisMode = layoutChild->GetAxisMode()[mainAxisIndex];
 
 			if(mainAxisMode == AxisMode::Expand) {
-				Assertf(axisMode[mainAxisIndex] != AxisMode::Shrink,
+				DASSERT_F(axisMode[mainAxisIndex] != AxisMode::Shrink,
 						"{} main axis set to AxisMode::Shrink, but the child {} has axis set to AxisMode::Expand.",
 						GetDebugID(),
 						layoutChild->GetDebugID());
@@ -120,7 +120,7 @@ void Flexbox::LayOutChildren(const LayoutConstraints& event) {
 		const auto crossAxisMode = layoutChild->GetAxisMode()[crossAxisIndex];
 
 		if(crossAxisMode == AxisMode::Expand) {
-			Assertf(axisMode[crossAxisIndex] != AxisMode::Shrink,
+			DASSERT_F(axisMode[crossAxisIndex] != AxisMode::Shrink,
 					"{} main axis set to AxisMode::Shrink, but the child {} has axis set to AxisMode::Expand.",
 					GetDebugID(),
 					layoutChild->GetDebugID());

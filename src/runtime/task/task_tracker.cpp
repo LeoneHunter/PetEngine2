@@ -36,7 +36,7 @@ void LogTaskTracker::OnTaskStart(const Task::MetaInfo& taskInfo) {
 void LogTaskTracker::OnTaskFinish(const Task::MetaInfo& taskInfo) {
     std::scoped_lock _(mutex);
     Info* entry = FindByID(taskInfo.id);
-    Assert(entry);
+    DASSERT(entry);
     entry->finishTime = TimePoint::Now();
     currentThreadTaskIndex = {};
 }
