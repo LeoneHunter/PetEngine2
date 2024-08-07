@@ -60,10 +60,16 @@ set(BASE_FILES
 	runtime/renderer/d3d12/common_dx12.h
 	runtime/renderer/d3d12/device_dx12.h
 	runtime/renderer/d3d12/device_dx12.cpp
-	runtime/renderer/d3d12/allocator_dx12.h
-	runtime/renderer/d3d12/allocator_dx12_heap.h
+	runtime/renderer/d3d12/heap_allocator_dx12.h
 	runtime/renderer/d3d12/descriptor_heap_dx12.h
 	runtime/renderer/d3d12/descriptor_heap_dx12.cpp
+
+	runtime/renderer/d3d12/slab_allocator_dx12_v2.h
+	runtime/renderer/d3d12/slab_allocator_heap_dx12_v2.h
+
+	# Util
+	runtime/util/bench.h
+	runtime/util/bench.cpp
 )
 
 target_sources(Base PRIVATE ${BASE_FILES})
@@ -73,7 +79,6 @@ target_link_libraries(Base PUBLIC
 	d3dcompiler.lib
 	dxguid.lib
 	# In local /thirdparty folder
-	thirdparty::optick
 	thirdparty::dx_headers
 	thirdparty::imgui
 )
@@ -124,6 +129,25 @@ set_target_properties(UI_Test_Filesystem_View PROPERTIES
 
 
 #=======================================================
+# Freetype Example cli
+#=======================================================
+# Exe name in the form "project_name_configuration.exe"
+add_executable(freetype_example)
+target_sources(freetype_example PRIVATE runtime/freetype_example.cpp)
+target_link_libraries(freetype_example PRIVATE Base freetype harfbuzz)
+target_compile_options(freetype_example PRIVATE /utf-8)
+target_compile_definitions(freetype_example PRIVATE UNICODE _UNICODE)
+set_target_properties(freetype_example PROPERTIES 
+	OUTPUT_NAME 
+	freetype_example_$<CONFIG>
+)
+set_target_properties(freetype_example PROPERTIES 
+	RUNTIME_OUTPUT_DIRECTORY
+	${CMAKE_SOURCE_DIR}/bin
+)
+
+
+#=======================================================
 # Tests.exe 
 #=======================================================
 add_executable(Tests)
@@ -150,12 +174,12 @@ target_sources(Tests PRIVATE ${FILES})
 target_link_libraries(Tests PRIVATE Base)
 
 set_target_properties(Tests PROPERTIES 
-OUTPUT_NAME 
-Tests_$<CONFIG>
+	OUTPUT_NAME 
+	Tests_$<CONFIG>
 )
 set_target_properties(Tests PROPERTIES 
 	RUNTIME_OUTPUT_DIRECTORY 
-${CMAKE_SOURCE_DIR}/bin
+	${CMAKE_SOURCE_DIR}/bin
 )
 set_target_properties(Tests PROPERTIES 
 	RUNTIME_OUTPUT_DIRECTORY_RELEASE 
