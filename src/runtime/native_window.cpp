@@ -6,7 +6,7 @@
 #include <dwmapi.h>
 #include <map>
 
-#include "util.h"
+#include "string_utils.h"
 
 #undef max
 
@@ -154,7 +154,7 @@ public:
 		};
 		::RegisterClassEx(&m_WndCls);
 
-		auto inWindowTitleWide = util::ToWideString(std::string(inWindowTitle));
+		auto inWindowTitleWide = ToWideString(std::string(inWindowTitle));
 		m_hwnd = ::CreateWindowEx(
 			0L, 
 			m_WndCls.lpszClassName, 

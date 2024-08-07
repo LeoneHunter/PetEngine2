@@ -8,6 +8,11 @@
 // These includes extended apis
 #define D3DX12_NO_STATE_OBJECT_HELPERS
 #define D3DX12_NO_CHECK_FEATURE_SUPPORT_CLASS
+
+#ifndef NOMINMAX
+    #define NOMINMAX
+#endif
+
 #include <directx/d3dx12.h>
 #include <dxgi.h>
 
@@ -25,7 +30,7 @@
 #endif
 
 
-namespace dx12 {
+namespace d3d12 {
 
 enum class Error {
     Ok = 0,
@@ -164,7 +169,48 @@ constexpr uint8_t GetFormatBytes(DXGI_FORMAT format) {
     }
 }
 
-} // namespace dx12
+
+// Passed to Allocator to track all allocations
+// Could be used for validation, debug or statistics
+class AllocationTracker {
+public:
+    struct SpanID {
+        uintptr_t heapAddress;
+        uint32_t pageIndex;
+
+        auto operator<=>(const SpanID&) const = default;
+    };
+
+    struct SpanInfo {
+        uint32_t sizeClass;
+        uint32_t numPages;
+        uint16_t numSlots;
+        uint16_t numFreeSlots;
+    };
+
+    struct SlotAllocInfo {
+        uint32_t slotIndex;
+    };
+
+    struct HeapInfo {
+        std::string name;
+        uintptr_t address;
+        uint32_t size;
+    };
+
+    virtual ~AllocationTracker() = default;
+
+    virtual void DidCreateHeap(const HeapInfo& info) {}
+    virtual void DidDestroyHeap(uintptr_t address) {}
+
+    virtual void DidCommitSpan(const SpanID& id, const SpanInfo& info) {}
+    virtual void DidDecommitSpan(const SpanID& id) {}
+
+    virtual void DidAllocateSlot(const SpanID& id, const SlotAllocInfo& info) {}
+    virtual void DidFreeSlot(const SpanID& id, const SlotAllocInfo& info) {}
+};
+
+} // namespace d3d12
 
 
 

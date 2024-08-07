@@ -7,7 +7,7 @@ namespace ui {
 //										TEXT
 /*-------------------------------------------------------------------------------------------------*/
 ui::TextBox::TextBox(const std::string& text, StringID style)
-	: Super(Application::Get()->GetTheme()->Find(style)->Find<LayoutStyle>()) 
+	: LayoutWidget(Application::Get()->GetTheme()->Find(style)->Find<LayoutStyle>()) 
 	, style_(Application::Get()->GetTheme()->Find(style))
 	, text_(text) {
 	// const auto size = style_->Find<TextStyle>()->CalculateTextSize(text_);
@@ -20,7 +20,7 @@ bool ui::TextBox::OnEvent(IEvent* event) {
 		drawEvent->canvas->DrawText(GetOrigin(), style_->Find<TextStyle>(), text_);
 		return true;
 	}
-	return Super::OnEvent(event);
+	return LayoutWidget::OnEvent(event);
 }
 
 float2 TextBox::OnLayout(const LayoutConstraints& event) {
@@ -30,10 +30,5 @@ float2 TextBox::OnLayout(const LayoutConstraints& event) {
 	const auto layoutInfo = *GetLayoutStyle();
 	return GetSize() + layoutInfo.margins.Size();
 }
-
-
-
-
-
 
 }

@@ -1,12 +1,12 @@
 #include "threading.h"
 #include "win_minimal.h"
-#include "util.h"
+#include "string_utils.h"
 
 thread_local std::string currentThreadName;
 
 void Thread::SetCurrentThreadName(const std::string& name) {
     currentThreadName = name;
-    auto wname = util::ToWideString(name);
+    auto wname = ToWideString(name);
     windows::SetThreadDescription(windows::GetCurrentThread(), wname.c_str());
 }
 

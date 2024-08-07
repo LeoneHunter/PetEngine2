@@ -1,7 +1,7 @@
 #include "descriptor_heap_dx12.h"
 
 
-namespace dx12 {
+namespace d3d12 {
 
 DescriptorHeap::DescriptorHeap(ID3D12Device* device,
                                D3D12_DESCRIPTOR_HEAP_DESC desc,
@@ -187,4 +187,4 @@ void PooledDescriptorAllocator::Free(DescriptorLocation location) {
     }
 }
 
-} // namespace dx12
+} // namespace d3d12

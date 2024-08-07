@@ -1,7 +1,7 @@
 #pragma once
 #include "device_dx12.h"
 
-namespace dx12 {
+namespace d3d12 {
 
 class PooledDescriptorAllocator;
 
@@ -75,7 +75,7 @@ public:
 
     static std::unique_ptr<PooledDescriptorAllocator> Create(
             Device* parentDevice,
-            const std::string& debugName);
+            const std::string& debugName = "DescriptorAlloc");
 
     // Allocates a heap of 'type' with 'size' in advance
     DescriptorHeap& CreateHeap(D3D12_DESCRIPTOR_HEAP_DESC desc,
@@ -108,4 +108,4 @@ private:
     std::vector<std::unique_ptr<DescriptorHeap>> heaps_;
 };
 
-} // namespace dx12
+} // namespace d3d12

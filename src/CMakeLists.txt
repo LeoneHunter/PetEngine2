@@ -96,27 +96,27 @@ target_link_options(Base PUBLIC
 
 
 #=======================================================
-# PetEngine.exe
+# App test executable
 #=======================================================
 # Exe name in the form "project_name_configuration.exe"
-add_executable(PetEngine)
-target_sources(PetEngine PRIVATE main.cpp)
-target_link_libraries(PetEngine PRIVATE Base)
-set_target_properties(PetEngine PROPERTIES OUTPUT_NAME ${PROJECT_NAME}_$<CONFIG>)
+add_executable(UI_Test_Filesystem_View)
+target_sources(UI_Test_Filesystem_View PRIVATE ui_test_filesystem_view.cpp)
+target_link_libraries(UI_Test_Filesystem_View PRIVATE Base)
+set_target_properties(UI_Test_Filesystem_View PROPERTIES OUTPUT_NAME UI_Test_Filesystem_View_$<CONFIG>)
 
-set_target_properties(PetEngine PROPERTIES 
+set_target_properties(UI_Test_Filesystem_View PROPERTIES 
 	RUNTIME_OUTPUT_DIRECTORY 
 	${CMAKE_SOURCE_DIR}/bin
 )
-set_target_properties(PetEngine PROPERTIES 
+set_target_properties(UI_Test_Filesystem_View PROPERTIES 
 	RUNTIME_OUTPUT_DIRECTORY_RELEASE 
 	${CMAKE_SOURCE_DIR}/bin
 )
-set_target_properties(PetEngine PROPERTIES 
+set_target_properties(UI_Test_Filesystem_View PROPERTIES 
 	RUNTIME_OUTPUT_DIRECTORY_DEBUG 
 	${CMAKE_SOURCE_DIR}/bin
 )
-set_target_properties(PetEngine PROPERTIES 
+set_target_properties(UI_Test_Filesystem_View PROPERTIES 
 	RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO 
 	${CMAKE_SOURCE_DIR}/bin
 )
@@ -145,25 +145,29 @@ foreach(FILE ${FOUND_FILES})
     endif()
 endforeach()
 
-set(FILES ${TEST_FILES} test/test.cpp)
+set(FILES ${TEST_FILES} test_main.cpp)
 target_sources(Tests PRIVATE ${FILES})
 target_link_libraries(Tests PRIVATE Base)
 
-set_target_properties(Tests PROPERTIES OUTPUT_NAME Test)
 set_target_properties(Tests PROPERTIES 
-	RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/src/test/bin
+OUTPUT_NAME 
+Tests_$<CONFIG>
+)
+set_target_properties(Tests PROPERTIES 
+	RUNTIME_OUTPUT_DIRECTORY 
+${CMAKE_SOURCE_DIR}/bin
 )
 set_target_properties(Tests PROPERTIES 
 	RUNTIME_OUTPUT_DIRECTORY_RELEASE 
-	${CMAKE_SOURCE_DIR}/src/test/bin
+	${CMAKE_SOURCE_DIR}/bin
 )
 set_target_properties(Tests PROPERTIES 
 	RUNTIME_OUTPUT_DIRECTORY_DEBUG 
-	${CMAKE_SOURCE_DIR}/src/test/bin
+	${CMAKE_SOURCE_DIR}/bin
 )
 set_target_properties(Tests PROPERTIES 
 	RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO 
-	${CMAKE_SOURCE_DIR}/src/test/bin
+	${CMAKE_SOURCE_DIR}/bin
 )
 
 add_test(NAME UnitTests COMMAND Tests)

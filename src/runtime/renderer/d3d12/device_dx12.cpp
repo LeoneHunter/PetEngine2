@@ -8,7 +8,7 @@
     #include <dxgidebug.h>
 #endif
 
-namespace dx12 {
+namespace d3d12 {
 
 struct DeviceCreateResult {
     RefCountedPtr<ID3D12Device> device;
@@ -236,7 +236,7 @@ std::unique_ptr<Device> Device::Create(int adapterIndex,
     return std::move(out);
 }
 
-} // namespace dx12
+} // namespace d3d12
 
 
 

@@ -1,7 +1,7 @@
 #pragma once
 #include "common_dx12.h"
 
-namespace dx12 {
+namespace d3d12 {
 
 // Main interface to gpu
 // All resources and classes are created through this class
@@ -37,4 +37,4 @@ private:
 };
 
 
-} // namespace dx12
+} // namespace d3d12

@@ -185,7 +185,87 @@ public:
 	}
 };
 
+/*
+ * Helper to create string of serialized data
+ */
+class StringBuilder {
+public:
+    constexpr StringBuilder(std::string* inBuffer, uint32_t inIndentSize = 2)
+        : buffer_(inBuffer), indent_(0), indentSize_(inIndentSize) {}
 
+    template <typename... ArgTypes>
+    constexpr StringBuilder& Line(
+        const std::format_string<ArgTypes...> inFormat,
+        ArgTypes&&... inArgs) {
+        AppendIndent();
+        buffer_->append(
+            std::format(inFormat, std::forward<ArgTypes>(inArgs)...));
+        EndLine();
+        return *this;
+    }
+
+    constexpr StringBuilder& Line(std::string_view inStr) {
+        AppendIndent();
+        buffer_->append(inStr);
+        EndLine();
+        return *this;
+    }
+
+    constexpr StringBuilder& Line() {
+        EndLine();
+        return *this;
+    }
+
+    constexpr StringBuilder& SetIndent(uint32_t inIndent = 1) {
+        indent_ = inIndent;
+        return *this;
+    }
+
+    constexpr StringBuilder& PushIndent(uint32_t inIndent = 1) {
+        indent_ += inIndent;
+        return *this;
+    }
+
+    constexpr StringBuilder& PopIndent(uint32_t inIndent = 1) {
+        if (indent_)
+            indent_ -= inIndent;
+        return *this;
+    }
+
+    constexpr StringBuilder& EndLine() {
+        buffer_->append("\n");
+        return *this;
+    }
+
+private:
+    constexpr void AppendIndent() {
+        if (!indent_)
+            return;
+        for (auto i = indent_ * indentSize_; i; --i) {
+            buffer_->append(" ");
+        }
+    }
+
+private:
+    uint32_t indentSize_;
+    uint32_t indent_;
+    std::string* buffer_;
+};
+
+inline std::wstring ToWideString(const std::string& inStr) {
+    auto out = std::wstring(inStr.size() + 1, L'\0');
+    size_t convertedChars = 0;
+    mbstowcs_s(&convertedChars, out.data(), out.size(), inStr.c_str(),
+               _TRUNCATE);
+    return out;
+}
+
+inline std::string ToLower(const std::string& inString) {
+    std::string str(inString);
+    std::transform(std::begin(str), std::end(str), std::begin(str),
+                   [](unsigned char c) { return std::tolower(c); });
+    return str;
+}
 
 /*====================================================================================*/
 constexpr StringID::StringID()
