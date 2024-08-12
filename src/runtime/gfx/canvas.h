@@ -10,6 +10,7 @@
 
 namespace gpu {
 class Texture;
+class Buffer;
 class DrawPass;
 }  // namespace gpu
 
@@ -20,10 +21,15 @@ class Image;
 // High level drawing context
 // Internally creates draw commands and places them into a buffer
 // The buffer then can be rendered via RenderPass interface
+// Canvas owns shaders and gpu resources needed to draw itself 
+//   so it's quite expensive to create one
 class Canvas {
 public:
 
     static std::unique_ptr<Canvas> Create();
+
+    // Delete all recorded draws
+    void Clear();
 
     // Simple rect with all corners with the same rounding
     void DrawRect(const Rect& rect,
@@ -76,10 +82,7 @@ public:
     std::unique_ptr<gpu::DrawPass> CreateDrawPass();
 
 private:
-    Canvas() {
-        drawLists_.emplace_back(drawListSharedData_.get());
-        currentDrawList_ = &drawLists_.front();
-    }
+    Canvas();
 
 private:
     static constexpr int kMaxVerticesPerDrawList =
@@ -88,6 +91,10 @@ private:
     std::unique_ptr<ImDrawListSharedData> drawListSharedData_;
     std::list<ImDrawList> drawLists_;
     ImDrawList* currentDrawList_;
+
+    gfx::Rect viewport_;
+    // Image shader to draw text and images
+    RefCountedPtr<gpu::Shader> shader_;
 
     struct Context {
         Vec2f translation;

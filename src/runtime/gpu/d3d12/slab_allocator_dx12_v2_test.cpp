@@ -66,7 +66,7 @@ public:
 
 private:
     std::string out;
-    util::StringBuilder sb;
+    StringBuilder sb;
 };
 
 

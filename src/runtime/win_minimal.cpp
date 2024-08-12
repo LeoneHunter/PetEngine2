@@ -25,8 +25,8 @@ namespace windows {
 		return ::GetCurrentFiber();
 	}
 
-	void Sleep(uint32_t inSleepTime) {
-		::Sleep(1);
+	void Sleep(uint32_t ms) {
+		::Sleep(ms);
 	}
 
 	void Pause() {

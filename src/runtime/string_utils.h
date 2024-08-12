@@ -6,6 +6,37 @@
 #include <filesystem>
 
 
+// Define a std::formatter overload for std::format using adl of to_string()
+#define DEFINE_TOSTRING_FORMATTER(TYPE)                         \
+    template <>                                                 \
+    struct std::formatter<TYPE> : std::formatter<std::string> { \
+        using Base = std::formatter<std::string>;               \
+        using Base::parse;                                      \
+        template <class T>                                      \
+        auto format(const TYPE& value, T& ctx) const {          \
+            return Base::format(to_string(value), ctx);         \
+        }                                                       \
+    };
+
+// Define a std::formatter overload for std::format using cast to another type
+#define DEFINE_CAST_FORMATTER(TYPE, TYPE2)                       \
+    template <>                                                  \
+    struct std::formatter<TYPE> : std::formatter<TYPE2> {        \
+        using Base = std::formatter<TYPE2>;                      \
+        using Base::parse;                                       \
+        template <class T>                                       \
+        auto format(const TYPE& value, T& ctx) const {           \
+            return Base::format(static_cast<TYPE2>(value), ctx); \
+        }                                                        \
+    };
+
+// Define a std::ostream overload using adl of to_string()
+#define DEFINE_TOSTRING_OSTREAM(TYPE)                                          \
+    inline std::ostream& operator<<(std::ostream& stream, const TYPE& value) { \
+        stream << to_string(value);                                            \
+        return stream;                                                         \
+    }
+
 constexpr uint64_t kStringPoolSize = 8192;
 
 template<typename T>

@@ -142,6 +142,7 @@ public:
 
     static Rect FromTLBR(Point min, Point max);
     static Rect FromTLBR(float minX, float minY, float maxX, float maxY);
+    static Rect FromMinMax(float minX, float minY, float maxX, float maxY);
 
     static Rect FromTRBL(float top, float right, float bottom, float left);
     static Rect FromPoints(const Point& p1, const Point& p2);
@@ -153,6 +154,11 @@ public:
 
     Point Min() const { return min; }
     Point Max() const { return max; }
+
+    float Left() const;
+    float Right() const;
+    float Top() const;
+    float Bottom() const;
 
     Rect Translate(const Vec2f& vec) const {
         return Rect::FromPoints(min + vec, max + vec);

@@ -28,6 +28,8 @@ private:
 
 #define NODISCARD [[nodiscard]]
 
+#define NOT_IMPLEMENTED() DASSERT_M(false, "Not implemented!");
+
 // Defines all bitwise operators for enum classes so it can be (mostly) used as a regular flags enum
 #define DEFINE_ENUM_FLAGS_OPERATORS(Enum) \
     inline constexpr Enum& operator|=(Enum& Lhs, Enum Rhs) { return Lhs = (Enum)((std::underlying_type_t<Enum>)Lhs | (std::underlying_type_t<Enum>)Rhs); }	\

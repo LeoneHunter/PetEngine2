@@ -2,7 +2,7 @@
 # Include thirdparty targets
 add_subdirectory(thirdparty)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-
+set_ignored_warnings()
 
 
 #=======================================================
@@ -57,15 +57,22 @@ set(BASE_FILES
 	runtime/task/task_tracker.cpp
 	runtime/task/task.h
 	# Rendering
-	runtime/renderer/d3d12/common_dx12.h
-	runtime/renderer/d3d12/device_dx12.h
-	runtime/renderer/d3d12/device_dx12.cpp
-	runtime/renderer/d3d12/heap_allocator_dx12.h
-	runtime/renderer/d3d12/descriptor_heap_dx12.h
-	runtime/renderer/d3d12/descriptor_heap_dx12.cpp
+	runtime/gpu/d3d12/common_dx12.h
+	runtime/gpu/d3d12/device_dx12.h
+	runtime/gpu/d3d12/device_dx12.cpp
+	runtime/gpu/d3d12/heap_allocator_dx12.h
+	runtime/gpu/d3d12/descriptor_heap_dx12.h
+	runtime/gpu/d3d12/descriptor_heap_dx12.cpp
 
-	runtime/renderer/d3d12/slab_allocator_dx12_v2.h
-	runtime/renderer/d3d12/slab_allocator_heap_dx12_v2.h
+	runtime/gpu/d3d12/slab_allocator_dx12_v2.h
+	runtime/gpu/d3d12/slab_allocator_heap_dx12_v2.h
+
+	# Shaders
+	runtime/gpu/shader/shader_dsl.h
+	runtime/gpu/shader/shader_compiler.h
+	runtime/gpu/shader/hlsl_codegen.h
+	runtime/gpu/shader/hlsl_codegen.cpp
+	runtime/gpu/shader/shader_dsl_ast.h
 
 	# Util
 	runtime/util/bench.h

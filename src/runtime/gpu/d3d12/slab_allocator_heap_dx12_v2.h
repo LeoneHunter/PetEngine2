@@ -355,9 +355,9 @@ public:
                  AllocationTracker* tracker = nullptr)
         : name_(name)
         , heap_(std::move(d3d12Heap))
+        , tracker_(tracker) 
         , numPages_(uint32_t(heap_->GetDesc().SizeInBytes / internal::kPageSize))
-        , numFreePages_(numPages_)
-        , tracker_(tracker) {
+        , numFreePages_(numPages_) {
         if (tracker_) {
             tracker_->DidCreateHeap(AllocationTracker::HeapInfo{
                 .name = name, 
@@ -407,10 +407,9 @@ public:
 
 private:
     const std::string name_;
-    const RefCountedPtr<ID3D12Heap> heap_;
-    const uint32_t numPages_;
+    RefCountedPtr<ID3D12Heap> heap_;
     AllocationTracker* const tracker_;
-
+    const uint32_t numPages_;
     uint32_t numFreePages_;
     // Only the first and the last page of a span contains data
     // Heap allocated array

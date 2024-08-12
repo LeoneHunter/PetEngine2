@@ -27,7 +27,7 @@ ShaderCode GenerateShaders(std::span<InputLayoutElement> layout) {
     bool useTexture = false;
 
     for (const InputLayoutElement& elem : layout) {
-        switch(elem.semantic) {
+        switch (elem.semantic) {
             case InputLayoutElement::Semantic::Position: {
                 vsInput += "float2 pos: POSITION;";
                 vsOut += "float2 pos: SV_POSITION;";
@@ -85,14 +85,12 @@ ShaderCode GenerateShaders(std::span<InputLayoutElement> layout) {
     return out;
 }
 
-RefCountedPtr<ID3DBlob> CompileShader(
-    const std::string& code,
-    const std::string& entrypoint,
-    const std::string& target,
-    bool isDebug) {
-
+RefCountedPtr<ID3DBlob> CompileShader(const std::string& code,
+                                      const std::string& entrypoint,
+                                      const std::string& target,
+                                      bool isDebug) {
     UINT compileFlags = 0;
-    if(isDebug) {
+    if (isDebug) {
         compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
     }
     RefCountedPtr<ID3DBlob> byteCode;
@@ -100,8 +98,8 @@ RefCountedPtr<ID3DBlob> CompileShader(
     HRESULT hr = D3DCompile(code.c_str(), code.size(), "", nullptr, nullptr,
                             entrypoint.c_str(), target.c_str(), compileFlags, 0,
                             &byteCode, &errors);
-    DASSERT_F(SUCCEEDED(hr),   
-              "Error compiling shader. {}", (char*)errors->GetBufferPointer());
+    DASSERT_F(SUCCEEDED(hr), "Error compiling shader. {}",
+              (char*)errors->GetBufferPointer());
     return byteCode;
 }
 
@@ -109,7 +107,6 @@ RefCountedPtr<ID3D12PipelineState> CreatePSO(
     ID3D12Device* device,
     ID3D12RootSignature* rootSignature,
     std::span<InputLayoutElement> inputLayout) {
-
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
     psoDesc.NodeMask = 1;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
@@ -124,17 +121,18 @@ RefCountedPtr<ID3D12PipelineState> CreatePSO(
     const ShaderCode code = GenerateShaders(inputLayout);
     RefCountedPtr<ID3DBlob> vertexShaderBlob;
     RefCountedPtr<ID3DBlob> pixelShaderBlob;
-    vertexShaderBlob = CompileShader(code.vertex, "main", "vs_5_0", kDebugBuild);
+    vertexShaderBlob =
+        CompileShader(code.vertex, "main", "vs_5_0", kDebugBuild);
     pixelShaderBlob = CompileShader(code.pixel, "main", "ps_5_0", kDebugBuild);
-    
+
     // - Input layout
     std::vector<D3D12_INPUT_ELEMENT_DESC> d3d12InputLayout;
     d3d12InputLayout.reserve(inputLayout.size());
     uint32_t offset = 0;
 
-    for(const InputLayoutElement& elem: inputLayout) {
+    for (const InputLayoutElement& elem : inputLayout) {
         D3D12_INPUT_ELEMENT_DESC& out = d3d12InputLayout.emplace_back();
-        switch(elem.semantic) {
+        switch (elem.semantic) {
             case InputLayoutElement::Semantic::Position: {
                 out = {"POSITION",
                        0,
@@ -162,10 +160,11 @@ RefCountedPtr<ID3D12PipelineState> CreatePSO(
                        D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
                        0};
             } break;
-            default: UNREACHABLE();
+            default:
+                UNREACHABLE();
         }
     }
-    psoDesc.VS = {vertexShaderBlob->GetBufferPointer(),     
+    psoDesc.VS = {vertexShaderBlob->GetBufferPointer(),
                   vertexShaderBlob->GetBufferSize()};
     psoDesc.PS = {pixelShaderBlob->GetBufferPointer(),
                   pixelShaderBlob->GetBufferSize()};
@@ -179,7 +178,8 @@ RefCountedPtr<ID3D12PipelineState> CreatePSO(
     psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
     psoDesc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
     psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
-    psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+    psoDesc.BlendState.RenderTarget[0].DestBlendAlpha =
+        D3D12_BLEND_INV_SRC_ALPHA;
     psoDesc.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
     psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask =
         D3D12_COLOR_WRITE_ENABLE_ALL;
@@ -219,7 +219,7 @@ RefCountedPtr<ID3D12PipelineState> CreatePSO(
     return pso;
 }
 
-} // namespace
+}  // namespace
 
 void Renderer2D::Init(void* windowHandle) {
     DASSERT(windowHandle);
@@ -255,9 +255,11 @@ void Renderer2D::Init(void* windowHandle) {
         parameters[0].Constants.Num32BitValues = sizeof(ShaderConstants) / 4;
         parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
         // Texture
-        parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[1].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         parameters[1].DescriptorTable.NumDescriptorRanges = 1;
-        parameters[1].DescriptorTable.pDescriptorRanges = &textureDescriptorTable;
+        parameters[1].DescriptorTable.pDescriptorRanges =
+            &textureDescriptorTable;
         parameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         // Tiled sampler for all textures: font atlas, icons, images
         D3D12_STATIC_SAMPLER_DESC staticSampler{};
@@ -295,15 +297,7 @@ void Renderer2D::Init(void* windowHandle) {
             0, blob->GetBufferPointer(), blob->GetBufferSize(),
             IID_PPV_ARGS(&rootSignature_));
     }
-
 }
-
-
-
-
-
-
-
 
 
 
@@ -325,7 +319,6 @@ struct ImGui_ImplDX12_RenderBuffers {
 void ImGui_ImplDX12_SetupRenderState(ImDrawData* draw_data,
                                      ID3D12GraphicsCommandList* ctx,
                                      ImGui_ImplDX12_RenderBuffers* fr) {
-
     // - Upload constants
     ShaderConstants constants{};
     float L = draw_data->DisplayPos.x;
@@ -333,7 +326,7 @@ void ImGui_ImplDX12_SetupRenderState(ImDrawData* draw_data,
     float T = draw_data->DisplayPos.y;
     float B = draw_data->DisplayPos.y + draw_data->DisplaySize.y;
     constants.mvp = gfx::Mat44f::CreateOrthographic(T, R, B, L);
-    
+
 
     // Setup viewport
     D3D12_VIEWPORT vp{};

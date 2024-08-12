@@ -1,6 +1,7 @@
 #pragma once
 #include "heap_allocator_dx12.h"
 #include "slab_allocator_heap_dx12_v2.h"
+#include "runtime/string_utils.h"
 
 namespace d3d12 {
 
@@ -217,7 +218,7 @@ internal::Span* SlabAllocator::AllocateHeap() {
         std::format("{} Heap {}", debugHeapNamePrefix_, ListSize(heapHead_));
 
     if (kDebugBuild) {
-        const std::wstring heapNameWide = util::ToWideString(heapName);
+        const std::wstring heapNameWide = ToWideString(heapName);
         d3d12Heap->SetName(heapNameWide.c_str());
     }
     auto* heap = new HeapMetadata(std::move(d3d12Heap), heapName, tracker_);

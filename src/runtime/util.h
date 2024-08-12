@@ -381,7 +381,7 @@ public:
 
     void Release() {
         DASSERT(refCount_ > 0);
-        if (refCount_.fetch_add(-1, std::memory_order_acq_rel) == 1) {
+        if (refCount_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
             delete this;
         }
     }
@@ -1266,3 +1266,4 @@ public:
 template <class T, class V>
 concept Range =
     std::ranges::range<T> && std::convertible_to<typename T::value_type, V>;
+

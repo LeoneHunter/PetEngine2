@@ -46,7 +46,7 @@ public:
             case 1:
                 return y;
         }
-        DASSERT(false && "Index out of bounds");
+        UNREACHABLE();
         return x;
     }
 
@@ -57,7 +57,7 @@ public:
             case 1:
                 return y;
         }
-        DASSERT(false && "Index out of bounds");
+        UNREACHABLE();
         return x;
     }
 
@@ -68,7 +68,7 @@ public:
             case Axis::Y:
                 return y;
         }
-        DASSERT(false && "Index out of bounds");
+        UNREACHABLE();
         return x;
     }
 
@@ -79,7 +79,7 @@ public:
             case Axis::Y:
                 return y;
         }
-        DASSERT(false && "Index out of bounds");
+        UNREACHABLE();
         return x;
     }
 
