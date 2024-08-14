@@ -2,24 +2,40 @@
 
 namespace gpu::internal {
 
-std::unique_ptr<ShaderCode> HLSLCodeGenerator::Generate(
-    internal::Scope* root,
-    CodeGenerator::Delegate* ast) {
-    //
-    ast_ = ast;
-    std::stringstream code;
-    stream_ = &code;
-    ParseGlobal(root);
-    return std::make_unique<ShaderCode>(code.str());
+
+std::unique_ptr<ShaderCode> HLSLCodeGenerator::Build(ShaderType type,
+                                                     std::string_view main,
+                                                     Context* ctx) {
+
+    context_ = ctx;
+    auto result = std::make_unique<ShaderCode>();
+    result->type = type;
+    result->mainId = main;
+    code_ = result.get();
+    std::stringstream stream;
+    stream_ = &stream;
+    ParseGlobal(ctx->GetRoot());
+    result->code = stream.str();
+    return result;
 }
 
 void HLSLCodeGenerator::ParseGlobal(Scope* root) {
     for (Address addr : root->children) {
         if (Variable* var = NodeFromAddress<Variable>(addr)) {
             WriteVarDeclaration(var);
+            if (var->attr == Attribute::Uniform) {
+                ShaderCode::Uniform uniform{};
+                uniform.id = var->identifier;
+                uniform.type = var->dataType;
+                uniform.bindIndex = var->bindIdx;
+                code_->uniforms.push_back(uniform);
+            }
             continue;
         } else if (Function* func = NodeFromAddress<Function>(addr)) {
             ParseFunction(func);
+            continue;
+        } else if (Literal* literal = NodeFromAddress<Literal>(addr)) {
+            WriteLiteral(literal);
             continue;
         }
         DASSERT_M(false, "Unknown node type encountered");
@@ -28,6 +44,7 @@ void HLSLCodeGenerator::ParseGlobal(Scope* root) {
 
 void HLSLCodeGenerator::ParseFunction(Function* func) {
     isInsideFunction_ = true;
+    const bool isMain = func->identifier == code_->mainId;
     // Gather inputs, outputs and uniforms
     std::vector<Variable*> inputs;
     std::vector<Variable*> outputs;
@@ -38,10 +55,24 @@ void HLSLCodeGenerator::ParseFunction(Function* func) {
             switch (var->attr) {
                 case Attribute::Input: {
                     inputs.emplace_back(var);
+                    if (isMain) {
+                        ShaderCode::Varying input{};
+                        input.id = var->identifier;
+                        input.semantic = var->semantic;
+                        input.type = var->dataType;
+                        code_->inputs.push_back(input);
+                    }
                     break;
                 }
                 case Attribute::Output: {
                     outputs.emplace_back(var);
+                    if (isMain) {
+                        ShaderCode::Varying output{};
+                        output.id = var->identifier;
+                        output.semantic = var->semantic;
+                        output.type = var->dataType;
+                        code_->outputs.push_back(output);
+                    }
                     break;
                 }
             }
@@ -52,23 +83,18 @@ void HLSLCodeGenerator::ParseFunction(Function* func) {
     std::string returnType;
     // Determine the return type
     switch (outputs.size()) {
-        case 0:
-            returnType = "void";
-            break;
-        case 1:
-            returnType = to_string(outputs.back()->dataType);
-            break;
-        default:
-            returnType = CreateClassIdentifier();
+        case 0: returnType = "void"; break;
+        case 1: returnType = to_string(outputs.back()->dataType); break;
+        default: returnType = CreateClassIdentifier(); break;
     }
     // Write outputs struct declaration
     if (outputs.size() > 1) {
         WriteStruct(returnType, outputs);
     }
     // Write signature
-    const std::string identifier =
+    const std::string funcId =
         func->identifier.empty() ? CreateFuncIdentifier() : func->identifier;
-    Write("{} {}(", returnType, identifier);
+    Write("{} {}(", returnType, funcId);
     for (size_t i = 0; i < inputs.size(); ++i) {
         Variable* param = inputs[i];
         if (i > 0) {
@@ -76,23 +102,35 @@ void HLSLCodeGenerator::ParseFunction(Function* func) {
         }
         WriteVarDeclaration(param, false);
     }
-    Write(") {}\n", '{');
+    Write(") ");
+    // In pixel shader with single output write semantic
+    if (isMain && code_->type == ShaderType::Pixel && outputs.size() == 1) {
+        const std::string semantic = outputs.back()->semantic == Semantic::Color
+                                         ? "SV_Target"
+                                         : to_string(outputs.back()->semantic);
+        Write(": {}", semantic);
+    }
+    Write("{}\n", '{');
     PushIndent();
-    std::string returnIdentifier;
+    std::string returnId;
     // Write returns declaration
     switch (outputs.size()) {
-        case 0:
-            break;
+        case 0: break;
         case 1: {
-            WriteVarDeclaration(outputs.back());
-            returnIdentifier = outputs.back()->identifier;
+            AstNode* var = outputs.back();
+            ValidateIdentifier(var);
+            WriteLine("{} {};", var->dataType, var->identifier);
+            returnId = var->identifier;
             break;
         }
         default: {
-            // TODO: Write outputs var declaration
-            // OutputsStruct out;
-            // TODO: Update output identifiers to struct.var
-            NOT_IMPLEMENTED();
+            returnId = CreateVarIdentifier();
+            WriteLine("{} {};", returnType, returnId);
+            // Update output identifiers to struct.var
+            for (Variable* ret : outputs) {
+                ret->identifier =
+                    std::format("{}.{}", returnId, ret->identifier);
+            }
         }
     }
     // Write body
@@ -105,6 +143,8 @@ void HLSLCodeGenerator::ParseFunction(Function* func) {
                 continue;
             }
             WriteVarDeclaration(var);
+        } else if (Literal* literal = NodeFromAddress<Literal>(addr)) {
+            WriteLiteral(literal);
         } else {
             NOT_IMPLEMENTED();
         }
@@ -112,7 +152,7 @@ void HLSLCodeGenerator::ParseFunction(Function* func) {
     // Write return
     if (outputs.size() > 0) {
         WriteIndent();
-        Write("return {};\n", returnIdentifier);
+        Write("return {};\n", returnId);
     }
     PopIndent();
     Write("{}\n", '}');
@@ -120,43 +160,26 @@ void HLSLCodeGenerator::ParseFunction(Function* func) {
     localVarCounter_ = 0;
 }
 
-std::string HLSLCodeGenerator::GetArgumentType(const AstNode* node) {
-    if (const Literal* literal = CastNode<Literal>(node)) {
-        return to_string(literal->dataType);
-    } else if (const Variable* var = CastNode<Variable>(node)) {
-        return to_string(var->dataType);
+DataType HLSLCodeGenerator::GetComponentType(const AstNode* node) {
+    switch (node->dataType) {
+        case DataType::Float2:
+        case DataType::Float3:
+        case DataType::Float4: return DataType::Float;
+        default: return DataType::Unknown;
     }
-    return "";
 }
 
-std::string HLSLCodeGenerator::GetComponentType(const AstNode* node) {
-    if (const Variable* var = CastNode<Variable>(node)) {
-        switch (var->dataType) {
-            case DataType::Float2:
-            case DataType::Float3:
-            case DataType::Float4:
-                return "float";
-                // TODO: Implement other types
-        }
-    }
-    return "";
-}
-
-std::string HLSLCodeGenerator::GetComponent(const AstNode* node) {
+std::string HLSLCodeGenerator::ComponentFromLiteral(const AstNode* node) {
     if (const Literal* literal = CastNode<Literal>(node)) {
         if (literal->dataType == DataType::Uint) {
             const int64_t index64 = std::get<int64_t>(literal->value);
             if (index64 <= std::numeric_limits<uint32_t>::max()) {
                 const uint32_t index32 = (uint32_t)index64;
                 switch (index32) {
-                    case 0:
-                        return "x";
-                    case 1:
-                        return "y";
-                    case 2:
-                        return "z";
-                    case 3:
-                        return "w";
+                    case 0: return "x";
+                    case 1: return "y";
+                    case 2: return "z";
+                    case 3: return "w";
                 }
             }
         }
@@ -165,8 +188,8 @@ std::string HLSLCodeGenerator::GetComponent(const AstNode* node) {
 }
 
 void HLSLCodeGenerator::WriteExpression(Expression* expr, Address addr) {
-    using OpCode = Expression::OpCode;
-    switch (expr->opcode) {
+    const auto opcode = expr->opcode;
+    switch (opcode) {
         case OpCode::Add:
         case OpCode::Sub:
         case OpCode::Mul:
@@ -175,26 +198,122 @@ void HLSLCodeGenerator::WriteExpression(Expression* expr, Address addr) {
             const AstNode* lhs = NodeFromAddress(expr->arguments[0]);
             const AstNode* rhs = NodeFromAddress(expr->arguments[1]);
             ValidateIdentifier(expr);
-            WriteLine("{} {} = {} {} {};", GetArgumentType(lhs),
-                      expr->identifier, lhs->identifier, expr->opcode,
-                      rhs->identifier);
-        } break;
-        case OpCode::Assign: {
+            if (opcode == OpCode::Mul && lhs->dataType == DataType::Float4x4) {
+                expr->dataType = DataType::Float4;
+                WriteLine("float4 {} = mul({}, {});", expr->identifier,
+                          lhs->identifier, rhs->identifier);
+            } else {
+                expr->dataType = lhs->dataType;
+                WriteLine("{} {} = {} {} {};", lhs->dataType, expr->identifier,
+                          lhs->identifier, expr->opcode, rhs->identifier);
+            }
+            break;
+        }
+        case OpCode::Assignment: {
             DASSERT(expr->arguments.size() == 2);
             const AstNode* lhs = NodeFromAddress(expr->arguments[0]);
             const AstNode* rhs = NodeFromAddress(expr->arguments[1]);
             WriteLine("{} = {};", lhs->identifier, rhs->identifier);
-        } break;
+            break;
+        }
+        case OpCode::Call: {
+            // TODO: Implement
+            NOT_IMPLEMENTED();
+        }
+        case OpCode::ConstructFloat2: {
+            DASSERT(expr->arguments.size() == 3);
+            const AstNode* var = NodeFromAddress(expr->arguments[0]);
+            const AstNode* x = NodeFromAddress(expr->arguments[1]);
+            const AstNode* y = NodeFromAddress(expr->arguments[2]);
+            WriteLine("{} = float2({}, {});", var->identifier, x->identifier,
+                      y->identifier);
+            break;
+        }
+        case OpCode::ConstructFloat3: {
+            switch (expr->arguments.size()) {
+                case 3: {
+                    const AstNode* var = NodeFromAddress(expr->arguments[0]);
+                    const AstNode* vec2 = NodeFromAddress(expr->arguments[1]);
+                    const AstNode* z = NodeFromAddress(expr->arguments[2]);
+                    WriteLine("{} = float3({}, {});", var->identifier,
+                              vec2->identifier, z->identifier);
+                    break;
+                }
+                case 4: {
+                    const AstNode* var = NodeFromAddress(expr->arguments[0]);
+                    const AstNode* x = NodeFromAddress(expr->arguments[1]);
+                    const AstNode* y = NodeFromAddress(expr->arguments[2]);
+                    const AstNode* z = NodeFromAddress(expr->arguments[3]);
+                    WriteLine("{} = float4({}, {}, {});", var->identifier,
+                              x->identifier, y->identifier, z->identifier);
+                    break;
+                }
+                default: {
+                    DASSERT_F(false, "Unknown arguments for op {}", opcode);
+                }
+            }
+            break;
+        }
+        case OpCode::ConstructFloat4: {
+            switch (expr->arguments.size()) {
+                case 3: {
+                    const AstNode* var = NodeFromAddress(expr->arguments[0]);
+                    const AstNode* vec3 = NodeFromAddress(expr->arguments[1]);
+                    const AstNode* w = NodeFromAddress(expr->arguments[2]);
+                    WriteLine("{} = float4({}, {});", var->identifier,
+                              vec3->identifier, w->identifier);
+                    break;
+                }
+                case 4: {
+                    const AstNode* var = NodeFromAddress(expr->arguments[0]);
+                    const AstNode* vec2 = NodeFromAddress(expr->arguments[1]);
+                    const AstNode* z = NodeFromAddress(expr->arguments[2]);
+                    const AstNode* w = NodeFromAddress(expr->arguments[3]);
+                    WriteLine("{} = float4({}, {}, {});", var->identifier,
+                              vec2->identifier, z->identifier, w->identifier);
+                    break;
+                }
+                case 5: {
+                    const AstNode* var = NodeFromAddress(expr->arguments[0]);
+                    const AstNode* x = NodeFromAddress(expr->arguments[1]);
+                    const AstNode* y = NodeFromAddress(expr->arguments[2]);
+                    const AstNode* z = NodeFromAddress(expr->arguments[3]);
+                    const AstNode* w = NodeFromAddress(expr->arguments[4]);
+                    WriteLine("{} = float4({}, {}, {}, {});", var->identifier,
+                              x->identifier, y->identifier, z->identifier,
+                              w->identifier);
+                    break;
+                }
+                default: {
+                    DASSERT_F(false, "Unknown arguments for op {}", opcode);
+                }
+            }
+            break;
+        }
         case OpCode::FieldAccess: {
             DASSERT(expr->arguments.size() == 2);
             ValidateIdentifier(expr);
             const AstNode* base = NodeFromAddress(expr->arguments[0]);
             const AstNode* index = NodeFromAddress(expr->arguments[1]);
-            const std::string resultType = GetComponentType(base);
-            const std::string component = GetComponent(index);
+            const DataType resultType = GetComponentType(base);
+            const std::string component = ComponentFromLiteral(index);
+            expr->dataType = resultType;
             WriteLine("{} {} = {}.{};", resultType, expr->identifier,
                       base->identifier, component);
-        } break;
+            break;
+        }
+        case OpCode::SampleTexture: {
+            DASSERT(expr->arguments.size() == 3);
+            ValidateIdentifier(expr);
+            const AstNode* tex = NodeFromAddress(expr->arguments[0]);
+            const AstNode* sampler = NodeFromAddress(expr->arguments[1]);
+            const AstNode* texcoords = NodeFromAddress(expr->arguments[2]);
+            expr->dataType = DataType::Float4;
+            WriteLine("float4 {} = {}.Sample({}, {});", expr->identifier,
+                      tex->identifier, sampler->identifier,
+                      texcoords->identifier);
+            break;
+        }
         default: {
             DASSERT_F(false, "OpCode {} not implemented", expr->opcode);
         }
@@ -204,30 +323,29 @@ void HLSLCodeGenerator::WriteExpression(Expression* expr, Address addr) {
 std::string HLSLCodeGenerator::WriteStruct(
     const std::string& type,
     const std::vector<Variable*>& fields) {
-    //
+
     WriteLine("struct {} {}", type, '{');
     PushIndent();
     for (Variable* field : fields) {
-        WriteVarDeclaration(field);
+        WriteVarDeclaration(field, true, kFieldPrefix);
     }
     PopIndent();
-    WriteLine("{}", '}');
+    WriteLine("{};", '}');
     return type;
 }
 
 std::string HLSLCodeGenerator::GetHLSLRegisterPrefix(const Variable* var) {
     switch (var->dataType) {
-        case DataType::Texture2D:
-            return "t";
-        case DataType::Sampler:
-            return "s";
-        default:
-            return "b";
+        case DataType::Texture2D: return "t";
+        case DataType::Sampler: return "s";
+        default: return "b";
     }
 }
 
-void HLSLCodeGenerator::WriteVarDeclaration(Variable* var, bool close) {
-    ValidateIdentifier(var);
+void HLSLCodeGenerator::WriteVarDeclaration(Variable* var,
+                                            bool close,
+                                            std::string_view prefix) {
+    ValidateIdentifier(var, prefix);
     WriteIndent();
     // [type] [identifier]<:> <semantic> <bind_index>;
     Write("{} {}", var->dataType, var->identifier);
@@ -244,6 +362,30 @@ void HLSLCodeGenerator::WriteVarDeclaration(Variable* var, bool close) {
     if (close) {
         Write(";\n");
     }
+}
+
+void HLSLCodeGenerator::WriteLiteral(Literal* lit) {
+    // [type] [identifier] = [value];
+    std::string value;
+    switch (lit->dataType) {
+        case DataType::Uint: {
+            value = std::to_string(lit->GetUint());
+            break;
+        }
+        case DataType::Int: {
+            value = std::to_string(lit->GetInt());
+            break;
+        }
+        case DataType::Float: {
+            value = std::to_string(lit->GetFloat());
+            break;
+        }
+        default: {
+            DASSERT_F(false, "Unknown literal type {}", lit->dataType);
+        }
+    }
+    ValidateIdentifier(lit);
+    WriteLine("{} {} = {};", lit->dataType, lit->identifier, value);
 }
 
 }  // namespace gpu::internal

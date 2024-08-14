@@ -3,23 +3,8 @@
 
 namespace gpu {
 
-// Interface to generators
-class CodeGenerator {
-public:
-    virtual ~CodeGenerator() = default;
-
-    // Delegate to a ast tree
-    class Delegate {
-    public:
-        virtual gpu::internal::AstNode* NodeFromAddress(Address addr) = 0;
-    };
-
-    virtual std::unique_ptr<ShaderCode> Generate(gpu::internal::Scope* root,
-                                                 Delegate* ast) = 0;
-};
-
 // Sequentually generates a shader code
-class ShaderDSLContext final : private CodeGenerator::Delegate {
+class ShaderDSLContext {
 public:
     static ShaderDSLContext& Current() {
         DASSERT(currentShaderBuilder);
@@ -35,16 +20,6 @@ public:
         currentScopeAddr_ = addr;
     }
 
-    std::unique_ptr<ShaderCode> BuildHLSL(CodeGenerator* generator,
-                                          std::string_view entryFuncName = "") {
-        internal::Scope* root =
-            NodeFromAddress<internal::Scope>(kRootNodeAddress);
-        DASSERT(root);
-        DASSERT(generator);
-        std::unique_ptr<ShaderCode> code = generator->Generate(root, this);
-        return code;
-    }
-
     ShaderDSLContext() {
         DASSERT(!currentShaderBuilder);
         currentShaderBuilder = this;
@@ -55,15 +30,44 @@ public:
 
 public:
     // Declares a global, local or class variable
-    Address DeclareVar(DataType type,
-                       Attribute attr = Attribute::None,
-                       Semantic semantic = Semantic::None,
-                       BindIndex bindIdx = kInvalidBindIndex) {
-        const Address var =
-            NewNode<internal::Variable>(type, attr, semantic, bindIdx);
+    Address DeclareVar(DataType type) {
+        const Address var = NewNode<internal::Variable>(type);
         internal::Scope* scope =
             NodeFromAddress<internal::Scope>(currentScopeAddr_);
         scope->children.push_back(var);
+        return var;
+    }
+
+    // Defines (aka calls constructor) a global, local or class variable
+    // Combines a declaration and assignment
+    template <std::convertible_to<Address>... Args>
+    Address DefineVar(DataType type, Args&&... args) {
+        const Address var = NewNode<internal::Variable>(type);
+        internal::Scope* scope =
+            NodeFromAddress<internal::Scope>(currentScopeAddr_);
+        scope->children.push_back(var);
+
+        using OpCode = internal::OpCode;
+        OpCode opcode = OpCode::Unknown;
+        switch (type) {
+            case DataType::Float2: {
+                opcode = OpCode::ConstructFloat2;
+                break;
+            }
+            case DataType::Float3: {
+                opcode = OpCode::ConstructFloat3;
+                break;
+            }
+            case DataType::Float4: {
+                opcode = OpCode::ConstructFloat4;
+                break;
+            }
+            default: {
+                DASSERT_F(false, "Unknown type of definition. {}", type);
+            }
+        }
+        const Address expr =
+            Expression(opcode, var, std::forward<Args>(args)...);
         return var;
     }
 
@@ -82,7 +86,7 @@ public:
         var->bindIdx = bindIdx;
     }
 
-    void SetIdentifier(Address addr, const std::string& identifier) {
+    void SetIdentifier(Address addr, std::string_view identifier) {
         DASSERT(addr);
         if (identifier.empty()) {
             return;
@@ -108,7 +112,7 @@ public:
         const Address literalNode =
             NewNode<internal::Literal>(DataType::Uint, index);
         const Address expr = NewNode<internal::Expression>(
-            internal::Expression::OpCode::FieldAccess, addr, literalNode);
+            internal::OpCode::FieldAccess, addr, literalNode);
         func->children.push_back(expr);
         return expr;
     }
@@ -135,7 +139,7 @@ public:
     }
 
     template <std::convertible_to<Address>... Args>
-    Address PushExpression(internal::Expression::OpCode opcode, Args... args) {
+    Address Expression(internal::OpCode opcode, Args... args) {
         internal::Function* scope = GetCurrentScope<internal::Function>();
         DASSERT(scope);
         Address node = NewNode<internal::Expression>(opcode, args...);
@@ -143,13 +147,19 @@ public:
         return node;
     }
 
-private:
-    internal::AstNode* NodeFromAddress(Address addr) override {
+public:
+    internal::AstNode* NodeFromAddress(Address addr) {
         DASSERT(addr);
         DASSERT(addr.Value() < nodes_.size());
         return nodes_[addr.Value()].get();
     }
 
+    internal::Scope* GetRoot() {
+        DASSERT(nodes_.size() > kRootNodeAddress);
+        return NodeFromAddress<internal::Scope>(kRootNodeAddress);
+    }
+
+private:
     // Creates a new node in the node list
     template <std::derived_from<internal::AstNode> T, class... Args>
     Address NewNode(Args&&... args) {
@@ -225,201 +235,33 @@ private:
 //   record that operation into a syntax tree
 // NOTE: internal::Variable names used only in debug mode
 namespace shader_dsl {
-
 namespace internal {
 
+// Abstract base class for DSL types
+// Contains a reference to Expression, Variable or Literal nodes
 // Registers type assignments
-struct TypeBase : public Address {
+class TypeBase {
+public:
     TypeBase& operator=(const TypeBase& rhs) {
-        Address& self = static_cast<Address&>(*this);
-        ShaderDSLContext::Current().PushExpression(
-            gpu::internal::Expression::OpCode::Assign, self, rhs);
-        self = rhs;
+        ShaderDSLContext::Current().Expression(
+            gpu::internal::OpCode::Assignment, addr_, rhs.addr_);
+        addr_ = rhs.addr_;
         return *this;
     }
+
+    Address GetAddress() const { return addr_; }
+
+protected:
+    TypeBase() = default;
+
+    TypeBase(Address addr) : addr_(addr) {}
+
+    void SetAddress(Address addr) { addr_ = addr; }
+
+private:
+    Address addr_;
 };
 
 }  // namespace internal
-
-// Custom user definen identifier for functions and variables
-class Identifier {
-public:
-    Identifier(std::string_view name) : str(name) {}
-    std::string str;
-};
-
-class Float : public internal::TypeBase {
-public:
-    static DataType GetType() { return DataType::Float; }
-};
-
-class Float2 : public internal::TypeBase {
-public:
-    static DataType GetType() { return DataType::Float2; }
-};
-
-class Float3 : public internal::TypeBase {
-public:
-    static DataType GetType() { return DataType::Float3; }
-};
-
-class Float4 : public internal::TypeBase {
-public:
-    static DataType GetType() { return DataType::Float4; }
-};
-
-class Float4x4 : public internal::TypeBase {
-public:
-    static DataType GetType() { return DataType::Float4x4; }
-};
-
-class Sampler : public internal::TypeBase {
-public:
-    static DataType GetType() { return DataType::Sampler; }
-};
-
-class Texture2D : public internal::TypeBase {
-public:
-    static DataType GetType() { return DataType::Texture2D; }
-};
-
-// Sets a custom identifier for a function, struct or variable
-template <std::derived_from<Address> T>
-T operator|(T var, const Identifier& name) {
-    ShaderDSLContext::Current().SetIdentifier(var, name.str);
-    return var;
-}
-
-template <std::derived_from<Address> T>
-T operator|(T var, BindIndex bindIdx) {
-    ShaderDSLContext::Current().SetBindIndex(var, bindIdx);
-    return var;
-}
-
-template <std::derived_from<Address> T>
-T operator|(T var, Semantic semantic) {
-    ShaderDSLContext::Current().SetSemantic(var, semantic);
-    return var;
-}
-
-template <std::derived_from<Address> T>
-T operator|(T var, Attribute attr) {
-    ShaderDSLContext::Current().SetAttribute(var, attr);
-    return var;
-}
-
-template <std::convertible_to<Address> T>
-T Declare(std::string_view identifier = "") {
-    T addr = {ShaderDSLContext::Current().DeclareVar(T::GetType())};
-    addr | identifier;
-    return addr;
-}
-
-// A shader parameter if defined in global scope
-// A function parameter if defined in a function
-template <std::convertible_to<Address> T>
-T Input(std::string_view identifier = "") {
-    return Declare<T>(identifier) | Attribute::Input;
-}
-
-// A shader return parameter if defined in global scope
-// A function return parameter if defined in a function
-template <std::convertible_to<Address> T>
-T Output(std::string_view identifier = "") {
-    return Declare<T>(identifier) | Attribute::Output;
-}
-
-// Define an input constant
-template <std::convertible_to<Address> T>
-T Uniform(std::string_view identifier = "") {
-    return Declare<T>(identifier) | Attribute::Uniform;
-}
-
-template <std::convertible_to<Address> T>
-T operator*(T lhs, T rhs) {
-    return {ShaderDSLContext::Current().PushExpression(
-        gpu::internal::Expression::OpCode::Mul, lhs, rhs)};
-}
-
-template <std::convertible_to<Address> T>
-T operator*(T lhs, float scalar) {
-    Address rhs =
-        ShaderDSLContext::Current().DeclareLiteral(DataType::Float, scalar);
-    return {ShaderDSLContext::Current().PushExpression(
-        gpu::internal::Expression::OpCode::Mul, lhs, rhs)};
-}
-
-inline Float4 operator*(Float4x4 mat, Float4 vec) {
-    return {ShaderDSLContext::Current().PushExpression(
-        gpu::internal::Expression::OpCode::Mul, mat, vec)};
-}
-
-inline Float GetX(Float2 vec) {
-    return {ShaderDSLContext::Current().OpFieldAccess(vec, 0)};
-}
-inline Float GetX(Float3 vec) {
-    return {ShaderDSLContext::Current().OpFieldAccess(vec, 0)};
-}
-inline Float GetX(Float4 vec) {
-    return {ShaderDSLContext::Current().OpFieldAccess(vec, 0)};
-}
-
-inline Float GetY(Float2 vec) {
-    return {ShaderDSLContext::Current().OpFieldAccess(vec, 1)};
-}
-inline Float GetY(Float3 vec) {
-    return {ShaderDSLContext::Current().OpFieldAccess(vec, 1)};
-}
-inline Float GetY(Float4 vec) {
-    return {ShaderDSLContext::Current().OpFieldAccess(vec, 1)};
-}
-
-inline Float GetZ(Float3 vec) {
-    return {ShaderDSLContext::Current().OpFieldAccess(vec, 2)};
-}
-inline Float GetZ(Float4 vec) {
-    return {ShaderDSLContext::Current().OpFieldAccess(vec, 2)};
-}
-
-inline Float GetW(Float4 vec) {
-    return {ShaderDSLContext::Current().OpFieldAccess(vec, 3)};
-}
-
-inline Float CreateFloat(float val) {
-    return {ShaderDSLContext::Current().DeclareLiteral(DataType::Float, val)};
-}
-
-inline Float4 CreateFloat2(Address x, Address y) {
-    return {ShaderDSLContext::Current().PushExpression(
-        gpu::internal::Expression::OpCode::ConstructFloat2, x, y)};
-}
-
-inline Float4 CreateFloat3(Address x, Address y, Address z) {
-    return {ShaderDSLContext::Current().PushExpression(
-        gpu::internal::Expression::OpCode::ConstructFloat3, x, y, z)};
-}
-
-inline Float4 CreateFloat4(Address x, Address y, Address z, Address w) {
-    return {ShaderDSLContext::Current().PushExpression(
-        gpu::internal::Expression::OpCode::ConstructFloat4, x, y, z, w)};
-}
-
-inline Float4 SampleTexture(Texture2D texture, Sampler sampler, Float2 uv) {
-    return {ShaderDSLContext::Current().PushExpression(
-        gpu::internal::Expression::OpCode::SampleTexture, texture, sampler,
-        uv)};
-}
-
-inline Address Function(std::string_view identifier = "") {
-    Address func = {ShaderDSLContext::Current().DeclareFunction()};
-    func | identifier;
-    return func;
-}
-
-inline void EndFunction() {
-    ShaderDSLContext::Current().DeclareFunctionEnd();
-}
-
-
 }  // namespace shader_dsl
 }  // namespace gpu
