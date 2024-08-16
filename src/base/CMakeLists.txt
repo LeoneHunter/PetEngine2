@@ -1,0 +1,29 @@
+
+module(
+    NAME
+        base
+    HDRS
+        common.h
+        error.h
+        log.h
+        math_util.h
+        rtti.h
+        string_utils.h
+        util.h
+        win_minimal.h
+        bench.h
+        threading.h
+    SRCS
+        bench.cpp
+        log.cpp
+        win_minimal.cpp
+        string_utils.cpp
+        threading.cpp
+)
+
+test(
+    NAME
+        util
+    SRCS
+        util_test.cpp
+)

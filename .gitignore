@@ -3,7 +3,7 @@
 [Bb]uild/
 [Dd]ocs/
 vs/
-src/thirdparty/
+thirdparty/
 # Test data
 test/filesystem_view_test/
 

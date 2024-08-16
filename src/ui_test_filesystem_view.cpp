@@ -1,10 +1,10 @@
 #include <iostream>
 #include <ranges>
 
-#include "editor/ui/ui.h"
-#include "runtime/rtti.h"
-#include "runtime/threading.h"
-#include "runtime/win_minimal.h"
+#include "ui/ui.h"
+#include "base/rtti.h"
+#include "base/threading.h"
+#include "base/win_minimal.h"
 
 
 using namespace ui;
@@ -292,12 +292,13 @@ public:
     };
 
     void SetRootDirectory(const std::path& dir) {
-        root_ = dir;
+        root_ = dir.lexically_normal();
         nodes_.clear();
         auto* rootNode =
             nodes_.emplace_back(new Node(root_, 0, true, this)).get();
+        std::error_code err;
 
-        for (const auto& file : std::directory_iterator(dir)) {
+        for (const auto& file : std::directory_iterator(dir, err)) {
             if (!file.is_directory()) {
                 continue;
             }

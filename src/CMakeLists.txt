@@ -1,158 +1,46 @@
 
-# Include thirdparty targets
-add_subdirectory(thirdparty)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-set_ignored_warnings()
 
-
-#=======================================================
-# Base
-#=======================================================
-add_library(Base)
-
-set(BASE_FILES 
-	# UI
-	editor/ui/button.h
-	editor/ui/containers.h
-	editor/ui/containers.cpp
-	editor/ui/focus.h
-	editor/ui/font.h
-	editor/ui/font.cpp
-	editor/ui/framework.h
-	editor/ui/framework.cpp
-	editor/ui/popup.h
-	editor/ui/scroll_view.h
-	editor/ui/style.h
-	editor/ui/tooltip.h
-	editor/ui/ui.h
-	editor/ui/widgets.h
-	editor/ui/widgets.cpp
-	# Runtime
-	runtime/common.h
-	runtime/error.h
-	runtime/image.h
-	runtime/input_types.h
-	runtime/log.h
-	runtime/log.cpp
-	runtime/math_util.h
-	runtime/native_window.h
-	runtime/native_window.cpp
-	runtime/rtti.h
-	runtime/string_utils.h
-	runtime/string_utils.cpp
-	runtime/threading.h
-	runtime/threading.cpp
-	runtime/ui_renderer.h
-	runtime/ui_renderer.cpp
-	runtime/util.h
-	runtime/win_minimal.h
-	runtime/win_minimal.cpp
-	# Task
-	runtime/task/future.h
-	runtime/task/task_executor.h
-	runtime/task/task_executor.cpp
-	runtime/task/task_source.h
-	runtime/task/task_source.cpp
-	runtime/task/task_tracker.h
-	runtime/task/task_tracker.cpp
-	runtime/task/task.h
-	# Rendering
-	runtime/gpu/d3d12/common_dx12.h
-	runtime/gpu/d3d12/device_dx12.h
-	runtime/gpu/d3d12/device_dx12.cpp
-	runtime/gpu/d3d12/heap_allocator_dx12.h
-	runtime/gpu/d3d12/descriptor_heap_dx12.h
-	runtime/gpu/d3d12/descriptor_heap_dx12.cpp
-
-	runtime/gpu/d3d12/slab_allocator_dx12_v2.h
-	runtime/gpu/d3d12/slab_allocator_heap_dx12_v2.h
-
-	# Shaders
-	runtime/gpu/shader/shader_dsl.h
-	runtime/gpu/shader/shader_compiler.h
-	runtime/gpu/shader/hlsl_codegen.h
-	runtime/gpu/shader/hlsl_codegen.cpp
-	runtime/gpu/shader/shader_dsl_ast.h
-
-	# Util
-	runtime/util/bench.h
-	runtime/util/bench.cpp
-)
-
-target_sources(Base PRIVATE ${BASE_FILES})
-target_link_libraries(Base PUBLIC
-	d3d12.lib 
-	dxgi.lib 
-	d3dcompiler.lib
-	dxguid.lib
-	# In local /thirdparty folder
-	thirdparty::dx_headers
-	thirdparty::imgui
-)
-target_compile_definitions(Base PUBLIC
-	WIN32_LEAN_AND_MEAN
-	NOMINMAX
-	UNICODE
-	_UNICODE
-)
-target_link_options(Base PUBLIC
-	$<$<NOT:$<CONFIG:Debug>>:/OPT:REF /OPT:ICF>
-	# suppress linking warning due to /INCREMENTAL and /OPT:ICF being both ON
-	$<$<CONFIG:RelWithDebInfo>:/INCREMENTAL:NO>
-	# Ignore .pdb missing for third party libs
-	/ignore:4099
-	# vcpkg freetype has been compiled with libcmt
-	/NODEFAULTLIB:libcmt.lib
-)
-
-
+add_subdirectory(base)
+add_subdirectory(gfx)
+add_subdirectory(gfx_legacy)
+add_subdirectory(gpu)
+add_subdirectory(task)
+add_subdirectory(ui)
 
 #=======================================================
-# App test executable
+# Sample app testing simple ui
+# Shows a directory tree of a test folder
 #=======================================================
-# Exe name in the form "project_name_configuration.exe"
-add_executable(UI_Test_Filesystem_View)
-target_sources(UI_Test_Filesystem_View PRIVATE ui_test_filesystem_view.cpp)
-target_link_libraries(UI_Test_Filesystem_View PRIVATE Base)
-set_target_properties(UI_Test_Filesystem_View PROPERTIES OUTPUT_NAME UI_Test_Filesystem_View_$<CONFIG>)
-
-set_target_properties(UI_Test_Filesystem_View PROPERTIES 
-	RUNTIME_OUTPUT_DIRECTORY 
-	${CMAKE_SOURCE_DIR}/bin
+executable(
+    NAME
+        ui_filesystem_sample
+    SRCS
+        ui_test_filesystem_view.cpp
+    DEPS
+        base
+        ui
+        gfx_legacy
+        thirdparty::dx_headers
+        thirdparty::imgui
 )
-set_target_properties(UI_Test_Filesystem_View PROPERTIES 
-	RUNTIME_OUTPUT_DIRECTORY_RELEASE 
-	${CMAKE_SOURCE_DIR}/bin
-)
-set_target_properties(UI_Test_Filesystem_View PROPERTIES 
-	RUNTIME_OUTPUT_DIRECTORY_DEBUG 
-	${CMAKE_SOURCE_DIR}/bin
-)
-set_target_properties(UI_Test_Filesystem_View PROPERTIES 
-	RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO 
-	${CMAKE_SOURCE_DIR}/bin
-)
-
-
 
 #=======================================================
 # Freetype Example cli
 #=======================================================
 # Exe name in the form "project_name_configuration.exe"
-add_executable(freetype_example)
-target_sources(freetype_example PRIVATE runtime/freetype_example.cpp)
-target_link_libraries(freetype_example PRIVATE Base freetype harfbuzz)
-target_compile_options(freetype_example PRIVATE /utf-8)
-target_compile_definitions(freetype_example PRIVATE UNICODE _UNICODE)
-set_target_properties(freetype_example PROPERTIES 
-	OUTPUT_NAME 
-	freetype_example_$<CONFIG>
+executable(
+    NAME
+        freetype_sample
+    SRCS
+        freetype_sample.cpp
+    DEPS
+        base
+        thirdparty::freetype
+        thirdparty::harfbuzz
+    COPTS
+        /utf8
 )
-set_target_properties(freetype_example PROPERTIES 
-	RUNTIME_OUTPUT_DIRECTORY
-	${CMAKE_SOURCE_DIR}/bin
-)
-
 
 #=======================================================
 # Tests.exe 
@@ -160,10 +48,8 @@ set_target_properties(freetype_example PROPERTIES
 add_executable(Tests)
 
 file(GLOB_RECURSE FOUND_FILES
-	editor/*.cpp
-	editor/*.h
-	runtime/*.cpp
-	runtime/*.h
+    ./*.cpp
+    ./*.h
 )
 
 # Files with "_test.*"
@@ -178,27 +64,19 @@ endforeach()
 
 set(FILES ${TEST_FILES} test_main.cpp)
 target_sources(Tests PRIVATE ${FILES})
-target_link_libraries(Tests PRIVATE Base)
+target_link_libraries(Tests 
+    PRIVATE 
+    base 
+    thirdparty::doctest
+)
 
 set_target_properties(Tests PROPERTIES 
-	OUTPUT_NAME 
-	Tests_$<CONFIG>
+    OUTPUT_NAME 
+    Tests_$<CONFIG>
 )
 set_target_properties(Tests PROPERTIES 
-	RUNTIME_OUTPUT_DIRECTORY 
-	${CMAKE_SOURCE_DIR}/bin
-)
-set_target_properties(Tests PROPERTIES 
-	RUNTIME_OUTPUT_DIRECTORY_RELEASE 
-	${CMAKE_SOURCE_DIR}/bin
-)
-set_target_properties(Tests PROPERTIES 
-	RUNTIME_OUTPUT_DIRECTORY_DEBUG 
-	${CMAKE_SOURCE_DIR}/bin
-)
-set_target_properties(Tests PROPERTIES 
-	RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO 
-	${CMAKE_SOURCE_DIR}/bin
+    RUNTIME_OUTPUT_DIRECTORY 
+    ${CMAKE_SOURCE_DIR}/bin
 )
 
 add_test(NAME UnitTests COMMAND Tests)

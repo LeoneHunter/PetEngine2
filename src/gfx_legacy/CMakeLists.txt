@@ -1,0 +1,23 @@
+
+module(
+    NAME
+        gfx_legacy
+    HDRS
+        image.h
+        native_window.h
+        ui_renderer.h
+        input_types.h
+        font.h
+    SRCS
+        font.cpp
+        native_window.cpp
+        ui_renderer.cpp
+    DEPS
+        base
+        d3d12.lib 
+        dxgi.lib 
+        d3dcompiler.lib
+        dxguid.lib
+        thirdparty::dx_headers
+        thirdparty::imgui
+)

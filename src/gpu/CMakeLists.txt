@@ -1,0 +1,65 @@
+
+module(
+    NAME
+        d3d12
+    HDRS
+        d3d12/common_dx12.h
+        d3d12/device_dx12.h
+        d3d12/heap_allocator_dx12.h
+        d3d12/descriptor_heap_dx12.h
+        d3d12/slab_allocator_dx12_v2.h
+        d3d12/slab_allocator_heap_dx12_v2.h
+    SRCS
+        d3d12/descriptor_heap_dx12.cpp
+        d3d12/device_dx12.cpp
+    DEPS
+        base
+        d3d12.lib 
+        dxgi.lib 
+        d3dcompiler.lib
+        # dxguid.lib
+        thirdparty::dx_headers
+)
+
+module(
+    NAME
+        shader
+    HDRS
+        shader/shader_dsl.h
+        shader/hlsl_codegen.h
+        shader/shader_dsl_ast.h
+        shader/hlsl_compiler.h
+    SRCS
+        shader/hlsl_codegen.cpp
+        shader/hlsl_compiler.cpp
+    DEPS
+        base
+        d3d12
+)
+
+module(
+    NAME
+        gpu
+    HDRS
+        common.h
+        device.h
+        draw_context.h
+    SRCS
+        device.cpp
+        draw_context.cpp
+    DEPS
+        base
+        d3d12
+        shader
+)
+
+test(
+    NAME
+        gpu
+    SRCS
+        shader/shader_dsl_test.cpp
+        d3d12/tests.cpp
+        d3d12/slab_allocator_dx12_v2_test.cpp
+    DEPS
+        d3d12
+)
