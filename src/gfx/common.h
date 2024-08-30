@@ -273,7 +273,9 @@ public:
         return out;
     }
 
-    const float* Data() const { return data.data(); }
+    std::span<const uint8_t> Data() const {
+        return {(uint8_t*)data.data(), data.size() * sizeof(float)};
+    }
 
 private:
     std::array<float, 16> data;

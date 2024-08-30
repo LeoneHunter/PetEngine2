@@ -1,6 +1,8 @@
 #pragma once
-#include <format>
 #include "log.h"
+
+#include <format>
+#include <expected>
 
 #if defined(IS_DEBUG_BUILD)
 #define DASSERT(x)                                                       \
@@ -41,3 +43,47 @@
         __debugbreak();                                         \
         std::abort();                                           \
     } while (0)
+
+
+// Generic error codes
+enum class GenericErrorCode {
+    Ok,
+    InternalError,
+    BadValue,
+    NotFound,
+    UnsupportedFormat,
+    AlreadyInitialized,
+    IndexNotFound,
+    InvalidPath,
+    OutOfMemory,
+    AlreadyExists,
+};
+
+constexpr std::string to_string(GenericErrorCode ec) {
+    switch (ec) {
+        case GenericErrorCode::Ok: return "Ok";
+        case GenericErrorCode::InternalError: return "InternalError";
+        case GenericErrorCode::BadValue: return "BadValue";
+        case GenericErrorCode::NotFound: return "NotFound";
+        case GenericErrorCode::UnsupportedFormat: return "UnsupportedFormat";
+        case GenericErrorCode::AlreadyInitialized: return "AlreadyInitialized";
+        case GenericErrorCode::IndexNotFound: return "IndexNotFound";
+        case GenericErrorCode::InvalidPath: return "InvalidPath";
+        case GenericErrorCode::OutOfMemory: return "OutOfMemory";
+        case GenericErrorCode::AlreadyExists: return "AlreadyExists";
+        default: return "";
+    }
+}
+
+template <>
+struct std::formatter<GenericErrorCode> : std::formatter<std::string> {
+    using Base = std::formatter<std::string>;
+    using Base::parse;
+    template <class T>
+    auto format(const GenericErrorCode& value, T& ctx) const {
+        return Base::format(to_string(value), ctx);
+    }
+};
+
+template<class T>
+using Expected = std::expected<T, GenericErrorCode>;

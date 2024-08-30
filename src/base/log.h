@@ -96,6 +96,18 @@ inline void Logf(std::string_view file,
     logging::Logf(__FILE__, __LINE__, __FUNCTION__, logging::Level::level, \
                   fmt, __VA_ARGS__);
 
+#define LOG_INFO(fmt, ...)                                                     \
+    logging::Logf(__FILE__, __LINE__, __FUNCTION__, logging::Level::Info, fmt, \
+                  __VA_ARGS__);
+
+#define LOG_WARNING(fmt, ...)                                                \
+    logging::Logf(__FILE__, __LINE__, __FUNCTION__, logging::Level::Warning, \
+                  fmt, __VA_ARGS__);
+
+#define LOG_ERROR(fmt, ...)                                                \
+    logging::Logf(__FILE__, __LINE__, __FUNCTION__, logging::Level::Error, \
+                  fmt, __VA_ARGS__);
+
 // Simple formatter cout print
 template <class... Types>
 inline void Println(const std::format_string<Types...> fmt, Types&&... args) {
