@@ -1,7 +1,7 @@
 #pragma once
-#include "device_dx12.h"
+#include "gpu/d3d12/device.h"
 
-namespace d3d12 {
+namespace gpu::d3d12 {
 
 class PooledDescriptorAllocator;
 
@@ -15,7 +15,7 @@ struct DescriptorLocation {
 class DescriptorHeap {
 public:
 
-    DescriptorHeap(ID3D12Device* device, 
+    DescriptorHeap(DeviceD3D12* device, 
                    D3D12_DESCRIPTOR_HEAP_DESC desc,
                    const std::string& debugName);
 
@@ -74,7 +74,7 @@ class PooledDescriptorAllocator {
 public:
 
     static std::unique_ptr<PooledDescriptorAllocator> Create(
-            Device* parentDevice,
+            DeviceD3D12* parentDevice,
             const std::string& debugName = "DescriptorAlloc");
 
     // Allocates a heap of 'type' with 'size' in advance
@@ -100,10 +100,10 @@ public:
     PooledDescriptorAllocator& operator=(PooledDescriptorAllocator&&) = delete;
 
 protected:
-    PooledDescriptorAllocator() = default;
+    PooledDescriptorAllocator(DeviceD3D12* device);
 
 private:
-    Device* device_{};
+    DeviceD3D12* device_;
     std::string debugName_;
     std::vector<std::unique_ptr<DescriptorHeap>> heaps_;
 };

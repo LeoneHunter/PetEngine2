@@ -1,4 +1,5 @@
 #include "base/common.h"
+#include "base/vector_types.h"
 
 #include "font.h"
 #include "ui_renderer.h"
@@ -112,11 +113,9 @@ public:
                   float inThickness) final {
         const auto p1 = math::Round(inStart);
         const auto p2 = math::Round(inEnd);
-        // const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w
-        // * m_Alpha);
-
-        m_ImDrawList->AddLine(p1, p2, inColor.MultiplyAlpha(m_Alpha),
-                              inThickness);
+        const auto color = Color4f(inColor.R(), inColor.G(), inColor.B(),
+                                   inColor.A() * m_Alpha);
+        m_ImDrawList->AddLine(p1, p2, color.ToABGR8Unorm(), inThickness);
     }
 
     // Draws error indication when size is 0
@@ -153,8 +152,8 @@ public:
 
         const auto min = math::Round(inRect.min);
         const auto max = math::Round(inRect.max);
-        // const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w
-        // * m_Alpha);
+        const auto color = Color4f(inColor.R(), inColor.G(), inColor.B(),
+                                   inColor.A() * m_Alpha);
 
         ImDrawListFlags cornerMask = 0;
 
@@ -171,8 +170,8 @@ public:
             cornerMask |= ImDrawFlags_RoundCornersBottomRight;
         }
 
-        m_ImDrawList->AddRect(min, max, inColor.MultiplyAlpha(m_Alpha),
-                              (float)inRounding, cornerMask, inThickness);
+        m_ImDrawList->AddRect(min, max, color.ToABGR8Unorm(), (float)inRounding,
+                              cornerMask, inThickness);
     }
 
     void DrawRectFilled(const Rect& inRect,
@@ -196,8 +195,8 @@ public:
 
         const auto min = math::Round(inMin);
         const auto max = math::Round(inMax);
-        // const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w
-        // * m_Alpha);
+        const auto color = Color4f(inColor.R(), inColor.G(), inColor.B(),
+                                   inColor.A() * m_Alpha);
 
         ImDrawListFlags cornerMask = 0;
 
@@ -213,9 +212,8 @@ public:
         if (inCornerMask & Corner::BR) {
             cornerMask |= ImDrawFlags_RoundCornersBottomRight;
         }
-
-        m_ImDrawList->AddRectFilled(min, max, inColor.MultiplyAlpha(m_Alpha),
-                                    (float)inRounding, cornerMask);
+        m_ImDrawList->AddRectFilled(min, max, color.ToABGR8Unorm(), (float)inRounding,
+                                    cornerMask);
     }
 
     void DrawText(const float2& inPos,
@@ -341,10 +339,10 @@ private:
                      bool bBold,
                      bool bItalic) {
         const auto pos = math::Round(inPos);
-        // const auto color = float4(inColor.x, inColor.y, inColor.z, inColor.w
-        // * m_Alpha);
+        const auto color = Color4f(inColor.R(), inColor.G(), inColor.B(),
+                                   inColor.A() * m_Alpha);
 
-        if (inColor.IsTransparent() || inText.empty()) {
+        if (color.A() == 0.f || inText.empty()) {
             return;
         }
 

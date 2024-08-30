@@ -5,7 +5,7 @@
 
 class Image;
 namespace ui {
-	class Font;
+class Font;
 }
 
 struct __TextureHandle {};
@@ -17,8 +17,8 @@ using TextureHandle = __TextureHandle*;
  * Used for image rendering
  */
 struct ImageInfo {
-	TextureHandle	TextureHandle = 0;
-	float2			TextureSize;
+    TextureHandle TextureHandle = 0;
+    float2 TextureSize;
 };
 
 /**
@@ -29,48 +29,89 @@ struct ImageInfo {
  */
 class DrawList {
 public:
+    enum class Corner {
+        None = 0,
+        TL = 0x1,
+        TR = 0x2,
+        BL = 0x4,
+        BR = 0x8,
+        All = TL | TR | BL | BR,
+    };
+    DEFINE_ENUM_FLAGS_OPERATORS_FRIEND(Corner)
 
-	enum class Corner {
-		None = 0, 
-		TL = 0x1, 
-		TR = 0x2, 
-		BL = 0x4, 
-		BR = 0x8,
-		All = TL | TR | BL | BR,
-	};
-	DEFINE_ENUM_FLAGS_OPERATORS_FRIEND(Corner)
+    virtual void DrawLine(const float2& inStart,
+                          const float2& inEnd,
+                          ColorU32 inColor,
+                          float inThickness = 1.0f) = 0;
 
-	virtual void DrawLine(const float2& inStart, const float2& inEnd, ColorU32 inColor, float inThickness = 1.0f) = 0;
-		
-	virtual void DrawRect(const Rect& inRect, ColorU32 inColor, uint8_t inRounding = 0, Corner inCornerMask = Corner::None, float inThickness = 1.0f) = 0;
-	virtual void DrawRectFilled(const Rect& inRect, ColorU32 inColor, uint8_t inRounding = 0, Corner inCornerMask = Corner::None) = 0;
-	virtual void DrawRectFilled(float2 inMin, float2 inMax, ColorU32 inColor, uint8_t inRounding = 0, Corner inCornerMask = Corner::None) = 0;
+    virtual void DrawRect(const Rect& inRect,
+                          ColorU32 inColor,
+                          uint8_t inRounding = 0,
+                          Corner inCornerMask = Corner::None,
+                          float inThickness = 1.0f) = 0;
 
-	virtual void DrawText(const float2& inMin, ColorU32 inColor, const std::string_view& inText, uint8_t inFontSize = 0, bool bBold = false, bool bItalic = false) = 0;
-	virtual void DrawText(const float2& inMin, ColorU32 inColor, const std::wstring_view& inText, uint8_t inFontSize = 0, bool bBold = false, bool bItalic = false) = 0;
-	virtual void DrawBezier(float2 p1, float2 p2, float2 p3, float2 p4, ColorU32 col, float thickness, unsigned segmentNum = 30) = 0;
-	virtual void DrawTexture(const Rect& inRect, TextureHandle inTextureHandle, ColorU32 inTintColor, float2 inUVMin = {0.f, 0.f}, float2 inUVMax = {1.f, 1.f}) = 0;
+    virtual void DrawRectFilled(const Rect& inRect,
+                                ColorU32 inColor,
+                                uint8_t inRounding = 0,
+                                Corner inCornerMask = Corner::None) = 0;
 
-	virtual void PushClipRect(const Rect& inRect) = 0;
-	virtual void PopClipRect() = 0;
+    virtual void DrawRectFilled(float2 inMin,
+                                float2 inMax,
+                                ColorU32 inColor,
+                                uint8_t inRounding = 0,
+                                Corner inCornerMask = Corner::None) = 0;
 
-	/**
-	 * Set font for subsequent DrawText() commands
-	 */
-	virtual void PushFont(const ui::Font* inFont, uint8_t inDefaultSize, bool bBold = false, bool bItalic = false) = 0;
-	virtual void PopFont() = 0;
+    virtual void DrawText(const float2& inMin,
+                          ColorU32 inColor,
+                          const std::string_view& inText,
+                          uint8_t inFontSize = 0,
+                          bool bBold = false,
+                          bool bItalic = false) = 0;
 
-	/**
-	 * Sets alpha applied to all following commands
-	 */
-	virtual void SetAlpha(float inAlpha) = 0;
+    virtual void DrawText(const float2& inMin,
+                          ColorU32 inColor,
+                          const std::wstring_view& inText,
+                          uint8_t inFontSize = 0,
+                          bool bBold = false,
+                          bool bItalic = false) = 0;
 
-	/**
-	 * Deletes all commands and prepares for a new frame
-	 */
-	virtual void Reset() = 0;
+    virtual void DrawBezier(float2 p1,
+                            float2 p2,
+                            float2 p3,
+                            float2 p4,
+                            ColorU32 col,
+                            float thickness,
+                            unsigned segmentNum = 30) = 0;
 
-	virtual ~DrawList() = default;
+    virtual void DrawTexture(const Rect& inRect,
+                             TextureHandle inTextureHandle,
+                             ColorU32 inTintColor,
+                             float2 inUVMin = {0.f, 0.f},
+                             float2 inUVMax = {1.f, 1.f}) = 0;
+
+    virtual void PushClipRect(const Rect& inRect) = 0;
+    virtual void PopClipRect() = 0;
+
+    /**
+     * Set font for subsequent DrawText() commands
+     */
+    virtual void PushFont(const ui::Font* inFont,
+                          uint8_t inDefaultSize,
+                          bool bBold = false,
+                          bool bItalic = false) = 0;
+    virtual void PopFont() = 0;
+
+    /**
+     * Sets alpha applied to all following commands
+     */
+    virtual void SetAlpha(float inAlpha) = 0;
+
+    /**
+     * Deletes all commands and prepares for a new frame
+     */
+    virtual void Reset() = 0;
+
+    virtual ~DrawList() = default;
 };
 
 /**
@@ -78,24 +119,23 @@ public:
  */
 class Renderer {
 public:
+    /**
+     * Initialize renderer objects
+     * Initialize imgui
+     */
+    virtual bool Init(INativeWindow* inNativeWindow) = 0;
+    virtual void ResetDrawLists() = 0;
+    virtual DrawList* GetFrameDrawList() = 0;
+    virtual void RenderFrame(bool bVsync) = 0;
+    virtual void ResizeFramebuffers(float2 inSize) = 0;
 
-	/**
-	 * Initialize renderer objects
-	 * Initialize imgui
-	 */
-	virtual bool Init(INativeWindow* inNativeWindow) = 0;
-	virtual void ResetDrawLists() = 0;
-	virtual DrawList* GetFrameDrawList() = 0;
-	virtual void RenderFrame(bool bVsync) = 0;
-	virtual void ResizeFramebuffers(float2 inSize) = 0;
+    // TODO: Use RAII here
+    // Validate image info
+    // CreateTextureFrom(ImageData& formattedImage)
+    virtual TextureHandle CreateTexture(const Image& inImage) = 0;
+    virtual void DeleteTexture(TextureHandle inTexture) = 0;
 
-	// TODO: Use RAII here
-	// Validate image info
-	// CreateTextureFrom(ImageData& formattedImage)
-	virtual TextureHandle CreateTexture(const Image& inImage) = 0;
-	virtual void DeleteTexture(TextureHandle inTexture) = 0;
-
-	virtual ~Renderer() = default;
+    virtual ~Renderer() = default;
 };
 
 /**
