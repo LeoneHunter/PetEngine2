@@ -3,21 +3,31 @@ module(
     NAME
         d3d12
     HDRS
-        d3d12/common_dx12.h
-        d3d12/device_dx12.h
-        d3d12/heap_allocator_dx12.h
-        d3d12/descriptor_heap_dx12.h
-        d3d12/slab_allocator_dx12_v2.h
-        d3d12/slab_allocator_heap_dx12_v2.h
+        d3d12/buffer.h
+        d3d12/common.h
+        d3d12/context.h
+        d3d12/descriptor_heap.h
+        d3d12/device.h
+        d3d12/pipeline_state.h
+        d3d12/heap_allocator.h
+        d3d12/slab_allocator_heap.h
+        d3d12/slab_allocator.h
+        d3d12/texture.h
+        d3d12/swap_chain.h
     SRCS
-        d3d12/descriptor_heap_dx12.cpp
-        d3d12/device_dx12.cpp
+        d3d12/buffer.cpp
+        d3d12/context.cpp
+        d3d12/descriptor_heap.cpp
+        d3d12/device.cpp
+        d3d12/pipeline_state.cpp
+        d3d12/swap_chain.cpp
+        d3d12/texture.cpp
     DEPS
         base
         d3d12.lib 
         dxgi.lib 
         d3dcompiler.lib
-        # dxguid.lib
+        dxguid.lib
         thirdparty::dx_headers
 )
 
@@ -42,11 +52,7 @@ module(
         gpu
     HDRS
         common.h
-        device.h
-        draw_context.h
-    SRCS
-        device.cpp
-        draw_context.cpp
+        gpu.h
     DEPS
         base
         d3d12
@@ -58,8 +64,9 @@ test(
         gpu
     SRCS
         shader/shader_dsl_test.cpp
-        d3d12/tests.cpp
-        d3d12/slab_allocator_dx12_v2_test.cpp
+        d3d12/d3d12_test.cpp
+        d3d12/slab_allocator_test.cpp
     DEPS
+        shader
         d3d12
 )

@@ -1,9 +1,11 @@
-
 module(
     NAME
         base
     HDRS
         common.h
+        command_line.h
+        pooled_alloc.h
+        intrusive_list.h
         error.h
         log.h
         math_util.h
@@ -26,4 +28,6 @@ test(
         util
     SRCS
         util_test.cpp
+    DEPS
+        base
 )

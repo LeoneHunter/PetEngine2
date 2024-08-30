@@ -20,18 +20,3 @@ module(
         thirdparty::harfbuzz
         thirdparty::freetype
 )
-
-#=======================================================
-# Canvas sample
-# Shows a rectange on a window using gfx::Canvas
-#=======================================================
-executable(
-    NAME
-        canvas_sample
-    SRCS
-        canvas_sample_app.cpp
-    DEPS
-        base 
-        gfx
-        gfx_legacy
-)

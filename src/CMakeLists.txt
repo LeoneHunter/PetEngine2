@@ -8,15 +8,16 @@ add_subdirectory(gpu)
 add_subdirectory(task)
 add_subdirectory(ui)
 
+
 #=======================================================
 # Sample app testing simple ui
 # Shows a directory tree of a test folder
 #=======================================================
 executable(
     NAME
-        ui_filesystem_sample
+        filesystem_ui_sample
     SRCS
-        ui_test_filesystem_view.cpp
+        filesystem_ui_sample.cpp
     DEPS
         base
         ui
@@ -24,6 +25,7 @@ executable(
         thirdparty::dx_headers
         thirdparty::imgui
 )
+
 
 #=======================================================
 # Freetype Example cli
@@ -42,41 +44,46 @@ executable(
         /utf8
 )
 
+
 #=======================================================
-# Tests.exe 
+# Canvas sample
+# Shows a rectange on a window using gfx::Canvas
 #=======================================================
-add_executable(Tests)
-
-file(GLOB_RECURSE FOUND_FILES
-    ./*.cpp
-    ./*.h
+executable(
+    NAME
+        canvas_sample
+    SRCS
+        canvas_sample.cpp
+    DEPS
+        base 
+        gfx
+        gfx_legacy
+        gpu
 )
 
-# Files with "_test.*"
-foreach(FILE ${FOUND_FILES})
-    get_filename_component(FILENAME ${FILE} NAME_WLE)
-    string(FIND ${FILENAME} "_test" IS_TEST_FILE)
-
-    if(NOT ${IS_TEST_FILE} EQUAL -1)
-        set(TEST_FILES ${TEST_FILES} ${FILE})
-    endif()
-endforeach()
-
-set(FILES ${TEST_FILES} test_main.cpp)
-target_sources(Tests PRIVATE ${FILES})
-target_link_libraries(Tests 
-    PRIVATE 
-    base 
-    thirdparty::doctest
+#=======================================================
+# GPU sample
+# Tests gpu module
+#=======================================================
+executable(
+    NAME
+        hello_triangle
+    SRCS
+        hello_triangle.cpp
+    DEPS
+        base 
+        gpu
 )
 
-set_target_properties(Tests PROPERTIES 
-    OUTPUT_NAME 
-    Tests_$<CONFIG>
-)
-set_target_properties(Tests PROPERTIES 
-    RUNTIME_OUTPUT_DIRECTORY 
-    ${CMAKE_SOURCE_DIR}/bin
-)
 
-add_test(NAME UnitTests COMMAND Tests)
+#=======================================================
+# Buddy alloc
+#=======================================================
+executable(
+    NAME
+        buddy_alloc
+    SRCS
+        buddy_alloc.cpp
+    DEPS
+        base 
+)

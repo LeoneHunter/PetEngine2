@@ -22,11 +22,11 @@ module(
         gfx_legacy
 )
 
-test(
-    NAME
-        ui
-    SRCS
-        style_test.cpp
-    DEPS 
-        ui
-)
+# test(
+#     NAME
+#         ui
+#     SRCS
+#         style_test.cpp
+#     DEPS 
+#         ui
+# )

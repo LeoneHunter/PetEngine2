@@ -1,6 +1,6 @@
-#include "runtime/common.h"
-#include "runtime/util.h"
-#include "runtime/gfx/common.h"
+#include "base/common.h"
+#include "base/util.h"
+#include "gfx/common.h"
 
 #include "thirdparty/imgui/imgui.h"
 #include "thirdparty/imgui/imgui_internal.h"
