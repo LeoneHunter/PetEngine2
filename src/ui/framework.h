@@ -4,6 +4,7 @@
 
 #include "base/common.h"
 #include "base/util.h"
+#include "base/ref_counted.h"
 #include "style.h"
 
 using Point = Vec2<float>;
@@ -516,7 +517,7 @@ public:
         DASSERT_F(this->As<T>(), "Cannot cast {} to the class {}", GetDebugID(),
                   T::GetStaticClassName());
         if (!refCounter_) {
-            refCounter_ = new util::RefCounter();
+            refCounter_ = new WeakRefCountedBase();
         }
         return WeakPtr<T>{this->As<T>(), refCounter_};
     }
@@ -534,7 +535,7 @@ protected:
 
 private:
     // Used for custom WeakPtr to this
-    util::RefCounter* refCounter_ = nullptr;
+    WeakRefCountedBase* refCounter_ = nullptr;
 };
 
 /*

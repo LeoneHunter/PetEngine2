@@ -1,5 +1,7 @@
 #include "util.h"
 #include "string_utils.h"
+#include "pooled_alloc.h"
+#include "vector_types.h"
 
 #include <doctest.h>
 

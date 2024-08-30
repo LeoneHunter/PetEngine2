@@ -192,8 +192,8 @@ public:
                 (float)-style->borders.Bottom, (float)-style->borders.Left);
         }
 
-        auto borderColor = ColorFloat4(style->borderColor);
-        auto backgroundColor = ColorFloat4(style->backgroundColor);
+        auto borderColor = Color4f(style->borderColor);
+        auto backgroundColor = Color4f(style->backgroundColor);
 
         borderColor.a *= style->opacity;
         backgroundColor.a *= style->opacity;
@@ -1120,16 +1120,18 @@ public:
 
                 if (bDrawDebugClipRects_ && canvas.HasClipRect()) {
                     if (lastHitStack_.TopWidget() == layout) {
-                        canvas.DrawClipRect(true,
-                                            colors::red.MultiplyAlpha(0.3f));
+                        Color col = colors::red;
+                        col.SetA(0.3f);
+                        canvas.DrawClipRect(true, col);
                     } else {
                         canvas.DrawClipRect(false, colors::red);
                     }
                 }
                 if (bDrawDebugLayout_) {
                     if (lastHitStack_.TopWidget() == layout) {
-                        canvas.DrawRect(layout->GetRect().Expand(-1),
-                                        colors::green.MultiplyAlpha(0.3f),
+                        Color col = colors::green;
+                        col.SetA(0.3f);
+                        canvas.DrawRect(layout->GetRect().Expand(-1), col,
                                         true);
                     } else {
                         canvas.DrawRect(layout->GetRect().Expand(-1),

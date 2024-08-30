@@ -3,6 +3,8 @@
 #include "error.h"
 #include "log.h"
 
+#include <span>
+
 #if defined(IS_DEBUG_BUILD)
     constexpr bool kDebugBuild = true;
 #else
@@ -177,3 +179,38 @@ struct std::formatter<T, char> {
         return std::ranges::copy(to_string(val), ctx.out()).out;
     }
 };
+
+
+// Defines a range of elements of type V
+// std::vector<V>, std::array<3, V>, std::string<V>
+template <class T, class V>
+concept Range =
+    std::ranges::range<T> && std::convertible_to<typename T::value_type, V>;
+
+template <class T, size_t Size>
+constexpr size_t SizeBytes(T (&arr)[Size]) {
+    return Size * sizeof(T);
+}
+
+template <std::ranges::contiguous_range Range>
+constexpr size_t SizeBytes(Range&& range) {
+    using value_type = std::remove_cvref_t<decltype(*std::begin(range))>;
+    return std::size(range) * sizeof(value_type);
+}
+
+
+
+using ByteSpan = std::span<const uint8_t>;
+
+template <class T, size_t Size>
+constexpr ByteSpan AsByteSpan(T (&arr)[Size]) {
+    return {(const uint8_t*)arr, Size * sizeof(T)};
+}
+
+template <std::ranges::contiguous_range Range>
+constexpr ByteSpan AsByteSpan(const Range& container) {
+    const auto size = std::size(container);
+    const auto begin = std::begin(container);
+    const auto* ptr = (const uint8_t*)&*begin;
+    return {ptr, size};
+}

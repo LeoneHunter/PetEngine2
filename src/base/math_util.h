@@ -110,12 +110,9 @@ struct std::formatter<Vec2<T>, char> {
     }
 };
 
+using Vec2f = Vec2<float>;
 using float2 = Vec2<float>;
 using uint2 = Vec2<uint32_t>;
-using uint64_2 = Vec2<uint64_t>;
-using int2 = Vec2<int32_t>;
-
-using Vec2f = Vec2<float>;
 
 template <typename T>
 concept Number = std::is_arithmetic_v<T>;

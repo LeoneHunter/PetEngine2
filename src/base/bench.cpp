@@ -1,6 +1,8 @@
 #include "bench.h"
 #include <Windows.h>
 
+namespace bench {
+
 double Benchmark::GetCPUTimeSecondsDouble() {
     FILETIME creationTime;
     FILETIME exitTime;
@@ -18,3 +20,5 @@ double Benchmark::GetCPUTimeSecondsDouble() {
             static_cast<double>(user.QuadPart)) *
             1e-7;
 }
+
+} // namespace bench

@@ -4,6 +4,7 @@
 #include "base/string_utils.h"
 #include "base/common.h"
 #include "base/util.h"
+#include "base/vector_types.h"
 
 #include <map>
 #include <set>
