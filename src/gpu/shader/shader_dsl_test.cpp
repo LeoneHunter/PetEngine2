@@ -43,12 +43,12 @@ TEST_CASE("Global Variable") {
 
     constexpr auto expected = R"(
         float2 var1 : register(b10);
-        float3 var2 : Position;
+        float3 var2 : POSITION;
         Texture2D var3 : register(t13);
         SamplerState var4 : register(s12);
     )";
 
-    auto result = gen.Build(ShaderType::Vertex, "", &ctx);
+    auto result = gen.Generate(ShaderType::Vertex, "", &ctx);
     CHECK(result);
     CHECK(CompareStringStripSpaces(result->code, expected));
 }
@@ -76,7 +76,7 @@ TEST_CASE("Function Mul Assign") {
         }
     )";
 
-    auto result = gen.Build(ShaderType::Vertex, "", &ctx);
+    auto result = gen.Generate(ShaderType::Vertex, "", &ctx);
     CHECK(result);
     CHECK(CompareStringStripSpaces(result->code, expected));
 }
@@ -103,7 +103,7 @@ TEST_CASE("Function Component Access") {
         }
     )";
 
-    auto result = gen.Build(ShaderType::Vertex, "", &ctx);
+    auto result = gen.Generate(ShaderType::Vertex, "", &ctx);
     CHECK(result);
     CHECK(CompareStringStripSpaces(result->code, expected));
 }
@@ -140,7 +140,7 @@ TEST_CASE("Function Multiple Returns") {
         }
     )";
 
-    auto result = gen.Build(ShaderType::Vertex, "func", &ctx);
+    auto result = gen.Generate(ShaderType::Vertex, "func", &ctx);
     CHECK(result);
     CHECK(CompareStringStripSpaces(result->code, expected));
 }
@@ -173,13 +173,13 @@ TEST_CASE("Function basic vertex shader") {
     constexpr auto expected = R"(
         float4x4 global_0 : register(b0);
         struct Struct_0 {
-            float4 field_0 : Position;
-            float4 field_1 : Color;
-            float2 field_2 : Texcoord;
+            float4 field_0 : POSITION;
+            float4 field_1 : COLOR;
+            float2 field_2 : TEXCOORD;
         };
-        Struct_0 main(float2 local_3 : Position, 
-                      float4 local_4 : Color, 
-                      float2 local_5 : Texcoord) {
+        Struct_0 main(float2 local_3 : POSITION, 
+                      float4 local_4 : COLOR, 
+                      float2 local_5 : TEXCOORD) {
             Struct_0 local_6;
             float local_7 = 1.000000;
             float local_8 = 0.000000;
@@ -193,7 +193,7 @@ TEST_CASE("Function basic vertex shader") {
         }
     )";
 
-    auto result = gen.Build(ShaderType::Vertex, "main", &ctx);
+    auto result = gen.Generate(ShaderType::Vertex, "main", &ctx);
     CHECK(result);
     CHECK(CompareStringStripSpaces(result->code, expected));
 
@@ -226,8 +226,8 @@ TEST_CASE("Function basic pixel shader") {
         Texture2D global_0 : register(t0);
         SamplerState global_1 : register(s1);
 
-        float4 main(float4 local_0 : Color, 
-                    float2 local_1 : Texcoord) : SV_Target {
+        float4 main(float4 local_0 : COLOR, 
+                    float2 local_1 : TEXCOORD) : SV_Target {
             float4 local_2;
             float4 local_3 = global_0.Sample(global_1, local_1);
             float4 local_4 = local_0 * local_3;
@@ -236,7 +236,7 @@ TEST_CASE("Function basic pixel shader") {
         }
     )";
 
-    auto result = gen.Build(ShaderType::Pixel, "main", &ctx);
+    auto result = gen.Generate(ShaderType::Pixel, "main", &ctx);
     CHECK(result);
     CHECK(CompareStringStripSpaces(result->code, expected));
 

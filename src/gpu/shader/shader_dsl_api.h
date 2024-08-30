@@ -6,7 +6,7 @@
 //   record that operation into a syntax tree
 namespace gpu::shader_dsl {
 
-ShaderDSLContext& Context() {
+inline ShaderDSLContext& Context() {
     return ShaderDSLContext::Current();
 }
 

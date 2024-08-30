@@ -9,7 +9,7 @@ ShaderCompileResult HLSLShaderCompiler::Compile(const std::string& main,
                                                 ShaderType type,
                                                 bool debugBuild) {
     std::string targetString;
-    switch(type) {
+    switch (type) {
         case ShaderType::Vertex: targetString = "vs_5_0"; break;
         case ShaderType::Pixel: targetString = "ps_5_0"; break;
         default: DASSERT_M(false, "Unknown shader type");
@@ -21,11 +21,16 @@ ShaderCompileResult HLSLShaderCompiler::Compile(const std::string& main,
         compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
     }
     RefCountedPtr<ID3DBlob> errors;
+    RefCountedPtr<ID3DBlob> bytecode;
     HRESULT hr = D3DCompile(code.c_str(), code.size(), "", nullptr, nullptr,
                             main.c_str(), targetString.c_str(), compileFlags, 0,
-                            &result.blob, &errors);
+                            &bytecode, &errors);
 
-    if(FAILED(hr)) {
+    if (FAILED(hr)) {
+        result.bytecode.resize(bytecode->GetBufferSize());
+        memcpy(result.bytecode.data(), bytecode->GetBufferPointer(),
+               result.bytecode.size());
+
         result.msg = std::string((char*)errors->GetBufferPointer(),
                                  errors->GetBufferSize());
         result.hasErrors = true;
@@ -33,4 +38,4 @@ ShaderCompileResult HLSLShaderCompiler::Compile(const std::string& main,
     return result;
 }
 
-} // namespace gpu
+}  // namespace gpu

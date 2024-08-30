@@ -3,7 +3,8 @@
 
 namespace gpu {
 
-// Sequentually generates a shader code
+// Creates an ast tree of a platform agnostic shader language
+// The tree then can be used to generate a DirectX hlsl shader code
 class ShaderDSLContext {
 public:
     static ShaderDSLContext& Current() {
@@ -63,7 +64,7 @@ public:
                 break;
             }
             default: {
-                DASSERT_F(false, "Unknown type of definition. {}", type);
+                UNREACHABLE();
             }
         }
         const Address expr =

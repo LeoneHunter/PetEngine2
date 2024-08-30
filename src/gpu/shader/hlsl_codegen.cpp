@@ -2,10 +2,9 @@
 
 namespace gpu::internal {
 
-
-std::unique_ptr<ShaderCode> HLSLCodeGenerator::Build(ShaderType type,
-                                                     std::string_view main,
-                                                     Context* ctx) {
+std::unique_ptr<ShaderCode> HLSLCodeGenerator::Generate(ShaderType type,
+                                                        std::string_view main,
+                                                        Context* ctx) {
 
     context_ = ctx;
     auto result = std::make_unique<ShaderCode>();
@@ -22,14 +21,25 @@ std::unique_ptr<ShaderCode> HLSLCodeGenerator::Build(ShaderType type,
 void HLSLCodeGenerator::ParseGlobal(Scope* root) {
     for (Address addr : root->children) {
         if (Variable* var = NodeFromAddress<Variable>(addr)) {
-            WriteVarDeclaration(var);
             if (var->attr == Attribute::Uniform) {
-                ShaderCode::Uniform uniform{};
-                uniform.id = var->identifier;
-                uniform.type = var->dataType;
-                uniform.bindIndex = var->bindIdx;
+                const std::string type =
+                    (var->dataType == DataType::Texture2D) ? "t" : "b";
+                const auto uniform = ShaderCode::Uniform{
+                    .id = var->identifier,
+                    .type = var->dataType,
+                    .binding = var->bindIdx,
+                    .location = {
+                        .type = type,
+                        .index = CreateRegisterIndex(
+                            var->dataType == DataType::Texture2D
+                                ? d3d12::RegisterType::SRV
+                                : d3d12::RegisterType::CBV),
+                    }};
                 code_->uniforms.push_back(uniform);
+                // Override the bind index
+                var->bindIdx = uniform.binding;
             }
+            WriteVarDeclaration(var);
             continue;
         } else if (Function* func = NodeFromAddress<Function>(addr)) {
             ParseFunction(func);
@@ -45,7 +55,6 @@ void HLSLCodeGenerator::ParseGlobal(Scope* root) {
 void HLSLCodeGenerator::ParseFunction(Function* func) {
     isInsideFunction_ = true;
     const bool isMain = func->identifier == code_->mainId;
-    // Gather inputs, outputs and uniforms
     std::vector<Variable*> inputs;
     std::vector<Variable*> outputs;
     std::vector<Expression*> body;
@@ -95,6 +104,7 @@ void HLSLCodeGenerator::ParseFunction(Function* func) {
     const std::string funcId =
         func->identifier.empty() ? CreateFuncIdentifier() : func->identifier;
     Write("{} {}(", returnType, funcId);
+    // Write arguments
     for (size_t i = 0; i < inputs.size(); ++i) {
         Variable* param = inputs[i];
         if (i > 0) {
@@ -354,7 +364,7 @@ void HLSLCodeGenerator::WriteVarDeclaration(Variable* var,
     if (hasSuffixAttributes) {
         Write(" : ");
         if (var->semantic != Semantic::None) {
-            Write("{}", var->semantic);
+            Write("{}", d3d12::SemanticString(var->semantic));
         } else if (var->bindIdx != kInvalidBindIndex) {
             Write("register({}{})", GetHLSLRegisterPrefix(var), var->bindIdx);
         }

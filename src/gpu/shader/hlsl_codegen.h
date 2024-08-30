@@ -1,10 +1,13 @@
 #pragma once
+#include "gpu/common.h"
+#include "gpu/gpu.h"
+#include "gpu/d3d12/common.h"
 #include "shader_dsl.h"
 
 namespace gpu::internal {
 
 // Generates hlsl code from a AstNode tree
-class HLSLCodeGenerator {
+class HLSLCodeGenerator : public ShaderCodeGenerator {
 public:
     constexpr static auto kMainFuncIdentifier = "main";
     constexpr static auto kLocalPrefix = "local";
@@ -17,9 +20,9 @@ public:
     HLSLCodeGenerator() = default;
     using Context = ShaderDSLContext;
 
-    std::unique_ptr<ShaderCode> Build(ShaderType type,
-                                      std::string_view main,
-                                      Context* ctx);
+    std::unique_ptr<gpu::ShaderCode> Generate(ShaderType type,
+                                              std::string_view main,
+                                              Context* ctx) override;
 
 private:
     void ParseGlobal(Scope* root);
@@ -57,6 +60,7 @@ private:
     std::string CreateVarIdentifier(std::string_view customPrefix = "");
     std::string CreateClassIdentifier(std::string_view customPrefix = "");
     std::string CreateFuncIdentifier(std::string_view customPrefix = "");
+    uint32_t CreateRegisterIndex(d3d12::RegisterType type);
 
     void ValidateIdentifier(AstNode* node, std::string_view prefix = "");
 
@@ -79,9 +83,11 @@ private:
     uint32_t funcCounter_ = 0;
     // Indentation for debugging
     uint32_t indent_ = 0;
+    // Register counters for cbv, srv, uav
+    uint32_t regCounter[3]{};
 };
 
-} // namespace gpu::internal
+}  // namespace gpu::internal
 
 namespace gpu {
 constexpr std::string to_string(DataType type) {
@@ -96,7 +102,7 @@ constexpr std::string to_string(DataType type) {
     }
     return "";
 }
-}
+}  // namespace gpu
 
 DEFINE_TOSTRING_FORMATTER(gpu::DataType);
 
@@ -140,7 +146,7 @@ inline std::string HLSLCodeGenerator::CreateVarIdentifier(
     std::string_view customPrefix) {
 
     auto prefix = customPrefix;
-    if(prefix.empty()) {
+    if (prefix.empty()) {
         prefix = isInsideFunction_ ? kLocalPrefix : kGlobalPrefix;
     }
     const auto id =
@@ -160,6 +166,22 @@ inline std::string HLSLCodeGenerator::CreateFuncIdentifier(
     return std::format("{}_{}",
                        customPrefix.empty() ? kFuncPrefix : customPrefix,
                        funcCounter_++);
+}
+
+inline uint32_t HLSLCodeGenerator::CreateRegisterIndex(
+    d3d12::RegisterType type) {
+    switch(type) {
+        case d3d12::RegisterType::CBV: {
+            return regCounter[(uint32_t)d3d12::RegisterType::CBV]++;
+        }
+        case d3d12::RegisterType::SRV: {
+            return regCounter[(uint32_t)d3d12::RegisterType::SRV]++;
+        }
+        case d3d12::RegisterType::UAV: {
+            return regCounter[(uint32_t)d3d12::RegisterType::UAV]++;
+        }
+    }
+    return 0;
 }
 
 inline void HLSLCodeGenerator::ValidateIdentifier(
