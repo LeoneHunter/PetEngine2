@@ -7,6 +7,9 @@ thirdparty/
 # Test data
 test/filesystem_view_test/
 
+# Ignore files with a 'dt_'(dont track) prefix
+**/dt_*
+
 # Visual Studio and VSCode cache/options directory
 .vs/
 .vscode/
