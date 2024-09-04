@@ -2,6 +2,7 @@
 #include "string_utils.h"
 #include "pooled_alloc.h"
 #include "vector_types.h"
+#include "bump_alloc.h"
 
 #include <doctest.h>
 
@@ -166,4 +167,44 @@ TEST_CASE("[Color4f] From hex") {
     CHECK_EQ(_1.g, 0xcd / 255.f);
     CHECK_EQ(_1.b, 0xef / 255.f);
     CHECK_EQ(_1.a, 0x00 / 255.f);
+}
+
+TEST_CASE("[BumpAlloc] Basic") {
+    const int kHeaderSize = 8;
+    struct Foo {
+        uint64_t val = 0xcc;
+    };
+    static_assert(sizeof(Foo) == 8);
+
+    auto alloc = BumpAllocator(sizeof(Foo) * 2);
+    
+    Foo* foo1 = alloc.Allocate<Foo>();
+    CHECK(foo1);
+
+    uintptr_t ptr = (uintptr_t)alloc.GetHeadForTesting() + kHeaderSize;
+    CHECK_EQ(ptr, (uintptr_t)foo1);
+
+    Foo* foo2 = alloc.Allocate<Foo>();
+    CHECK(foo2);
+    CHECK_EQ(ptr += sizeof(Foo), (uintptr_t)foo2);
+
+    Foo* foo3 = alloc.Allocate<Foo>();
+    CHECK(foo3);
+    CHECK_NE(ptr += sizeof(Foo), (uintptr_t)foo3);
+}
+
+TEST_CASE("[BumpAlloc] Overaligned") {
+    const int kHeaderSize = 8;
+    // Should be enough space for 1 aligned allocations
+    auto alloc = BumpAllocator(8 + 16 + 8);
+    
+    auto foo1 = (uintptr_t)alloc.Allocate(4, 16);
+    CHECK(foo1 % 16 == 0);
+
+    uintptr_t ptr = (uintptr_t)alloc.GetHeadForTesting() + kHeaderSize + 8;
+    CHECK_EQ(ptr, foo1);
+
+    auto foo3 = (uintptr_t)alloc.Allocate(4, 16);
+    CHECK(foo3 % 16 == 0);
+    CHECK_NE(ptr += 16, foo3);
 }

@@ -4,8 +4,10 @@ module(
     HDRS
         common.h
         command_line.h
+        buddy_alloc.h
         pooled_alloc.h
         intrusive_list.h
+        bump_alloc.h
         error.h
         log.h
         math_util.h
