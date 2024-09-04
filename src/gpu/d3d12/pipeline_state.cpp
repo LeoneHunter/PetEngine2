@@ -34,7 +34,7 @@ public:
     // 1        Table       t0-t8
     // 2        Table       u0-u8
     // 3        Table       s0-s8
-    //          SSampler    s0-s8
+    //          SSampler    s9-s12
     // -------------------------------
     // TODO: Add UAVs and shader visibility
     CommonRootSignature(DeviceD3D12* device) {

@@ -11,7 +11,7 @@ class HLSLShaderCompiler {
 public:
     static ShaderCompileResult Compile(const std::string& main,
                                        const std::string& code,
-                                       ShaderType type,
+                                       ShaderUsage type,
                                        bool debugBuild);
 };
 

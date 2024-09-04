@@ -25,6 +25,7 @@ public:
 public:
     uint32_t GetWidth() const override { return desc_.width; }
     uint32_t GetHeight() const override { return desc_.height; }
+    TextureDesc GetDesc() const override { return desc_; }
 
 private:
     RefCountedPtr<DeviceD3D12> device_;

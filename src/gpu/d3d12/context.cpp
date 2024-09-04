@@ -187,6 +187,11 @@ void ContextD3D12::WriteBuffer(Buffer* buf, std::span<const uint8_t> data) {
     // TODO: Clear upload buffer later
 }
 
+void ContextD3D12::WriteTexture(Texture* tex, std::span<const uint8_t> data) {
+    // TODO: Implement texture upload
+    DASSERT(false && "UNIMPLEMENTED");
+}
+
 void ContextD3D12::SetRenderTarget(Texture* texure) {
     DASSERT(state_ == State::Recording);
     // Create rtv for back buffer render target

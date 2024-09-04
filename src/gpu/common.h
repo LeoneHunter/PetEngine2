@@ -200,7 +200,7 @@ enum class TextureFormat {
     RGBA16Float,
     RGBA32Float,
     RGBA32Uint,
-    RGBA32Sint
+    RGBA32Sint,
 };
 
 enum class TextureDimension {
@@ -209,28 +209,28 @@ enum class TextureDimension {
     Dim3D,
 };
 
-enum class ShaderType {
+enum class TextureUsage {
+    Unknown,
+    ReadOnly,      // Corresponds to hlsl SRV
+    ReadWrite,     // Corresponds to hlsl UAV
+    RenderTarget,  // PipelineState attachment (output)
+};
+
+enum class BufferUsage {
+    Unknown,
+    Upload,     // CPU writable
+    Readback,   // CPU readable
+    Uniform,    // In default heap, shader constant
+    ReadWrite,  // In default heap, shader r/w
+    Index,      // As pipeline index buffer input
+    Vertex,     // As pipeline vertex buffer input
+};
+
+enum class ShaderUsage {
     Vertex,
     Pixel,
-    // Geometry
-    // Compute
+    Compute,
 };
-
-
-// Optional flags GPU during resource creation (buffer, texture)
-enum class ResourceFlags {
-    // Resource will be placed in a default heap with default visibility
-    Default = 0x0,
-    // Resource lifetime is short (few frames)
-    DynamicUsage = 0x1,
-    // Resource will be placed in a CPU visible heap for writing
-    Upload = 0x2,
-    // Resource will be placed in a CPU visible heap for reading
-    Readback = 0x4,
-    // Resource will contain a constant data (aka d3d11 CBV)
-    Constant = 0x8
-};
-DEFINE_ENUM_FLAGS_OPERATORS(ResourceFlags);
 
 // Resource types used by heaps
 enum class HeapResourceType {

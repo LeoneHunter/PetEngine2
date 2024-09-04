@@ -2,7 +2,7 @@
 
 namespace gpu::internal {
 
-std::unique_ptr<ShaderCode> HLSLCodeGenerator::Generate(ShaderType type,
+std::unique_ptr<ShaderCode> HLSLCodeGenerator::Generate(ShaderUsage type,
                                                         std::string_view main,
                                                         Context* ctx) {
 
@@ -114,7 +114,7 @@ void HLSLCodeGenerator::ParseFunction(Function* func) {
     }
     Write(") ");
     // In pixel shader with single output write semantic
-    if (isMain && code_->type == ShaderType::Pixel && outputs.size() == 1) {
+    if (isMain && code_->type == ShaderUsage::Pixel && outputs.size() == 1) {
         const std::string semantic = outputs.back()->semantic == Semantic::Color
                                          ? "SV_Target"
                                          : to_string(outputs.back()->semantic);

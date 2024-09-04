@@ -43,6 +43,7 @@ public:
     Device* GetParentDevice() override;
 
     void WriteBuffer(Buffer* buf, std::span<const uint8_t> data) override;
+    void WriteTexture(Texture* tex, std::span<const uint8_t> data) override;
 
     void SetRenderTarget(Texture* tex) override;
 

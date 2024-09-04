@@ -155,7 +155,7 @@ constexpr uint8_t GetFormatBytes(DXGI_FORMAT format) {
 }
 
 constexpr DXGI_FORMAT DXGIFormat(IndexFormat format) {
-    switch(format) {
+    switch (format) {
         case IndexFormat::Uint16: return DXGI_FORMAT_R16_UINT;
         case IndexFormat::Uint32: return DXGI_FORMAT_R32_UINT;
         default: return DXGI_FORMAT_UNKNOWN;
@@ -243,11 +243,11 @@ constexpr DXGI_FORMAT DXGIFormat(VertexFormat format) {
         case VertexFormat::Sint32x3: return DXGI_FORMAT_R32G32B32_SINT;
         default: return DXGI_FORMAT_UNKNOWN;
     }
-    // clang-format off
+    // clang-format on
 }
 
 constexpr D3D12_SRV_DIMENSION SrvDimension(TextureDimension dim) {
-    switch(dim) {
+    switch (dim) {
         case TextureDimension::Dim1D: return D3D12_SRV_DIMENSION_TEXTURE1D;
         case TextureDimension::Dim2D: return D3D12_SRV_DIMENSION_TEXTURE2D;
         case TextureDimension::Dim3D: return D3D12_SRV_DIMENSION_TEXTURE3D;
@@ -255,8 +255,18 @@ constexpr D3D12_SRV_DIMENSION SrvDimension(TextureDimension dim) {
     }
 }
 
+constexpr D3D12_RESOURCE_DIMENSION ResourceDimension(
+    TextureDimension dimension) {
+    switch(dimension) {
+        case TextureDimension::Dim1D: return D3D12_RESOURCE_DIMENSION_TEXTURE1D;
+        case TextureDimension::Dim2D: return D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        case TextureDimension::Dim3D: return D3D12_RESOURCE_DIMENSION_TEXTURE3D;
+        default: return D3D12_RESOURCE_DIMENSION_UNKNOWN;
+    }
+}
+
 constexpr const char* SemanticString(Semantic semantic) {
-    switch(semantic) {
+    switch (semantic) {
         case Semantic::Position: return "POSITION";
         case Semantic::Texcoord: return "TEXCOORD";
         case Semantic::Color: return "COLOR";

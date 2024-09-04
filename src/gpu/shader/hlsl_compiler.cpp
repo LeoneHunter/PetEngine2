@@ -6,12 +6,12 @@ namespace gpu {
 // static
 ShaderCompileResult HLSLShaderCompiler::Compile(const std::string& main,
                                                 const std::string& code,
-                                                ShaderType type,
+                                                ShaderUsage type,
                                                 bool debugBuild) {
     std::string targetString;
     switch (type) {
-        case ShaderType::Vertex: targetString = "vs_5_0"; break;
-        case ShaderType::Pixel: targetString = "ps_5_0"; break;
+        case ShaderUsage::Vertex: targetString = "vs_5_0"; break;
+        case ShaderUsage::Pixel: targetString = "ps_5_0"; break;
         default: DASSERT_M(false, "Unknown shader type");
     }
     ShaderCompileResult result;

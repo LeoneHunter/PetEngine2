@@ -48,7 +48,7 @@ TEST_CASE("Global Variable") {
         SamplerState var4 : register(s12);
     )";
 
-    auto result = gen.Generate(ShaderType::Vertex, "", &ctx);
+    auto result = gen.Generate(ShaderUsage::Vertex, "", &ctx);
     CHECK(result);
     CHECK(CompareStringStripSpaces(result->code, expected));
 }
@@ -76,7 +76,7 @@ TEST_CASE("Function Mul Assign") {
         }
     )";
 
-    auto result = gen.Generate(ShaderType::Vertex, "", &ctx);
+    auto result = gen.Generate(ShaderUsage::Vertex, "", &ctx);
     CHECK(result);
     CHECK(CompareStringStripSpaces(result->code, expected));
 }
@@ -103,7 +103,7 @@ TEST_CASE("Function Component Access") {
         }
     )";
 
-    auto result = gen.Generate(ShaderType::Vertex, "", &ctx);
+    auto result = gen.Generate(ShaderUsage::Vertex, "", &ctx);
     CHECK(result);
     CHECK(CompareStringStripSpaces(result->code, expected));
 }
@@ -140,7 +140,7 @@ TEST_CASE("Function Multiple Returns") {
         }
     )";
 
-    auto result = gen.Generate(ShaderType::Vertex, "func", &ctx);
+    auto result = gen.Generate(ShaderUsage::Vertex, "func", &ctx);
     CHECK(result);
     CHECK(CompareStringStripSpaces(result->code, expected));
 }
@@ -193,12 +193,12 @@ TEST_CASE("Function basic vertex shader") {
         }
     )";
 
-    auto result = gen.Generate(ShaderType::Vertex, "main", &ctx);
+    auto result = gen.Generate(ShaderUsage::Vertex, "main", &ctx);
     CHECK(result);
     CHECK(CompareStringStripSpaces(result->code, expected));
 
     auto compileResult = HLSLShaderCompiler::Compile(
-        result->mainId, result->code, ShaderType::Vertex, kDebugBuild);
+        result->mainId, result->code, ShaderUsage::Vertex, kDebugBuild);
     CHECK(!compileResult.hasErrors);
 }
 
@@ -236,12 +236,12 @@ TEST_CASE("Function basic pixel shader") {
         }
     )";
 
-    auto result = gen.Generate(ShaderType::Pixel, "main", &ctx);
+    auto result = gen.Generate(ShaderUsage::Pixel, "main", &ctx);
     CHECK(result);
     CHECK(CompareStringStripSpaces(result->code, expected));
 
     auto compileResult = HLSLShaderCompiler::Compile(
-        result->mainId, expected, ShaderType::Pixel, kDebugBuild);
+        result->mainId, expected, ShaderUsage::Pixel, kDebugBuild);
     CHECK(!compileResult.hasErrors);
 }
 

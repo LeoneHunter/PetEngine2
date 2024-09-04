@@ -54,7 +54,7 @@ struct ShaderCode {
         Location location;
     };
 
-    ShaderType type;
+    ShaderUsage type;
     std::vector<Varying> inputs;
     std::vector<Varying> outputs;
     std::vector<Uniform> uniforms;
@@ -71,7 +71,7 @@ class ShaderCodeGenerator {
 public:
     virtual ~ShaderCodeGenerator() = default;
 
-    virtual std::unique_ptr<ShaderCode> Generate(ShaderType type,
+    virtual std::unique_ptr<ShaderCode> Generate(ShaderUsage type,
                                                  std::string_view main,
                                                  ShaderDSLContext* ctx) = 0;
 };
@@ -90,8 +90,10 @@ class Buffer : public Object {};
 struct TextureDesc {
     TextureDimension dimension;
     TextureFormat format;
+    TextureUsage usage;
     uint32_t width;
     uint32_t height;
+    uint32_t numMipLevels;
 };
 
 // Same as Buffer but has different layout and additional mip-maps levels
@@ -99,6 +101,7 @@ class Texture : public Object {
 public:
     virtual uint32_t GetWidth() const = 0;
     virtual uint32_t GetHeight() const = 0;
+    virtual TextureDesc GetDesc() const = 0;
 };
 
 
@@ -110,6 +113,7 @@ public:
     virtual Device* GetParentDevice() = 0;
 
     virtual void WriteBuffer(Buffer* buf, std::span<const uint8_t> data) = 0;
+    virtual void WriteTexture(Texture* tex, std::span<const uint8_t> data) = 0;
 
     virtual void SetPipelineState(PipelineState* ps) = 0;
     virtual void SetClipRect(const gfx::Rect& rect) = 0;
@@ -138,7 +142,7 @@ public:
 // - Input layout
 struct PipelineStateDesc {
     struct ShaderInfo {
-        ShaderType type;
+        ShaderUsage type;
         std::span<const uint8_t> data;
         std::span<ShaderCode::Uniform> uniforms;
         std::span<ShaderCode::Varying> inputs;
@@ -162,7 +166,7 @@ public:
                                        std::span<ShaderCode::Varying> inputs,
                                        std::span<ShaderCode::Varying> outputs) {
         //
-        vertexShader = {ShaderType::Vertex, data, uniforms, inputs, outputs};
+        vertexShader = {ShaderUsage::Vertex, data, uniforms, inputs, outputs};
         return *this;
     }
 
@@ -171,7 +175,7 @@ public:
                                       std::span<ShaderCode::Varying> inputs,
                                       std::span<ShaderCode::Varying> outputs) {
         //
-        pixelShader = {ShaderType::Pixel, data, uniforms, inputs, outputs};
+        pixelShader = {ShaderUsage::Pixel, data, uniforms, inputs, outputs};
         return *this;
     }
 
@@ -206,13 +210,13 @@ public:
 
     virtual ShaderCompileResult CompileShader(const std::string& main,
                                               const std::string& code,
-                                              ShaderType type,
+                                              ShaderUsage type,
                                               bool debugBuild) = 0;
 
     virtual ExpectedRef<PipelineState> CreatePipelineState(
         const PipelineStateDesc& desc) = 0;
 
-    virtual ExpectedRef<Buffer> CreateBuffer(uint32_t size) = 0;
+    virtual ExpectedRef<Buffer> CreateBuffer(uint32_t size, BufferUsage usage) = 0;
     virtual ExpectedRef<Texture> CreateTexture(const TextureDesc& desc) = 0;
 
     // Create a context ready for commands recording

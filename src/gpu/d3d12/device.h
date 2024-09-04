@@ -67,12 +67,12 @@ public:
 
     RefCountedPtr<CommandContext> CreateCommandContext() override;
 
-    ExpectedRef<Buffer> CreateBuffer(uint32_t size) override;
+    ExpectedRef<Buffer> CreateBuffer(uint32_t size, BufferUsage usage) override;
     ExpectedRef<Texture> CreateTexture(const TextureDesc& desc) override;
 
     ShaderCompileResult CompileShader(const std::string& main,
                                       const std::string& code,
-                                      ShaderType type,
+                                      ShaderUsage type,
                                       bool debugBuild) override;
 
     RefCountedPtr<SwapChain> CreateSwapChainForWindow(
@@ -88,6 +88,12 @@ public:
 public:
     ID3D12Device* GetNative() { return device_.Get(); }
 
+    struct AllocationResult {
+        RefCountedPtr<ID3D12Resource> res;
+        ResourceHeapAllocation allocation;
+    };
+    AllocationResult AllocateResource(uint64_t sizeBytes,
+                                      D3D12_HEAP_TYPE heapType);
     void FreeResource(ResourceHeapAllocation addr, ID3D12Resource* res);
 
 private:

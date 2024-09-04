@@ -20,7 +20,7 @@ public:
     HLSLCodeGenerator() = default;
     using Context = ShaderDSLContext;
 
-    std::unique_ptr<gpu::ShaderCode> Generate(ShaderType type,
+    std::unique_ptr<gpu::ShaderCode> Generate(ShaderUsage type,
                                               std::string_view main,
                                               Context* ctx) override;
 

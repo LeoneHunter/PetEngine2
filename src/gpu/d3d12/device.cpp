@@ -104,16 +104,20 @@ std::expected<DeviceCreateResult, GenericErrorCode> TryCreateDevice(
     D3D12_FEATURE_DATA_D3D12_OPTIONS featureOptions{};
     device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &featureOptions,
                                 sizeof(featureOptions));
-
+    // clang-format off
     return DeviceCreateResult{
         .device = std::move(device),
-        .props = {.adapterIndex = index,
-                  .adapterDesc = desc,
-                  .nonLocalMemory = nonLocalMemory,
-                  .featureLevelMax = featureLevelMax,
-                  .shaderModelMax = shaderModelMax,
-                  .resourceBindingTier = featureOptions.ResourceBindingTier,
-                  .resourceHeapTier = featureOptions.ResourceHeapTier}};
+        .props = {
+            .adapterIndex = index,
+            .adapterDesc = desc,
+            .nonLocalMemory = nonLocalMemory,
+            .featureLevelMax = featureLevelMax,
+            .shaderModelMax = shaderModelMax,
+            .resourceBindingTier = featureOptions.ResourceBindingTier,
+            .resourceHeapTier = featureOptions.ResourceHeapTier
+        }
+    };
+    // clang-format on
 }
 
 // static
@@ -278,55 +282,59 @@ RefCountedPtr<CommandContext> DeviceD3D12::CreateCommandContext() {
     return cmdCtx;
 }
 
-ExpectedRef<Buffer> DeviceD3D12::CreateBuffer(uint32_t size) {
-    // DASSERT(flags == ResourceFlags::Default);
-    // Create vertex, index, constant buffers
-    // If |size| is less than |kMinAlignment| suballocate manually
-    // Use a temp buffer per frame number (2 or 3)
-    // TODO: Do suballocation for size < kMinSlotSize (64 KiB)
+ExpectedRef<Buffer> DeviceD3D12::CreateBuffer(uint32_t size, BufferUsage usage) {
     DASSERT(size > 0);
+    // TODO: Suballocate from dedicated heaps per usage:
+    //   BufferUsage::Vertex -> vertex buffer suballocation
+    //   BufferUsage::Index -> index buffer suballocation
+    //   BufferUsage::Uniform -> uniform buffer suballocation
+    //   BufferUsage::Upload -> upload heap buffer
+    //   BufferUsage::Readback -> read back heap buffer
     const auto allocSize = std::max(size, kResourceMinAlignment);
     // D3D12 validation layer emits error during cbv creation for size < 256
     size = std::max(size,
                     (uint32_t)D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-
-    // Dedicated allocation for size > kMaxSlotSize (4 MiB)
-    const bool useDedicated = size > kResourceMaxAlignment;
-    RefCountedPtr<ID3D12Resource> res;
-    ResourceHeapAllocation addr;
-
-    if (useDedicated) {
-        const auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-        const auto desc = CD3DX12_RESOURCE_DESC::Buffer(size);
-        auto hr = device_->CreateCommittedResource(
-            &heapProps, D3D12_HEAP_FLAG_NONE, &desc,
-            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&res));
-        if (FAILED(hr)) {
-            return std::unexpected(GenericErrorCode::OutOfMemory);
-        }
-
-    } else {
-        const auto result = defaultAlloc_->Allocate(allocSize);
-        if (!result) {
-            return std::unexpected(result.error());
-        }
-        addr = *result;
-        const auto desc = CD3DX12_RESOURCE_DESC::Buffer(size);
-        const auto hr = device_->CreatePlacedResource(
-            addr.heap, addr.offset, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
-            IID_PPV_ARGS(&res));
-        if (FAILED(hr)) {
-            return std::unexpected(GenericErrorCode::OutOfMemory);
-        }
+    AllocationResult result = AllocateResource(size, D3D12_HEAP_TYPE_DEFAULT);
+    if (!result.res) {
+        return std::unexpected(GenericErrorCode::InternalError);
     }
-    return MakeRefCounted<BufferD3D12>(this, addr, res, size);
+    return GetRef(new BufferD3D12(this, result.allocation, result.res, size));
 }
 
 ExpectedRef<Texture> d3d12::DeviceD3D12::CreateTexture(
     const TextureDesc& desc) {
+    DASSERT(desc.width > 0 && desc.height > 0);
+    const auto d3d12Desc = D3D12_RESOURCE_DESC{
+        .Dimension = ResourceDimension(desc.dimension),
+        .Alignment = D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT,
+        .Width = desc.width,
+        .Height = desc.height,
+        .DepthOrArraySize = 1,
+        .MipLevels = (UINT16)desc.numMipLevels,
+        .Format = DXGIFormat(desc.format),
+        .SampleDesc = {
+            .Count = 1,
+            .Quality = 0,
+        },
+        .Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN,
+        .Flags = D3D12_RESOURCE_FLAG_NONE,
+    };
+    const uint32_t subresourceCount =
+        d3d12Desc.DepthOrArraySize * d3d12Desc.MipLevels;
 
-    DASSERT_M(false, "Unimplemented");
-    return ExpectedRef<Texture>();
+    uint64_t footprintSize;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
+    device_->GetCopyableFootprints(&d3d12Desc, 0, subresourceCount, 0,
+                                   &footprint, nullptr, nullptr,
+                                   &footprintSize);
+    const uint64_t allocSize = std::max(
+        footprintSize, (uint64_t)D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
+    auto [res, allocation] =
+        AllocateResource(allocSize, D3D12_HEAP_TYPE_DEFAULT);
+    if (!res) {
+        return nullptr;
+    }
+    return GetRef(new TextureD3D12(this, desc, res));
 }
 
 RefCountedPtr<SwapChain> DeviceD3D12::CreateSwapChainForWindow(
@@ -374,9 +382,35 @@ void d3d12::DeviceD3D12::WaitUntilIdle() {
     ::CloseHandle(event);
 }
 
-void DeviceD3D12::FreeResource(ResourceHeapAllocation addr, ID3D12Resource* res) {
+DeviceD3D12::AllocationResult d3d12::DeviceD3D12::AllocateResource(
+    uint64_t sizeBytes,
+    D3D12_HEAP_TYPE heapType) {
+    // Dedicated allocation for size > kMaxSlotSize (4 MiB)
+    const bool useDedicated = sizeBytes > kResourceMaxAlignment;
+    AllocationResult result;
+
+    if (useDedicated) {
+        const auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+        const auto desc = CD3DX12_RESOURCE_DESC::Buffer(sizeBytes);
+        device_->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE,
+                                         &desc, D3D12_RESOURCE_STATE_COMMON,
+                                         nullptr, IID_PPV_ARGS(&result.res));
+    } else {
+        if (auto al = defaultAlloc_->Allocate(sizeBytes)) {
+            result.allocation = *al;
+        }
+        const auto desc = CD3DX12_RESOURCE_DESC::Buffer(sizeBytes);
+        const auto hr = device_->CreatePlacedResource(
+            result.allocation.heap, result.allocation.offset, &desc,
+            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&result.res));
+    }
+    return result;
+}
+
+void DeviceD3D12::FreeResource(ResourceHeapAllocation addr,
+                               ID3D12Resource* res) {
     res->Release();
-    if(addr.heap) {
+    if (addr.heap) {
         defaultAlloc_->Free(addr);
     }
 }
@@ -387,12 +421,12 @@ std::unique_ptr<ShaderCodeGenerator> DeviceD3D12::CreateShaderCodeGenerator() {
 
 ShaderCompileResult DeviceD3D12::CompileShader(const std::string& main,
                                                const std::string& code,
-                                               ShaderType type,
+                                               ShaderUsage type,
                                                bool debugBuild) {
     std::string targetString;
     switch (type) {
-        case ShaderType::Vertex: targetString = "vs_5_1"; break;
-        case ShaderType::Pixel: targetString = "ps_5_1"; break;
+        case ShaderUsage::Vertex: targetString = "vs_5_1"; break;
+        case ShaderUsage::Pixel: targetString = "ps_5_1"; break;
         default: DASSERT_M(false, "Unknown shader type");
     }
     ShaderCompileResult result;
@@ -403,6 +437,7 @@ ShaderCompileResult DeviceD3D12::CompileShader(const std::string& main,
     }
     RefCountedPtr<ID3DBlob> errors;
     RefCountedPtr<ID3DBlob> bytecode;
+    // TODO: Use DXC
     HRESULT hr = D3DCompile(code.c_str(), code.size(), "", nullptr, nullptr,
                             main.c_str(), targetString.c_str(), compileFlags, 0,
                             &bytecode, &errors);
