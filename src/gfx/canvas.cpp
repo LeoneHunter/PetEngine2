@@ -1,109 +1,11 @@
 #include "canvas.h"
-#include "gpu/draw_context.h"
-
-#include "gpu/shader/hlsl_codegen.h"
-#include "gpu/shader/hlsl_compiler.h"
-#include "gpu/shader/shader_dsl_api.h"
-
+#include "gpu/gpu.h"
 
 // Bind indices used by shaders
 static constexpr int kTransformMatrixBindIndex = 0;
 static constexpr int kTextureBindIndex = 1;
 
-namespace {
-
-std::unique_ptr<gpu::ShaderCode> CreatePixelBasic() {
-    gpu::ShaderDSLContext ctx;
-    gpu::HLSLCodeGenerator gen;
-
-    using namespace gpu;
-    using namespace gpu::shader_dsl;
-
-    auto projMatrix = Uniform<Float4x4>() | BindIndex(0);
-
-    Function("main");
-    {
-        auto inPos = Input<Float2>() | Semantic::Position;
-        auto inCol = Input<Float4>() | Semantic::Color;
-        auto inUV = Input<Float2>() | Semantic::Texcoord;
-
-        auto outPos = Output<Float4>() | Semantic::Position;
-        auto outCol = Output<Float4>() | Semantic::Color;
-        auto outUV = Output<Float2>() | Semantic::Texcoord;
-
-        outPos = projMatrix * Float4(inPos, 0.f, 1.f);
-        outCol = inCol;
-        outUV = inUV;
-
-        EndFunction();
-    }
-
-    auto code = gen.Build(gpu::ShaderType::Vertex, "main", &ctx);
-    auto compileResult = gpu::HLSLShaderCompiler::Compile(
-        code->mainId, code->code, gpu::ShaderType::Vertex, kDebugBuild);
-    DASSERT(compileResult);
-
-    return code;
-}
-
-std::unique_ptr<gpu::ShaderCode> CreateVertexBasic() {
-    gpu::ShaderDSLContext ctx;
-    gpu::HLSLCodeGenerator gen;
-
-    {
-        using namespace gpu;
-        using namespace gpu::shader_dsl;
-
-        auto texture = Texture2D() | BindIndex(0);
-        auto sampler = Sampler() | BindIndex(1);
-
-        Function("main");
-        {
-            auto inCol = Input<Float4>() | Semantic::Color;
-            auto inUV = Input<Float2>() | Semantic::Texcoord;
-
-            auto outCol = Output<Float4>() | Semantic::Color;
-
-            outCol = inCol * SampleTexture(texture, sampler, inUV);
-            EndFunction();
-        }
-    }
-
-    auto code = gen.Build(gpu::ShaderType::Pixel, "main", &ctx);
-    auto compileResult = gpu::HLSLShaderCompiler::Compile(
-        code->mainId, code->code, gpu::ShaderType::Pixel, kDebugBuild);
-    DASSERT(compileResult);
-
-    return code;
-}
-
-void CreateShaders() {
-    auto pso = gpu::PipelineState::Create();
-    {
-        auto code = CreateVertexBasic();
-        auto compileResult = gpu::HLSLShaderCompiler::Compile(
-            code->mainId, code->code, gpu::ShaderType::Pixel, kDebugBuild);
-        DASSERT(compileResult);
-
-        auto data = std::span<const uint8_t>(
-            (uint8_t*)compileResult.blob->GetBufferPointer(),
-            compileResult.blob->GetBufferSize());
-        pso->SetVertexShader(data, code->uniforms, code->inputs, code->outputs);
-    }
-    {
-        auto code = CreateVertexBasic();
-        auto compileResult = gpu::HLSLShaderCompiler::Compile(
-            code->mainId, code->code, gpu::ShaderType::Pixel, kDebugBuild);
-        DASSERT(compileResult);
-
-        auto data = std::span<const uint8_t>(
-            (uint8_t*)compileResult.blob->GetBufferPointer(),
-            compileResult.blob->GetBufferSize());
-        pso->SetPixelShader(data, code->uniforms, code->inputs, code->outputs);
-    }
-}
-
-}  // namespace
+namespace {}  // namespace
 
 namespace gfx {
 
@@ -114,10 +16,8 @@ std::unique_ptr<Canvas> Canvas::Create() {
 Canvas::Canvas() {
     drawListSharedData_.reset(new ImDrawListSharedData());
     drawListSharedData_->InitialFlags = ImDrawListFlags_None;
-    drawListSharedData_->InitialFlags |=
-        ImDrawListFlags_AntiAliasedLines;
-    drawListSharedData_->InitialFlags |=
-        ImDrawListFlags_AntiAliasedLinesUseTex;
+    drawListSharedData_->InitialFlags |= ImDrawListFlags_AntiAliasedLines;
+    drawListSharedData_->InitialFlags |= ImDrawListFlags_AntiAliasedLinesUseTex;
     drawListSharedData_->InitialFlags |= ImDrawListFlags_AntiAliasedFill;
     drawListSharedData_->InitialFlags |= ImDrawListFlags_AllowVtxOffset;
 
@@ -181,69 +81,196 @@ void Canvas::Resize(uint32_t width, uint32_t height) {
 }
 
 // Passed to gpu::Device for execution on GPU
-class DrawPass : public gpu::DrawPass {
+class ImDrawPass : public Canvas::DrawPass {
 public:
-    DrawPass(std::list<ImDrawList>&& drawLists)
+    ImDrawPass(std::list<ImDrawList>&& drawLists)
         : drawLists_(std::move(drawLists)) {}
 
-    void Init(gpu::DrawContext& ctx) override {
+    struct CompiledShader {
+        std::unique_ptr<gpu::ShaderCode> code;
+        std::vector<uint8_t> bytecode;
+    };
+
+    CompiledShader CreateVertexShader(gpu::ShaderCodeGenerator* gen,
+                                      gpu::Device* device) {
+        gpu::ShaderDSLContext ctx;
+        // clang-format off
+        {
+            using namespace gpu;
+            using namespace gpu::shader_dsl;
+
+            auto projMatrix = Uniform<Float4x4>() | BindIndex(kTransformMatrixBindIndex);
+
+            Function("main"); {
+                auto inPos = Input<Float2>() | Semantic::Position;
+                auto inCol = Input<Float4>() | Semantic::Color;
+                auto inUV = Input<Float2>() | Semantic::Texcoord;
+
+                auto outPos = Output<Float4>() | Semantic::Position;
+                auto outCol = Output<Float4>() | Semantic::Color;
+                auto outUV = Output<Float2>() | Semantic::Texcoord;
+
+                outPos = projMatrix * Float4(inPos, 0.f, 1.f);
+                outCol = inCol;
+                outUV = inUV;
+
+                EndFunction();
+            }
+        }
+        // clang-format on
+        std::unique_ptr<gpu::ShaderCode> code =
+            gen->Generate(gpu::ShaderUsage::Vertex, "main", &ctx);
+
+        gpu::ShaderCompileResult bytecode = device->CompileShader(
+            "main", code->code, gpu::ShaderUsage::Vertex, kDebugBuild);
+
+        CompiledShader result;
+        result.code = std::move(code);
+        result.bytecode = std::move(bytecode.bytecode);
+        return result;
+    }
+
+    CompiledShader CreatePixelShader(gpu::ShaderCodeGenerator* gen,
+                                     gpu::Device* device) {
+        gpu::ShaderDSLContext ctx;
+        // clang-format off
+        {
+            using namespace gpu;
+            using namespace gpu::shader_dsl;
+
+            auto texture = Texture2D() | BindIndex(kTextureBindIndex);
+            auto sampler = Sampler() | BindIndex(1);
+
+            Function("main"); {
+                auto inPos = Input<Float4>() | Semantic::Position;
+                auto inCol = Input<Float4>() | Semantic::Color;
+                auto inUV = Input<Float2>() | Semantic::Texcoord;
+
+                auto outCol = Output<Float4>() | Semantic::Color;
+
+                outCol = inCol * SampleTexture(texture, sampler, inUV);
+                EndFunction();
+            }
+        }
+        // clang-format on
+        std::unique_ptr<gpu::ShaderCode> code =
+            gen->Generate(gpu::ShaderUsage::Pixel, "main", &ctx);
+        gpu::ShaderCompileResult bytecode = device->CompileShader(
+            "main", code->code, gpu::ShaderUsage::Pixel, kDebugBuild);
+
+        CompiledShader result;
+        result.code = std::move(code);
+        result.bytecode = std::move(bytecode.bytecode);
+        return result;
+    }
+
+    RefCountedPtr<gpu::Buffer> CreateVertexBuffer(gpu::Device* device) {
         size_t totalVertexNum = 0;
-        size_t totalIndexNum = 0;
         // Count the total number of vertices in all draw lists
         for (const ImDrawList& drawList : drawLists_) {
             totalVertexNum += drawList.VtxBuffer.Size;
-            totalIndexNum += drawList.IdxBuffer.Size;
         }
-        // Upload vertex/index buffers into VRAM
         // Merge all data into a single buffer
-        std::vector<uint8_t> vertexBufferData;
-        std::vector<uint8_t> indexBufferData;
-        {
-            vertexBufferData.resize(totalVertexNum * sizeof(ImDrawVert));
-            indexBufferData.resize(totalIndexNum * sizeof(ImDrawIdx));
-            uint8_t* vtxPtr = vertexBufferData.data();
-            uint8_t* idxPtr = indexBufferData.data();
-            for (const ImDrawList& drawList : drawLists_) {
-                memcpy(vtxPtr, drawList.VtxBuffer.Data,
-                       drawList.VtxBuffer.Size * sizeof(ImDrawVert));
-                vtxPtr += drawList.VtxBuffer.Size;
-                memcpy(idxPtr, drawList.IdxBuffer.Data,
-                       drawList.IdxBuffer.Size * sizeof(ImDrawIdx));
-                idxPtr += drawList.IdxBuffer.Size;
-            }
-        };
-        vertexBuffer_ = ctx.CreateBuffer(totalVertexNum * sizeof(ImDrawVert));
-        indexBuffer_ = ctx.CreateBuffer(totalIndexNum * sizeof(ImDrawIdx));
+        std::vector<uint8_t> data;
+        data.resize(totalVertexNum * sizeof(ImDrawVert));
+        uint8_t* dst = data.data();
 
-        ctx.UploadResourceData(vertexBuffer_.Get(), vertexBufferData);
-        ctx.UploadResourceData(indexBuffer_.Get(), indexBufferData);
-
-        // Upload viewport orthogonal projection matrix
-        const float L = viewport_.Left();
-        const float R = viewport_.Right();
-        const float T = viewport_.Top();
-        const float B = viewport_.Bottom();
-        const float mvp[4][4] = {
-            {2.0f / (R - L), 0.0f, 0.0f, 0.0f},
-            {0.0f, 2.0f / (T - B), 0.0f, 0.0f},
-            {0.0f, 0.0f, 0.5f, 0.0f},
-            {(R + L) / (L - R), (T + B) / (B - T), 0.5f, 1.0f},
-        };
-
-        // TODO: Handle alignment
-        // Maybe use StructuredBuffer.
-        // E.g. auto offset = buffer.Add<int>();
-        constants_ =
-            ctx.CreateBuffer(sizeof(mvp), gpu::ResourceFlags::Constant);
-        ctx.UploadResourceData(constants_.Get(), {(uint8_t*)&mvp, sizeof(mvp)});
+        for (const ImDrawList& drawList : drawLists_) {
+            const auto* src = drawList.VtxBuffer.Data;
+            const size_t size = drawList.VtxBuffer.Size * sizeof(ImDrawVert);
+            DASSERT((intptr_t)size <= data.data() + data.size() - dst);
+            memcpy(dst, src, size);
+            dst += size;
+        }
+        auto result = device->CreateBuffer(data.size());
+        DASSERT(result);
+        ctx_->WriteBuffer(result->Get(), data);
+        return *result;
     }
 
-    // TODO: Setup shader
-    void Run(gpu::DrawContext& ctx) override {
-        // ctx.SetVertexBuffer(vertexBuffer_.Get());
-        // ctx.SetIndexBuffer(indexBuffer_.Get());
-        // ctx.SetShader(basicShader);
-        ctx.SetShaderArgument(kTransformMatrixBindIndex, constants_.Get());
+    RefCountedPtr<gpu::Buffer> CreateIndexBuffer(gpu::Device* device) {
+        size_t totalIndexNum = 0;
+        // Count the total number of vertices in all draw lists
+        for (const ImDrawList& drawList : drawLists_) {
+            totalIndexNum += drawList.IdxBuffer.Size;
+        }
+        // Merge all data into a single buffer
+        std::vector<uint8_t> data;
+        data.resize(totalIndexNum * sizeof(ImDrawIdx));
+        uint8_t* dst = data.data();
+
+        for (const ImDrawList& drawList : drawLists_) {
+            const auto* src = drawList.IdxBuffer.Data;
+            const size_t size = drawList.IdxBuffer.Size * sizeof(ImDrawIdx);
+            DASSERT((intptr_t)size <= data.data() + data.size() - dst);
+            memcpy(dst, src, size);
+            dst += size;
+        }
+        auto result = device->CreateBuffer(data.size());
+        DASSERT(result);
+        ctx_->WriteBuffer(result->Get(), data);
+        return *result;
+    }
+
+    void RecordCommands(gpu::CommandContext* ctx) override {
+        gpu::Device* device = ctx->GetParentDevice();
+        ctx_ = ctx;
+
+        RefCountedPtr<gpu::Buffer> vertexBuffer = CreateVertexBuffer(device);
+        RefCountedPtr<gpu::Buffer> indexBuffer = CreateIndexBuffer(device);
+
+        RefCountedPtr<gpu::Buffer> projMat = [&] {
+            auto projMat = gfx::Mat44f::CreateOrthographic(
+                viewport_.Top(), viewport_.Right(), viewport_.Bottom(),
+                viewport_.Left());
+
+            auto result = device->CreateBuffer(projMat.Data().size());
+            DASSERT(result);
+            ctx->WriteBuffer(result->Get(), projMat.Data());
+            return *result;
+        }();
+
+        RefCountedPtr<gpu::PipelineState> pso = [&] {
+            auto shaderCodeGen = device->CreateShaderCodeGenerator();
+            const CompiledShader vertexShader =
+                CreateVertexShader(shaderCodeGen.get(), device);
+            const CompiledShader pixelShader =
+                CreatePixelShader(shaderCodeGen.get(), device);
+            // clang-format off
+            const auto psoDesc = gpu::PipelineStateDesc()
+                .AddRenderTarget(gpu::TextureFormat::RGBA32Float)
+                .SetInputLayout(
+                    gpu::InputLayout::Element(
+                        gpu::Semantic::Position,
+                        gpu::VertexFormat::Float32x2,
+                        offsetof(ImDrawVert, pos)),
+                    gpu::InputLayout::Element(
+                        gpu::Semantic::Texcoord,
+                        gpu::VertexFormat::Float32x2,
+                        offsetof(ImDrawVert, uv)),
+                    gpu::InputLayout::Element(
+                        gpu::Semantic::Color,
+                        gpu::VertexFormat::Unorm8x4,
+                        offsetof(ImDrawVert, col)))
+                .SetVertexShader(
+                    vertexShader.bytecode, 
+                    vertexShader.code->uniforms, 
+                    vertexShader.code->inputs,
+                    vertexShader.code->outputs)
+                .SetPixelShader(
+                    pixelShader.bytecode, 
+                    pixelShader.code->uniforms, 
+                    pixelShader.code->inputs,
+                    pixelShader.code->outputs);
+            // clang-format on
+
+            auto result = device->CreatePipelineState(psoDesc);
+            DASSERT(result);
+            return *result;
+        }();
+
+        ctx->SetPipelineState(pso.Get());
+        ctx->SetUniform(kTransformMatrixBindIndex, projMat.Get());
 
         // (Because we merged all buffers into a single one, we maintain our own
         // offset into them)
@@ -262,15 +289,14 @@ public:
                 // Apply Scissor/clipping rectangle, Bind texture, Draw
                 const auto clipRect = gfx::Rect::FromMinMax(
                     clip_min.x, clip_min.y, clip_max.x, clip_max.y);
-                ctx.SetClipRect(clipRect);
+                ctx->SetClipRect(clipRect);
 
-                const auto* texture = (gpu::Texture*)cmd->GetTexID();
-                ctx.SetShaderArgument(kTextureBindIndex, texture);
-                DASSERT(ctx.IsReadyToDraw());
+                auto* texture = (gpu::Texture*)cmd->GetTexID();
+                ctx->SetUniform(kTextureBindIndex, texture);
 
-                ctx.DrawIndexed(cmd->ElemCount,
-                                cmd->IdxOffset + global_idx_offset,
-                                cmd->VtxOffset + global_vtx_offset);
+                ctx->DrawIndexed(cmd->ElemCount,
+                                 cmd->IdxOffset + global_idx_offset,
+                                 cmd->VtxOffset + global_vtx_offset);
             }
             global_idx_offset += cmd_list.IdxBuffer.Size;
             global_vtx_offset += cmd_list.VtxBuffer.Size;
@@ -278,20 +304,21 @@ public:
     }
 
 private:
+    gpu::CommandContext* ctx_{};
+
     gfx::Rect viewport_;
     std::list<ImDrawList> drawLists_;
-    std::list<gpu::Texture> textures_;
+    // std::list<gpu::Texture> textures_;
 
-    RefCountedPtr<gpu::Buffer> constants_;
-    RefCountedPtr<gpu::Buffer> vertexBuffer_;
-    RefCountedPtr<gpu::Buffer> indexBuffer_;
+    RefCountedPtr<gpu::Buffer> vbuf_;
+    RefCountedPtr<gpu::Buffer> ibuf;
 };
 
-std::unique_ptr<gpu::DrawPass> Canvas::CreateDrawPass() {
+std::unique_ptr<Canvas::DrawPass> Canvas::CreateDrawPass() {
     // TODO: Create shaders here and bind them to draw pass
     // Cache shaders globally until |this| is deleted
-    auto out =
-        std::unique_ptr<gpu::DrawPass>(new DrawPass(std::move(drawLists_)));
+    auto out = std::unique_ptr<Canvas::DrawPass>(
+        new ImDrawPass(std::move(drawLists_)));
     Clear();
     return out;
 }

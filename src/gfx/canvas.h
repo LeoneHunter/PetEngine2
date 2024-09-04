@@ -9,11 +9,9 @@
 #include <stack>
 
 namespace gpu {
+class CommandContext;
 class Texture;
-class Buffer;
-class DrawPass;
-class Shader;
-}  // namespace gpu
+}
 
 namespace gfx {
 
@@ -79,11 +77,17 @@ public:
 
     void Resize(uint32_t width, uint32_t height);
 
+    class DrawPass {
+    public:
+        virtual ~DrawPass() = default;
+        virtual void RecordCommands(gpu::CommandContext* ctx) = 0;
+    };
+
     // TODO: Maybe use immediate context here. I.e. submit commands for
     // rendering in the DrawXXX functions.
     // Return a render pass object which can be executed to actualy render the
     // canvas. The draw pass owns all the data and owned by the user
-    std::unique_ptr<gpu::DrawPass> CreateDrawPass();
+    std::unique_ptr<DrawPass> CreateDrawPass();
 
 private:
     Canvas();
