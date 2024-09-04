@@ -70,3 +70,44 @@ test(
         shader
         d3d12
 )
+
+module(
+    NAME
+        wgsl
+    SRCS
+        shader/wgsl/parser.cpp
+        shader/wgsl/program.cpp
+        shader/wgsl/program_builder.cpp
+    HDRS
+        shader/wgsl/parser.h
+        shader/wgsl/program.h
+        shader/wgsl/program_builder.h
+        shader/wgsl/lexer.h
+        shader/wgsl/token.h
+        shader/wgsl/common.h
+        shader/wgsl/ast_node.h
+        shader/wgsl/ast_attribute.h
+        shader/wgsl/ast_expression.h
+        shader/wgsl/ast_variable.h
+    DEPS
+        base
+)
+
+test(
+    NAME
+        wgsl_lexer
+    SRCS
+        shader/wgsl/lexer_test.cpp
+    DEPS
+        base
+)
+
+test(
+    NAME
+        wgsl_parser
+    SRCS
+        shader/wgsl/parser_test.cpp
+    DEPS
+        base
+        wgsl
+)
