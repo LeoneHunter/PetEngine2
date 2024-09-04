@@ -16,7 +16,7 @@ public:
             .lpfnWndProc = OnWindowEvent,
             .cbClsExtra = 0,
             .cbWndExtra = 0,
-            .hInstance = GetModuleHandleW(NULL),
+            .hInstance = ::GetModuleHandle(NULL),
             .hIcon = 0,
             .hCursor = 0,
             .hbrBackground = 0,
@@ -71,14 +71,6 @@ private:
     WNDCLASSEX class_;
 };
 
-// Asserts std::expected::value() is present
-#define TRY(EXPR)           \
-    [&] {                   \
-        auto result = EXPR; \
-        DASSERT(result);    \
-        return *result;     \
-    }();
-
 int main(int argc, char* argv[]) {
     using namespace gpu;
 
@@ -91,7 +83,16 @@ int main(int argc, char* argv[]) {
     RefCountedPtr<SwapChain> swapChain = device->CreateSwapChainForWindow(
         window->GetHandle(), windowWidth, windowHeight, kFrameNum);
 
-    // float4 x 3 in normalized screen space coords (-1.0 : 1.0)
+    // float4 x 3 in DirectX normalized screen space coords (-1.0 : 1.0)
+    // Draws a triangle:
+    // X is the center of the screen
+    //
+    // 1------------------0
+    //   -----      CW    |
+    //        --X--       |
+    //             ----   |
+    //                 ---2
+    //
     // clang-format off
     const float vertices[12] = { 
          1.0f,  1.0f, 0.0f, 1.0f,  
@@ -101,8 +102,10 @@ int main(int argc, char* argv[]) {
     const uint32_t indices[3] = {2, 1, 0};
     // clang-format on
 
-    RefCountedPtr<Buffer> vbo = TRY(device->CreateBuffer(SizeBytes(vertices)));
-    RefCountedPtr<Buffer> ibo = TRY(device->CreateBuffer(SizeBytes(indices)));
+    RefCountedPtr<Buffer> vbo =
+        TRY(device->CreateBuffer(SizeBytes(vertices), BufferUsage::Vertex));
+    RefCountedPtr<Buffer> ibo =
+        TRY(device->CreateBuffer(SizeBytes(indices), BufferUsage::Index));
 
     const std::string vertexShaderCode = R"(
         void main(float4 pos : POSITION, out float4 outPos : SV_Position) {
@@ -116,17 +119,18 @@ int main(int argc, char* argv[]) {
     )";
 
     ShaderCompileResult vertexShader = device->CompileShader(
-        "main", vertexShaderCode, ShaderType::Vertex, kDebugBuild);
+        "main", vertexShaderCode, ShaderUsage::Vertex, kDebugBuild);
 
     ShaderCompileResult pixelShader = device->CompileShader(
-        "main", pixelShaderCode, ShaderType::Pixel, kDebugBuild);
+        "main", pixelShaderCode, ShaderUsage::Pixel, kDebugBuild);
 
     // clang-format off
     const auto psoDesc = gpu::PipelineStateDesc()
         .AddRenderTarget(gpu::TextureFormat::RGBA8Unorm)
-        .SetInputLayout(gpu::InputLayout::Element(
-            gpu::Semantic::Position, 
-            gpu::VertexFormat::Float32x4))
+        .SetInputLayout(
+            gpu::InputLayout::Element(
+                gpu::Semantic::Position, 
+                gpu::VertexFormat::Float32x4))
         .SetVertexShader(vertexShader.bytecode, {}, {}, {})
         .SetPixelShader(pixelShader.bytecode, {}, {}, {});
     // clang-format on

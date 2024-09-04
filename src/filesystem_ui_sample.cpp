@@ -172,33 +172,25 @@ public:
         };
         build(*nodes_.front());
 
-        return Aligned::New(
-            Alignment::Center, Alignment::Start,
+        // clang-format off
+        return Aligned::New(Alignment::Center, Alignment::Start,
             PopupPortal::New(
                 [](const PopupOpenContext&) {
                     std::vector<std::unique_ptr<WidgetState>> out;
-                    out.emplace_back(
-                        new PopupMenuItem("Menu item 1", "F11", []() {}));
-                    out.emplace_back(
-                        new PopupMenuItem("Menu item 2", "F12", []() {}));
-                    out.emplace_back(new PopupSubmenuItem(
-                        "Submenu 1", [](const PopupOpenContext&) {
-                            std::vector<std::unique_ptr<WidgetState>> out;
-                            out.emplace_back(new PopupMenuItem("Submenu item 1",
-                                                               "F2", []() {}));
-                            out.emplace_back(new PopupMenuItem("Submenu item 2",
-                                                               "F3", []() {}));
-                            return out;
-                        }));
-                    out.emplace_back(new PopupSubmenuItem(
-                        "Submenu 2", [](const PopupOpenContext&) {
-                            std::vector<std::unique_ptr<WidgetState>> out;
-                            out.emplace_back(new PopupMenuItem("Submenu item 3",
-                                                               "F5", []() {}));
-                            out.emplace_back(new PopupMenuItem("Submenu item 4",
-                                                               "F6", []() {}));
-                            return out;
-                        }));
+                    out.emplace_back(new PopupMenuItem("Menu item 1", "F11", []() {}));
+                    out.emplace_back(new PopupMenuItem("Menu item 2", "F12", []() {}));
+                    out.emplace_back(new PopupSubmenuItem("Submenu 1", [](const PopupOpenContext&) {
+                        std::vector<std::unique_ptr<WidgetState>> out;
+                        out.emplace_back(new PopupMenuItem("Submenu item 1", "F2", []{}));
+                        out.emplace_back(new PopupMenuItem("Submenu item 2", "F3", []{}));
+                        return out;
+                    }));
+                    out.emplace_back(new PopupSubmenuItem("Submenu 2", [](const PopupOpenContext&) {
+                        std::vector<std::unique_ptr<WidgetState>> out;
+                        out.emplace_back(new PopupMenuItem("Submenu item 3", "F5", []{}));
+                        out.emplace_back(new PopupMenuItem("Submenu item 4", "F6", []{}));
+                        return out;
+                    }));
                     return out;
                 },
                 Container::Build()
@@ -206,14 +198,17 @@ public:
                     .SizeMode(AxisMode::Fixed, AxisMode::Expand)
                     .Size(300, 0)
                     .ClipContent()
-                    .Child(StatefulWidget::New(&scrollViewState_,
-                                               Flexbox::Build()
-                                                   .DirectionColumn()
-                                                   .ExpandCrossAxis()
-                                                   .ExpandMainAxis(false)
-                                                   .Children(std::move(out))
-                                                   .New()))
-                    .New()));
+                    .Child(
+                        StatefulWidget::New(&scrollViewState_,
+                            Flexbox::Build()
+                                .DirectionColumn()
+                                .ExpandCrossAxis()
+                                .ExpandMainAxis(false)
+                                .Children(std::move(out))
+                                .New()))
+                    .New()
+                ));
+        // clang-format on
     }
 
     class Node : public WidgetState {

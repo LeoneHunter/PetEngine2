@@ -84,6 +84,3 @@ struct std::formatter<GenericErrorCode> : std::formatter<std::string> {
         return Base::format(to_string(value), ctx);
     }
 };
-
-template<class T>
-using Expected = std::expected<T, GenericErrorCode>;
