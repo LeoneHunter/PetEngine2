@@ -11,6 +11,7 @@ module(
         error.h
         log.h
         math_util.h
+        tree_printer.h
         rtti.h
         string_utils.h
         util.h
@@ -20,6 +21,7 @@ module(
     SRCS
         bench.cpp
         log.cpp
+        tree_printer.cpp
         win_minimal.cpp
         string_utils.cpp
         threading.cpp
