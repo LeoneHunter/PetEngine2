@@ -2,6 +2,7 @@
 #include "command_line.h"
 #include "intrusive_list.h"
 #include "math_util.h"
+#include "ref_counted.h"
 #include "string_utils.h"
 #include "ref_counted.h"
 
@@ -306,3 +307,41 @@ public:
     T* ptr = nullptr;
 };
 
+// Acii characters helper table
+struct ASCII {
+    enum Kind {
+        D,  // Digit
+        L,  // Letter
+        P,  // Punctuation
+        S,  // Space
+        B,  // NewLine
+        C,  // Control
+    };
+
+    // clang-format off
+    static constexpr uint32_t table[] = {
+    //                             t  CR t    LF
+        C, C, C, C, C, C, C, C, C, S, B, S, B, B, C, C,
+        C, C, C, C, C, C, C, C, C, C, C, C, C, C, C, C,
+    // SPC !  "  #  $  %  &  '  (  )  *  +  ,  -  .  /
+        S, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P,
+    //  0  1  2  3  4  5  6  7  8  9  :  ;  <  =  >  ?
+        D, D, D, D, D, D, D, D, D, D, P, P, P, P, P, P,
+    //  @  A  B  C  D  E  F  G  H  I  J  K  L  M  N  O
+        P, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
+    //  P  Q  R  S  T  U  V  W  X  Y  Z  [  \\ ]  ^  _
+        L, L, L, L, L, L, L, L, L, L, L, P, P, P, P, L,
+    //  `  a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
+        P, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
+    //  p  q  r  s  t  u  v  w  x  y  z  {  |  }  ~  7f
+        L, L, L, L, L, L, L, L, L, L, L, P, P, P, P, C,
+    };
+    // clang-format on
+
+    constexpr static bool IsSpace(char ch) { return table[ch] == S; }
+    constexpr static bool IsLineBreak(char ch) { return table[ch] == B; }
+    constexpr static bool IsLetter(char ch) { return table[ch] == L; }
+    constexpr static bool IsDigit(char ch) { return table[ch] == D; }
+    constexpr static bool IsPunctuation(char ch) { return table[ch] == P; }
+    constexpr static bool IsControl(char ch) { return table[ch] == C; }
+};

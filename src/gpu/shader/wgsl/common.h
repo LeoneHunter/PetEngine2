@@ -7,6 +7,13 @@ namespace wgsl {
 struct Location {
     uint32_t line = 0;
     uint32_t col = 1;
+
+    constexpr Location() = default;
+
+    constexpr Location(uint32_t line, uint32_t col)
+        : line(line), col(col) {}
+
+    constexpr auto operator<=>(const Location&) const = default;
 };
 
 // node source range, including end: [start, end]
@@ -14,7 +21,16 @@ struct LocationRange {
     Location start;
     Location end;
 
-    LocationRange(Location start, Location end = {}) : start(start), end(end) {}
+    constexpr LocationRange() = default;
+
+    constexpr LocationRange(Location start, Location end = {}) 
+        : start(start), end(end) {
+        if(end < start) {
+            end = start;
+        }
+    }
+
+    constexpr auto operator<=>(const LocationRange&) const = default;
 };
 
 // clang-format off
@@ -51,7 +67,7 @@ constexpr std::string_view kReserved[] = {
 };
 // clang-format on
 
-enum class Attribute {
+enum class AttributeName {
     Align,
     Binding,
     BlendSrc,
@@ -71,25 +87,25 @@ enum class Attribute {
     Compute,
 };
 
-constexpr std::string to_string(Attribute attr) {
+constexpr std::string to_string(AttributeName attr) {
     switch(attr) {
-        case Attribute::Align: return "align";
-        case Attribute::Binding: return "binding";
-        case Attribute::BlendSrc: return "blend_src";
-        case Attribute::Builtin: return "builtin";
-        case Attribute::Const: return "const";
-        case Attribute::Diagnostic: return "diagnostic";
-        case Attribute::Group: return "group";
-        case Attribute::ID: return "id";
-        case Attribute::Interpolate: return "interpolate";
-        case Attribute::Invariant: return "invariant";
-        case Attribute::Location: return "location";
-        case Attribute::MustUse: return "must_use";
-        case Attribute::Size: return "size";
-        case Attribute::WorkGroupSize: return "workgroup_size";
-        case Attribute::Vertex: return "vertex";
-        case Attribute::Fragment: return "fragment";
-        case Attribute::Compute: return "compute";
+        case AttributeName::Align: return "align";
+        case AttributeName::Binding: return "binding";
+        case AttributeName::BlendSrc: return "blend_src";
+        case AttributeName::Builtin: return "builtin";
+        case AttributeName::Const: return "const";
+        case AttributeName::Diagnostic: return "diagnostic";
+        case AttributeName::Group: return "group";
+        case AttributeName::ID: return "id";
+        case AttributeName::Interpolate: return "interpolate";
+        case AttributeName::Invariant: return "invariant";
+        case AttributeName::Location: return "location";
+        case AttributeName::MustUse: return "must_use";
+        case AttributeName::Size: return "size";
+        case AttributeName::WorkGroupSize: return "workgroup_size";
+        case AttributeName::Vertex: return "vertex";
+        case AttributeName::Fragment: return "fragment";
+        case AttributeName::Compute: return "compute";
     }
 }
 

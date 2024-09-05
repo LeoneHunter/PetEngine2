@@ -1,5 +1,6 @@
 #pragma once
 #include "token.h"
+#include "util.h"
 #include <array>
 
 namespace wgsl {
@@ -11,6 +12,7 @@ public:
         text_ = code;
         next_ = code.data();
         end_ = code.data() + code.size();
+        lineStart_ = next_;
         loc_ = Location{0, 1};
     }
 
@@ -42,6 +44,9 @@ public:
         }
         return Token::Invalid(Loc());
     }
+
+    // Get current line
+    std::string_view GetLine() { return {lineStart_, GetLineEnd()}; }
 
 private:
     // Character kind
@@ -126,7 +131,7 @@ private:
             }
             return token;
         }
-        return Token::Invalid(Loc());
+        return Token::Invalid(loc);
     }
 
     constexpr Token ParseLetter() {
@@ -140,7 +145,8 @@ private:
         }
         for (const std::string_view reserved : kReserved) {
             if (Match(reserved)) {
-                const auto out = Token::Invalid(Loc());
+                const auto out = 
+                    Token(Token::Kind::Reserved, Loc(), Pos(), reserved.size());
                 Advance(reserved.size());
                 return out;
             }
@@ -345,8 +351,10 @@ private:
             ++loc_.col;
             if (Match('\r')) {
                 loc_.col = 1;
+                lineStart_ = next_ + 1;
                 ++loc_.line;
             } else if (Match('\n')) {
+                lineStart_ = next_ + 1;
                 const char* prev = next_ - 1;
                 if (prev == text_.data() || *prev != '\r') {
                     loc_.col = 1;
@@ -401,49 +409,19 @@ private:
         return true;
     }
 
+    const char* GetLineEnd() {
+        const char* ptr = next_;
+        while(ptr < end_ && !ASCII::IsLineBreak(*ptr)) {
+            ++ptr;
+        }
+        return ptr;
+    }
+
     constexpr bool IsEof() const { return next_ == end_; }
     constexpr const char* Pos() { return next_; }
     constexpr Location Loc() const { return loc_; }
 
 private:
-    struct ASCII {
-        enum Kind {
-            D,  // Digit
-            L,  // Letter
-            P,  // Punctuation
-            S,  // Space
-            B,  // NewLine
-            C,  // Control
-        };
-
-        // clang-format off
-        static constexpr uint32_t table[] = {
-        //                             t  CR t    LF
-            C, C, C, C, C, C, C, C, C, S, B, S, B, B, C, C,
-            C, C, C, C, C, C, C, C, C, C, C, C, C, C, C, C,
-        // SPC !  "  #  $  %  &  '  (  )  *  +  ,  -  .  /
-            S, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P,
-        //  0  1  2  3  4  5  6  7  8  9  :  ;  <  =  >  ?
-            D, D, D, D, D, D, D, D, D, D, P, P, P, P, P, P,
-        //  @  A  B  C  D  E  F  G  H  I  J  K  L  M  N  O
-            P, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
-        //  P  Q  R  S  T  U  V  W  X  Y  Z  [  \\ ]  ^  _
-            L, L, L, L, L, L, L, L, L, L, L, P, P, P, P, L,
-        //  `  a  b  c  d  e  f  g  h  i  j  k  l  m  n  o
-            P, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
-        //  p  q  r  s  t  u  v  w  x  y  z  {  |  }  ~  7f
-            L, L, L, L, L, L, L, L, L, L, L, P, P, P, P, C,
-        };
-        // clang-format on
-
-        constexpr static bool IsSpace(char ch) { return table[ch] == S; }
-        constexpr static bool IsNewLine(char ch) { return table[ch] == B; }
-        constexpr static bool IsLetter(char ch) { return table[ch] == L; }
-        constexpr static bool IsDigit(char ch) { return table[ch] == D; }
-        constexpr static bool IsPunctuation(char ch) { return table[ch] == P; }
-        constexpr static bool IsControl(char ch) { return table[ch] == C; }
-    };
-
     constexpr CharKind GetKind() const {
         return (CharKind)ASCII::table[*next_];
     }
@@ -452,6 +430,7 @@ private:
     std::string_view text_;
     const char* next_;
     const char* end_;
+    const char* lineStart_;
     Location loc_;
     Location lastTokenLoc_;
 };

@@ -1,6 +1,6 @@
 #include "parser.h"
-#include "program_builder.h"
 #include "program.h"
+#include "program_builder.h"
 
 #include <functional>
 
@@ -22,13 +22,13 @@ namespace wgsl {
     } while (false)
 
 // Expect the next token to be |tok| else return error code
-#define EXPECT(tok)                                \
-    do {                                           \
-        if (Peek(tok)) {                           \
-            Advance();                             \
-        } else {                                   \
-            return Unexpected("Unexpected token"); \
-        }                                          \
+#define EXPECT(tok)                 \
+    do {                            \
+        if (Peek(tok)) {            \
+            Advance();              \
+        } else {                    \
+            return Unexpected(tok); \
+        }                           \
     } while (false)
 
 // Expect the next optional token to be |tok|
@@ -40,27 +40,34 @@ namespace wgsl {
     } while (false)
 
 // Expect |expr| returning ast node
-#define EXPECT_OK(node, expr)                  \
-    do {                                       \
-        if (auto result = expr) {              \
-            node = *result;                    \
-        } else {                               \
-            return Unexpected(result.error()); \
-        }                                      \
+#define EXPECT_OK(node, expr, msg)  \
+    do {                            \
+        auto res = expr;            \
+        if (res) {                  \
+            node = *res;            \
+        } else {                    \
+            return Unexpected(msg); \
+        }                           \
     } while (false)
 
-#define UNWRAP_IF_OK(node, expr)  \
-    do {                          \
-        if (auto result = expr) { \
-            node = *result;       \
-        }                         \
+#define EXPECT_OK_OPT(node, expr)                       \
+    do {                                                \
+        auto res = expr;                                \
+        if (res) {                                      \
+            node = *res;                                \
+        } else if (res.error() == ParseResult::Error) { \
+            return Unexpected(res.error());             \
+        }                                               \
     } while (false)
 
-#define RET_IF_OK(expr)           \
-    do {                          \
-        if (auto result = expr) { \
-            return *result;       \
-        }                         \
+#define RET_IF_OK(expr)                                 \
+    do {                                                \
+        auto res = expr;                                \
+        if (res) {                                      \
+            return *res;                                \
+        } else if (res.error() == ParseResult::Error) { \
+            return Unexpected(res.error());             \
+        }                                               \
     } while (false)
 
 using Tok = wgsl::Token::Kind;
@@ -87,129 +94,159 @@ Parser::Parser(std::string_view code, ProgramBuilder* builder)
 void Parser::Parse() {
     Advance();
     while (!ShouldExit()) {
-        ast::Variable* var = nullptr;
-        UNWRAP_IF_OK(var, GlobalVariable());
-        builder_->PushGlobalDecl(var);
+        auto res = GlobalVariable();
+        if(res) {
+            builder_->PushGlobalDecl(*res);
+            continue;
+        }
+        if(res.error() == ParseResult::Error) {
+            continue;
+        }
+        if(Peek(Tok::Semicolon)) {
+            continue;
+        }
+        // Improve error messages
+        if(Peek(Tok::Reserved)) {
+            Unexpected("this identifier is reserved");
+            continue;
+        }
+        if(Peek(Tok::Ident) || Peek().IsLiteral()) {
+            Unexpected("expected storage class 'const', 'override' or 'var'");
+            continue;
+        }
+        Unexpected(SyntaxError::ExpectedDecl);
     }
 }
 
 //==========================================================================//
 
-// global_variable_decl :
-//   attribute* variable_decl ( '=' expression ) ?
+// | global_value_decl ';'
+// | attribute * 'var' ( '<' expression ( ',' expression )* ',' ? '>' )?
+//     optionally_typed_ident ( '=' expression )? ';'
 Expected<ast::Variable*> Parser::GlobalVariable() {
+    // attributes
     std::vector<ast::Attribute*> attributes;
-    // '@' attribute
     while (Peek(Tok::Attr)) {
-        ast::Attribute* attr = nullptr;
-        UNWRAP_IF_OK(attr, Attribute());
-        attributes.push_back(attr);
+        if (auto attr = Attribute()) {
+            attributes.push_back(*attr);
+        }
     }
-    // variable_decl
-    ast::Variable* var = nullptr;
-    UNWRAP_IF_OK(var, VarDecl(attributes));
-    // TODO: Handle 'const' and 'override'
+    // const override
+    if (auto res = GlobValueDecl(attributes)) {
+        EXPECT(Tok::Semicolon);
+        return *res;
+    }
+    // var
+    if (auto res = VarDecl(attributes)) {
+        EXPECT(Tok::Semicolon);
+        return *res;
+    }
+    return Unmatched();
 }
 
 // global_value_decl:
 //   | attribute* 'override' optionally_typed_ident ( '=' expression )?
 //   | 'const' optionally_typed_ident '=' expression
-Expected<ast::Variable*> Parser::ValueDecl() {
-    // attributes
-    std::vector<ast::Attribute*> attributes;
-    while (Peek(Tok::Attr)) {
-        if(auto attr = Attribute()) {
-            attributes.push_back(*attr);
-        }
-    }
+Expected<ast::Variable*> Parser::GlobValueDecl(
+    const std::vector<ast::Attribute*>& attributes) {
     // const | override
     RET_IF_OK(OverrideValueDecl(attributes));
-    // TODO: const may not have attributes
-
-
-    RET_IF_OK(ConstValueDecl());
-    if (!attributes.empty()) {
-        return Unexpected("'const' or 'override' expected");
+    ast::Variable* var = nullptr;
+    if (auto res = ConstValueDecl()) {
+        if (!attributes.empty()) {
+            return Unexpected("'const' may not have attributes");
+        }
+        return *res;
     }
+    return Unmatched();
 }
 
-// 'const' optionally_typed_ident '=' expression
+// 'const' ident ( ':' type_specifier )? '=' expression
 Expected<ast::Variable*> Parser::ConstValueDecl() {
-    if (Peek().GetString() != "const") {
+    // 'const'
+    if (!PeekWith(Tok::Keyword, "const")) {
         return Unmatched();
     }
     Location startLoc = Advance().loc;
+    // ident
+    EXPECT(Tok::Ident);
+    Token ident = GetLastToken();
+    // type_specifier
     Location typeLoc = Peek().loc;
-    TypeInfo typeInfo;
-    EXPECT_OK(typeInfo, TypeIdent());
+    std::optional<TypeInfo> typeInfo;
+    if (Expect(Tok::Colon)) {
+        EXPECT_OK(typeInfo, TypeSpecifier(),
+                  SyntaxError::ExpectedType);
+    }
+    // '=' expression
     ast::Expression* initializer = nullptr;
-    EXPECT_OK(initializer, Expression());
+    if (Expect(Tok::Equal)) {
+        EXPECT_OK(initializer, Expression(), SyntaxError::ExpectedExpr);
+    }
     auto loc = LocationRange(startLoc,
                              initializer ? initializer->GetLocEnd() : typeLoc);
-    return builder_->CreateConstVar(loc, std::string(typeInfo.ident),
-                                    initializer);
+    return builder_->CreateConstVar(loc, ident.Source(), typeInfo, initializer);
 }
 
+// 'override'
 Expected<ast::Variable*> Parser::OverrideValueDecl(
     const std::vector<ast::Attribute*>& attributes) {
-    return Unexpected("Unimplemented");
+    if (!PeekWith(Tok::Keyword, "override")) {
+        return Unmatched();
+    }
+    return Unexpected("'override' variables not implemented");
 }
 
-// variable_decl :
-//   'var' template_list? IDENT (':' type_specifier)?
+// 'var' template_list? optionally_typed_ident ( '=' expression )?
 Expected<ast::Variable*> Parser::VarDecl(
     const std::vector<ast::Attribute*>& attributes) {
     // 'var'
-    EXPECT_MATCH(Tok::Keyword);
-    if (Peek().GetString() != "var") {
+    if (!PeekWith(Tok::Keyword, "var")) {
         return Unmatched();
     }
+    Location loc = Advance().loc;
+    // TODO: parse var template
     EXPECT(Tok::Ident);
     Token ident = GetLastToken();
-    // Try to find the symbol
-    // Parse template list
-    TypeInfo typeInfo;
-    UNWRAP_IF_OK(typeInfo, TypeGenerator());
-    TypeInfo type;
-    UNWRAP_IF_OK(type, TypeIdent());
-
+    // ':'
+    std::optional<TypeInfo> typeInfo;
+    if (Expect(Tok::Colon)) {
+        EXPECT_OK(typeInfo, TypeSpecifier(),
+                  SyntaxError::ExpectedType);
+    }
     // Initializer: '=' expression
     ast::Expression* initializer = nullptr;
-    UNWRAP_IF_OK(initializer, Expression());
-
-    // TODO: Create a variable node
+    if (Expect(Tok::Equal)) {
+        EXPECT_OK(initializer, Expression(), SyntaxError::ExpectedExpr);
+    }
+    return builder_->CreateVar(loc, ident.Source(), {}, typeInfo, attributes,
+                               initializer);
 }
 
-// ident template_list?
-Expected<Parser::TypeInfo> Parser::TypeIdent() {
-    EXPECT(Tok::Ident);
-    Token tok = GetLastToken();
-    // Type name
-    TypeInfo typeInfo;
-    std::string_view typeName = tok.GetString();
-    if (typeName == "u32") {
-        typeInfo.type = DataType::U32;
-    } else if (typeName == "u32") {
-        typeInfo.type = DataType::I32;
+// type_specifier:
+//   ident ( '<' expression ( ',' expression )* ','? '>' )?
+Expected<TypeInfo> Parser::TypeSpecifier() {
+    EXPECT_MATCH(Tok::Ident);
+    Token tok = Advance();
+    // Template parameter list: '<'
+    if (Peek(Tok::LessThan)) {
+        return Unexpected("templates not implemented");
     }
-    // Template
+    return TypeInfo{tok};
 }
 
 // vec[234]<T> | matCxR<T> | atomic<T> | array<E, N?> | ptr<T>
-Expected<Parser::TypeInfo> Parser::TypeGenerator() {
-    return Unexpected("Unimplemented");
+Expected<TypeInfo> Parser::TypeGenerator() {
+    return Unexpected("templates not implemented");
 }
 
+// unary_expression | relational_expr ...
 Expected<ast::Expression*> Parser::Expression() {
     ast::Expression* unary = nullptr;
-    EXPECT_OK(unary, UnaryExpr());
-    // ';'
-    if (Expect(Tok::Semicolon)) {
-        return unary;
-    }
+    EXPECT_OK(unary, UnaryExpr(), SyntaxError::ExpectedExpr);
     // binary operator
     using BinaryOp = ast::BinaryExpression::OpCode;
-    auto op = BinaryOp::Add;
+    std::optional<BinaryOp> op;
 
     Token tok = Peek();
     switch (tok.kind) {
@@ -235,20 +272,24 @@ Expected<ast::Expression*> Parser::Expression() {
         case Tok::Xor: op = BinaryOp::BitwiseXor; break;
         case Tok::LeftShift: op = BinaryOp::BitwiseLeftShift; break;
         case Tok::RightShift: op = BinaryOp::BitwiseRightShift; break;
-        default: return Unexpected("Unexpected token {}", tok.kind); break;
     }
+    if (!op) {
+        return unary;
+    }
+    Advance();
     // Expect rhs expression
     ast::Expression* lhs = unary;
     ast::Expression* rhs = nullptr;
     auto res = Expression();
     if (!res && res.error() == ParseResult::Unmatched) {
-        return Unexpected("Unexpected token {}", Peek().kind);
+        return Unexpected(SyntaxError::ExpectedExpr);
     }
-    if (!res && res.error() == ParseResult::ParseError) {
+    if (!res && res.error() == ParseResult::Error) {
         return Unexpected(res.error());
     }
+    rhs = *res;
     return builder_->CreateBinaryExpr(
-        LocationRange(lhs->GetLocStart(), rhs->GetLocEnd()), lhs, op, rhs);
+        LocationRange(lhs->GetLocStart(), rhs->GetLocEnd()), lhs, *op, rhs);
 }
 
 // unary_expression:
@@ -260,8 +301,9 @@ Expected<ast::Expression*> Parser::Expression() {
 //   | '~' unary_expression
 Expected<ast::Expression*> Parser::UnaryExpr() {
     // primary_expression
-    if (auto res = PrimaryExpr()) {
-        ast::Expression* primary = *res;
+    ast::Expression* primary = nullptr;
+    EXPECT_OK_OPT(primary, PrimaryExpr());
+    if (primary) {
         auto res2 = ComponentSwizzleExpr(primary);
         if (res2) {
             return *res2;
@@ -273,18 +315,19 @@ Expected<ast::Expression*> Parser::UnaryExpr() {
     }
     // Unary operator
     using Op = ast::UnaryExpression::OpCode;
-    Token opToken = Advance();
+    Token opToken = Peek();
     std::optional<Op> op;
 
     switch (opToken.kind) {
         case Tok::Negation: op = Op::Negation; break;
         case Tok::Tilde: op = Op::BitwiseNot; break;
-        case Tok::And: op = Op::Address; break;
+        case Tok::And: return Unexpected("pointers are unsupported");
         case Tok::Minus: op = Op::Minus; break;
+        case Tok::Mul: return Unexpected("pointers are unsupported");
     }
     if (op) {
         ast::Expression* rhs = nullptr;
-        EXPECT_OK(rhs, UnaryExpr());
+        EXPECT_OK(rhs, UnaryExpr(), SyntaxError::ExpectedExpr);
         return builder_->CreateUnaryExpr(
             LocationRange(opToken.loc, rhs->GetLocEnd()), *op, rhs);
     }
@@ -304,15 +347,13 @@ Expected<ast::Expression*> Parser::PrimaryExpr() {
     // '(' expression ')'
     if (Expect(Tok::OpenParen)) {
         ast::Expression* expr = nullptr;
-        UNWRAP_IF_OK(expr, Expression());
-        // TODO: Handle empty expr: '()'
+        EXPECT_OK(expr, Expression(), SyntaxError::ExpectedExpr);
         EXPECT(Tok::CloseParen);
         return expr;
     }
     // ident template_list
     if (Peek(Tok::Ident)) {
-        Token tok = Advance();
-        // TODO: Find symbol
+        return Unexpected("unimplemented");
     }
     return Unmatched();
 }
@@ -324,10 +365,10 @@ Expected<ast::Expression*> Parser::PrimaryExpr() {
 Expected<ast::Expression*> wgsl::Parser::ComponentSwizzleExpr(
     ast::Expression* lhs) {
     if (Peek(Tok::Period)) {
-        return Unexpected("Unimplemented");
+        return Unexpected("unimplemented");
     }
     if (Peek(Tok::OpenBracket)) {
-        return Unexpected("Unimplemented");
+        return Unexpected("unimplemented");
     }
     return Unmatched();
 }
@@ -402,50 +443,85 @@ Expected<ast::Attribute*> Parser::Attribute() {
     if (ident.Match("align")) {
         EXPECT(Tok::OpenParen);
         ast::Expression* expr = nullptr;
-        EXPECT_OK(expr, Expression());
+        EXPECT_OK(expr, Expression(), SyntaxError::ExpectedExpr);
         EXPECT_OPT(Tok::Comma);
         EXPECT(Tok::CloseParen);
-        return builder_->CreateAttribute(ident.loc, wgsl::Attribute::Align, expr);
+        return builder_->CreateAttribute(ident.loc, wgsl::AttributeName::Align,
+                                         expr);
     }
     // '@' 'binding' '(' expression ',' ? ')'
     // positive, const u32 | i32
     if (ident.Match("align")) {
         EXPECT(Tok::OpenParen);
         ast::Expression* expr = nullptr;
-        EXPECT_OK(expr, Expression());
+        EXPECT_OK(expr, Expression(), SyntaxError::ExpectedExpr);
         EXPECT_OPT(Tok::Comma);
         EXPECT(Tok::CloseParen);
-        return builder_->CreateAttribute(ident.loc, wgsl::Attribute::Binding, expr);
+        return builder_->CreateAttribute(ident.loc,
+                                         wgsl::AttributeName::Binding, expr);
     }
     // @ vertex
     if (ident.Match("vertex")) {
-        return builder_->CreateAttribute(ident.loc, wgsl::Attribute::Vertex);
+        return builder_->CreateAttribute(ident.loc,
+                                         wgsl::AttributeName::Vertex);
     }
     // @ fragment
     if (ident.Match("fragment")) {
-        return builder_->CreateAttribute(ident.loc, wgsl::Attribute::Fragment);
+        return builder_->CreateAttribute(ident.loc,
+                                         wgsl::AttributeName::Fragment);
     }
     // @ compute
     if (ident.Match("compute")) {
-        return builder_->CreateAttribute(ident.loc, wgsl::Attribute::Compute);
+        return builder_->CreateAttribute(ident.loc,
+                                         wgsl::AttributeName::Compute);
     }
-    return Unexpected("'{}' is not a valid attribute name", ident.GetString());
+    return Unexpected("'{}' is not a valid attribute name", ident.Source());
 }
 
 //==========================================================================//
 
 std::unexpected<ParseResult> Parser::Unexpected(const std::string& msg) {
     // TODO: Get the location and token from the caller
-    // TODO: Emit proper error message (maybe use error code + location)
-    errors_.push_back(ParseError{
-        .tok = token_,
-        .msg = msg,
-    });
-    return std::unexpected(ParseResult::ParseError);
+    const auto errMsg = CreateErrorMsg({token_.loc}, msg);
+    builder_->AddSyntaxError({token_.loc}, errMsg);
+    return std::unexpected(ParseResult::Error);
 }
 
-std::unexpected<ParseResult> Parser::Unexpected(ParseResult error) {
-    return std::unexpected(ParseResult::ParseError);
+std::unexpected<ParseResult> Parser::Unexpected(SyntaxError err) {
+    return Unexpected(to_string(err));
+}
+
+std::unexpected<ParseResult> Parser::Unexpected(ParseResult res) {
+    return std::unexpected(res);
+}
+
+std::unexpected<ParseResult> Parser::Unexpected(Token::Kind kind) {
+    auto msg = std::format("expected a {}", TokenToStringDiag(kind));
+    msg = CreateErrorMsg({token_.loc}, msg);
+    builder_->AddSyntaxError({token_.loc}, msg);
+    return std::unexpected(ParseResult::Error);
+}
+
+std::string Parser::CreateErrorMsg(LocationRange loc, const std::string& msg) {
+    std::string_view line = lexer_.GetLine();
+    // Trim line leading whitespaces
+    uint32_t wsOffset = 0;
+    while (!line.empty() && ASCII::IsSpace(line.front())) {
+        line = line.substr(1);
+        ++wsOffset;
+    }
+    // error line
+    auto out = std::string("\n  ") + std::string(line) + "\n  ";
+    // space offset
+    for (uint32_t i = 0; i < token_.loc.col - 1 - wsOffset; ++i) {
+        out += ' ';
+    }
+    // ^^^
+    for (uint32_t i = 0; i < token_.Source().size(); ++i) {
+        out += '^';
+    }
+    out += ' ' + msg;
+    return out;
 }
 
 std::unexpected<ParseResult> Parser::Unmatched() {
@@ -454,6 +530,14 @@ std::unexpected<ParseResult> Parser::Unmatched() {
 
 bool Parser::Peek(Token::Kind kind) {
     return token_.kind == kind;
+}
+
+bool Parser::PeekWith(Token::Kind kind, std::string_view val) {
+    return token_.kind == kind && token_.Source() == val;
+}
+
+bool Parser::PeekValue(std::string_view val) {
+    return token_.Source() == val;
 }
 
 bool Parser::Expect(Token::Kind kind) {
@@ -468,6 +552,10 @@ Token Parser::Advance() {
     lastToken_ = token_;
     token_ = lexer_.ParseNext();
     return lastToken_;
+}
+
+bool Parser::ShouldExit() {
+    return IsEof() || builder_->ShouldStopParsing();
 }
 
 }  // namespace wgsl

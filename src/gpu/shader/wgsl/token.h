@@ -13,6 +13,10 @@ public:
     enum class Kind {
         EOF,
         Invalid,
+        Ident,
+        Keyword,
+        Reserved,
+        // Literal
         LitInt,
         LitUint,
         LitFloat,
@@ -20,26 +24,18 @@ public:
         LitAbstrInt,
         LitAbstrFloat,
         LitBool,
-        Ident,
-        Keyword,
+        // Operators
         Negation,          // !
         And,               // &
         AndAnd,            // &&
         Arrow,             // ->
         Div,               // /
         RightShift,        // >>
-        OpenBracket,       // [
-        CloseBracket,      // ]
-        OpenBrace,         // {
-        CloseBrace,        // }
-        Colon,             // :
-        Comma,             // ,
         Equal,             // =
         EqualEqual,        // ==
         GreaterThan,       // >
         LessThan,          // <
         GreaterThanEqual,  // >=
-        Attr,              // @
         LessThanEqual,     // <=
         LeftShift,         // <<
         Mod,               // %
@@ -51,12 +47,8 @@ public:
         PlusPlus,          // ++
         Or,                // |
         OrOr,              // ||
-        OpenParen,         // (
-        CloseParen,        // )
-        Semicolon,         // ;
         Mul,               // *
         Tilde,             // ~
-        Underscore,        // _
         Xor,               // ^
         PlusEqual,         // +=
         MinusEqual,        // -=
@@ -66,6 +58,18 @@ public:
         OrEqual,           // |=
         ShiftRightEqual,   // >>=
         ShiftLeftEqual,    // <<=
+        // Control
+        Attr,              // @
+        OpenParen,         // (
+        CloseParen,        // )
+        Semicolon,         // ;
+        Underscore,        // _
+        OpenBracket,       // [
+        CloseBracket,      // ]
+        OpenBrace,         // {
+        CloseBrace,        // }
+        Colon,             // :
+        Comma,             // ,
     };
 
     Kind kind = Kind::Invalid;
@@ -101,6 +105,18 @@ public:
 
     constexpr Kind GetKind() const { return kind; }
 
+    constexpr bool IsOperator() const { 
+        return kind >= Kind::Negation && kind <= Kind::ShiftLeftEqual;
+    }
+
+    constexpr bool IsControl() const { 
+        return kind >= Kind::Attr && kind <= Kind::Comma;
+    }
+
+    constexpr bool IsLiteral() const { 
+        return kind >= Kind::LitInt && kind <= Kind::LitBool;
+    }
+
 public:
     int64_t GetInt() {
         if (std::holds_alternative<int64_t>(value)) {
@@ -116,7 +132,7 @@ public:
         return 0.0;
     }
 
-    std::string_view GetString() {
+    std::string_view Source() {
         if (std::holds_alternative<std::string_view>(value)) {
             return std::get<std::string_view>(value);
         }
@@ -128,7 +144,7 @@ public:
 
 private:
     constexpr bool MatchImpl(std::string_view val) {
-        return GetString() == val;
+        return Source() == val;
     }
 };
 
@@ -145,6 +161,7 @@ constexpr std::string to_string(Token::Kind kind) {
         case Token::Kind::LitBool: return "LitBool";
         case Token::Kind::Ident: return "Ident";
         case Token::Kind::Keyword: return "Keyword";
+        case Token::Kind::Reserved: return "Reserved";
         case Token::Kind::Negation: return "Negation";
         case Token::Kind::And: return "And";
         case Token::Kind::AndAnd: return "AndAnd";
@@ -191,6 +208,72 @@ constexpr std::string to_string(Token::Kind kind) {
         case Token::Kind::ShiftLeftEqual: return "ShiftLeftEqual";
         default: return "";
     }
+}
+
+// Token names for diagnostics
+constexpr std::string TokenToStringDiag(Token::Kind kind) {
+    std::string s = [&] {
+        switch (kind) {
+            case Token::Kind::EOF: return "end of file";
+            case Token::Kind::Invalid: return "invalid";
+            case Token::Kind::LitInt: return "int literal";
+            case Token::Kind::LitUint: return "uint literal";
+            case Token::Kind::LitFloat: return "float literal";
+            case Token::Kind::LitHalf: return "half literal";
+            case Token::Kind::LitAbstrInt: return "int literal";
+            case Token::Kind::LitAbstrFloat: return "float literal";
+            case Token::Kind::LitBool: return "bool literal";
+            case Token::Kind::Ident: return "identifier";
+            case Token::Kind::Keyword: return "keyword";
+            case Token::Kind::Reserved: return "reserved";
+            case Token::Kind::Negation: return "!";
+            case Token::Kind::And: return "&";
+            case Token::Kind::AndAnd: return "&&";
+            case Token::Kind::Arrow: return "->";
+            case Token::Kind::Div: return "/";
+            case Token::Kind::RightShift: return ">>";
+            case Token::Kind::OpenBracket: return "[";
+            case Token::Kind::CloseBracket: return "]";
+            case Token::Kind::OpenBrace: return "{";
+            case Token::Kind::CloseBrace: return "}";
+            case Token::Kind::Colon: return ":";
+            case Token::Kind::Comma: return ",";
+            case Token::Kind::Equal: return "=";
+            case Token::Kind::EqualEqual: return "==";
+            case Token::Kind::GreaterThan: return ">";
+            case Token::Kind::LessThan: return "<";
+            case Token::Kind::GreaterThanEqual: return ">=";
+            case Token::Kind::Attr: return "@";
+            case Token::Kind::LessThanEqual: return "<=";
+            case Token::Kind::LeftShift: return "<<";
+            case Token::Kind::Mod: return "%";
+            case Token::Kind::Minus: return "-";
+            case Token::Kind::MinusMinus: return "--";
+            case Token::Kind::NotEqual: return "!=";
+            case Token::Kind::Period: return ".";
+            case Token::Kind::Plus: return "+";
+            case Token::Kind::PlusPlus: return "++";
+            case Token::Kind::Or: return "|";
+            case Token::Kind::OrOr: return "||";
+            case Token::Kind::OpenParen: return "(";
+            case Token::Kind::CloseParen: return ")";
+            case Token::Kind::Semicolon: return ";";
+            case Token::Kind::Mul: return "*";
+            case Token::Kind::Tilde: return "~";
+            case Token::Kind::Underscore: return "_";
+            case Token::Kind::Xor: return "^";
+            case Token::Kind::PlusEqual: return "+=";
+            case Token::Kind::MinusEqual: return "-=";
+            case Token::Kind::MulEqual: return "*=";
+            case Token::Kind::DivEqual: return "/=";
+            case Token::Kind::AndEqual: return "&=";
+            case Token::Kind::OrEqual: return "|=";
+            case Token::Kind::ShiftRightEqual: return ">>=";
+            case Token::Kind::ShiftLeftEqual: return "<<=";
+            default: return "";
+        }
+    }();
+    return std::string("'") + s + "'";
 }
 
 } // namespace wgsl
