@@ -27,13 +27,19 @@ DEFINE_ENUM_FLAGS_OPERATORS(NodeType);
 
 class Node {
 public:
+    template <std::derived_from<Node> T>
+    bool Is() const {
+        return typeFlags_ & T::kStaticType;
+    }
 
-    template<std::derived_from<Node> T>
+    template <std::derived_from<Node> T>
     T* As() {
-        if(typeFlags_ & T::GetStaticType()) {
-            return static_cast<T*>(this);
-        }
-        return nullptr;
+        return Is<T>() ? static_cast<T*>(this) : nullptr;
+    }
+
+    template <std::derived_from<Node> T>
+    const T* As() const {
+        return Is<T>() ? static_cast<const T*>(this) : nullptr;
     }
 
     // node source range, including end: [start, end]
@@ -43,13 +49,13 @@ public:
     Location GetLocEnd() const { return loc_.end; }
 
 public:
-    static NodeType GetStaticType() { return NodeType::Node; }
+    constexpr static inline auto kStaticType = NodeType::Node;
 
     virtual ~Node() = default;
 
 protected:
     Node(LocationRange loc, NodeType type)
-        : typeFlags_(type | NodeType::Node), loc_(loc) {}
+        : typeFlags_(type | kStaticType), loc_(loc) {}
 
 private:
     NodeType typeFlags_;

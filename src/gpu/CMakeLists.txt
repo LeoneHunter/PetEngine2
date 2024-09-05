@@ -78,6 +78,7 @@ module(
         shader/wgsl/parser.cpp
         shader/wgsl/program.cpp
         shader/wgsl/program_builder.cpp
+        shader/wgsl/ast_printer.cpp
     HDRS
         shader/wgsl/parser.h
         shader/wgsl/program.h
@@ -85,6 +86,7 @@ module(
         shader/wgsl/lexer.h
         shader/wgsl/token.h
         shader/wgsl/common.h
+        shader/wgsl/ast_printer.h
         shader/wgsl/ast_node.h
         shader/wgsl/ast_attribute.h
         shader/wgsl/ast_expression.h

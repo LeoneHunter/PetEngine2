@@ -6,16 +6,16 @@ namespace wgsl::ast {
 
 class Attribute : public Node {
 public:
-    wgsl::Attribute attr;
+    wgsl::AttributeName attr;
     Expression* expr;
 
 public:
-    Attribute(LocationRange loc,
-              wgsl::Attribute attr,
-              Expression* expr = nullptr)
-        : Node(loc, NodeType::Attribute), attr(attr), expr(expr) {}
+    constexpr static inline auto kStaticType = NodeType::Attribute;
 
-    static NodeType GetStaticType() { return NodeType::Attribute; }
+    Attribute(LocationRange loc,
+              wgsl::AttributeName attr,
+              Expression* expr = nullptr)
+        : Node(loc, kStaticType), attr(attr), expr(expr) {}
 };
 
 }  // namespace wgsl::ast

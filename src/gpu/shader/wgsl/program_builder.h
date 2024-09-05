@@ -7,30 +7,49 @@
 #include "ast_variable.h"
 
 #include "parser.h"
-#include "program.h"
 
 namespace wgsl {
 
 using namespace ast;
+
+class Program;
 
 // Program builder and validator
 // Performs lexical analysis and validates nodes on creation
 class ProgramBuilder {
 public:
     ProgramBuilder();
+    ~ProgramBuilder();
+
+    void Build(std::string_view code);
 
     std::unique_ptr<Program> Finalize();
 
     void PushGlobalDecl(ast::Variable* var);
 
     // void PushGlobalDecl(ast::Struct* var);
-    
+
     // void PushGlobalDecl(ast::Function* fn);
 
+    void AddSyntaxError(LocationRange loc, const std::string& msg);
+
+    bool ShouldStopParsing();
+
 public:
-    Expected<ConstVariable*> CreateConstVar(LocationRange loc,
-                                            const std::string& ident,
-                                            Expression* initializer);
+    Expected<ConstVariable*> CreateConstVar(
+        LocationRange loc,
+        std::string_view ident,
+        const std::optional<TypeInfo>& typeInfo,
+        Expression* initializer);
+
+    // 'var' variable declaration
+    Expected<VarVariable*> CreateVar(
+        LocationRange loc,
+        std::string_view ident,
+        const std::optional<TemplateList>& varTemplate,
+        const std::optional<TypeInfo>& typeSpecifier,
+        const std::vector<ast::Attribute*>& attributes,
+        Expression* initializer);
 
     Expected<BinaryExpression*> CreateBinaryExpr(LocationRange loc,
                                                  Expression* lhs,
@@ -56,7 +75,7 @@ public:
                                                            bool value);
 
     Expected<ast::Attribute*> CreateAttribute(LocationRange loc,
-                                              wgsl::Attribute attr,
+                                              wgsl::AttributeName attr,
                                               Expression* expr = nullptr);
 
 private:
@@ -66,6 +85,7 @@ private:
 
 private:
     std::unique_ptr<Program> program_;
+    bool stopParsing_ = false;
 };
 
 

@@ -1,70 +1,66 @@
 #pragma once
-#include "ast_node.h"
 #include "ast_expression.h"
+#include "ast_node.h"
 
 namespace wgsl::ast {
+
+class Attribute;
 
 // Abstract base for 'var', 'override', 'const'
 class Variable : public Node {
 public:
-    // TODO: Should we include type here?
-    DataType type;
-    std::string ident;
-    std::vector<Attribute> attributes;
+    std::string_view ident;
+    // TODO: Add ast::Type* type;
+    std::vector<ast::Attribute*> attributes;
     ast::Expression* initializer;
 
-    static NodeType GetStaticType() { return NodeType::Variable; }
+    constexpr static inline auto kStaticType = NodeType::Variable;
 
 protected:
     Variable(LocationRange loc,
              NodeType type,
-             const std::string& ident,
-             const std::vector<Attribute>& attributes,
+             std::string_view ident,
+             const std::vector<ast::Attribute*>& attributes,
              Expression* initializer)
-        : Node(loc, type | NodeType::Variable)
+        : Node(loc, type | kStaticType)
         , ident(ident)
         , attributes(attributes)
         , initializer(initializer) {}
 };
 
-// 'var' 
+// 'var'
 class VarVariable final : public Variable {
 public:
-    VarVariable(LocationRange loc,
-                const std::string& ident,
-                const std::vector<Attribute>& attributes,
-                Expression* initializer)
-        : Variable(loc, NodeType::VarVariable, ident, attributes, initializer) {
-    }
+    constexpr static inline auto kStaticType = NodeType::VarVariable;
 
-    static NodeType GetStaticType() { return NodeType::VarVariable; }
+    VarVariable(LocationRange loc,
+                std::string_view ident,
+                const std::vector<ast::Attribute*>& attributes,
+                Expression* initializer)
+        : Variable(loc, kStaticType, ident, attributes, initializer) {}
 };
 
-// 'const' 
+// 'const'
 class ConstVariable final : public Variable {
 public:
-    ConstVariable(LocationRange loc,
-                  const std::string& ident,
-                  Expression* initializer)
-        : Variable(loc, NodeType::ConstVariable, ident, {}, initializer) {}
+    constexpr static inline auto kStaticType = NodeType::ConstVariable;
 
-    static NodeType GetStaticType() { return NodeType::ConstVariable; }
+    ConstVariable(LocationRange loc,
+                  std::string_view ident,
+                  Expression* initializer)
+        : Variable(loc, kStaticType, ident, {}, initializer) {}
 };
 
-// 'override' 
+// 'override'
 class OverrideVariable final : public Variable {
 public:
-    OverrideVariable(LocationRange loc,
-                     const std::string& ident,
-                     const std::vector<Attribute>& attributes,
-                     Expression* initializer)
-        : Variable(loc,
-                   NodeType::OverrideVariable,
-                   ident,
-                   attributes,
-                   initializer) {}
+    constexpr static inline auto kStaticType = NodeType::OverrideVariable;
 
-    static NodeType GetStaticType() { return NodeType::OverrideVariable; }
+    OverrideVariable(LocationRange loc,
+                     std::string_view ident,
+                     const std::vector<ast::Attribute*>& attributes,
+                     Expression* initializer)
+        : Variable(loc, kStaticType, ident, attributes, initializer) {}
 };
 
-} // namespace wgsl::ast
+}  // namespace wgsl::ast
