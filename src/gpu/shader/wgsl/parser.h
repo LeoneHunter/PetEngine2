@@ -12,54 +12,27 @@ namespace wgsl {
 class Program;
 class ProgramBuilder;
 
-enum class ParseResult {
+// Parser or ProgramBuilder result
+enum class Result {
     Ok,
     Error,
     Unmatched,
 };
 
-enum class SyntaxError {
-    Unknown,
-    ExpectedExpr,
-    ExpectedType,
-    ExpectedIdent,
-    ExpectedDecl,
-};
+using TemplateList = std::vector<ast::Expression*>;
 
-constexpr std::string to_string(SyntaxError err) {
-    switch (err) {
-        case SyntaxError::ExpectedExpr: {
-            return "expected and expression";
-        }
-        case SyntaxError::ExpectedType: {
-            return "expected a type specifier";
-        }
-        case SyntaxError::ExpectedIdent: {
-            return "expected an identifier";
-        }
-        case SyntaxError::ExpectedDecl: {
-            return "expected a declaration";
-        }
-        default: return "";
-    }
-}
-
-struct ParseError {
-    Token tok;
-    std::string msg;
-};
-
-struct TemplateList {
-    std::vector<ast::Expression*> args;
+struct Ident {
+    SourceLoc loc;
+    std::string_view name;
 };
 
 struct TypeInfo {
-    Token typeIdent;
+    Ident ident;
     TemplateList templateList;
 };
 
 template <class T>
-using Expected = std::expected<T, ParseResult>;
+using Expected = std::expected<T, Result>;
 
 // Parses a wgsl code into an ast tree
 // Top-Down resursive descent parser
@@ -67,6 +40,8 @@ class Parser {
 public:
     Parser(std::string_view code, ProgramBuilder* builder);
     void Parse();
+
+    std::string_view GetLine(uint32_t line);
 
 private:
     // Variables
@@ -85,6 +60,7 @@ private:
     Expected<ast::Expression*> UnaryExpr();
     Expected<ast::Expression*> PrimaryExpr();
     Expected<ast::Expression*> ComponentSwizzleExpr(ast::Expression* lhs);
+    Expected<ast::Expression*> IdentExpression();
 
     Expected<ast::IntLiteralExpression*> IntLiteralExpr();
     Expected<ast::FloatLiteralExpression*> FloatLiteralExpr();
@@ -96,16 +72,18 @@ private:
 
 private:
     template <class... Args>
-    std::unexpected<ParseResult> Unexpected(std::format_string<Args...> fmt,
-                                            Args&&... args) {
-        return Unexpected(std::format(fmt, std::forward<Args>(args)...));
+    std::unexpected<Result> Unexpected(ErrorCode code,
+                                       std::format_string<Args...> fmt,
+                                       Args&&... args) {
+        return Unexpected(code, std::format(fmt, std::forward<Args>(args)...));
     }
 
-    std::unexpected<ParseResult> Unexpected(const std::string& msg);
-    std::unexpected<ParseResult> Unexpected(SyntaxError err);
-    std::unexpected<ParseResult> Unexpected(ParseResult error);
-    std::unexpected<ParseResult> Unexpected(Token::Kind kind);
-    std::unexpected<ParseResult> Unmatched();
+    std::unexpected<Result> Unexpected(ErrorCode code, const std::string& msg);
+    std::unexpected<Result> Unexpected(ErrorCode err);
+    std::unexpected<Result> Unexpected(Token::Kind kind);
+    std::unexpected<Result> Unmatched();
+    // For forwarding erros up the call stack
+    std::unexpected<Result> Unexpected(Result error);
 
     template <class... T>
     bool PeekAny(T... tokens) {
@@ -127,9 +105,6 @@ private:
 private:
     bool ShouldExit();
     bool IsEof() const { return token_.kind == Token::Kind::EOF; }
-
-    // Format syntax error message
-    std::string CreateErrorMsg(LocationRange loc, const std::string& msg);
 
 private:
     Lexer lexer_;

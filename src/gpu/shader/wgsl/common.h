@@ -1,36 +1,95 @@
 #pragma once
 #include "base/common.h"
+#include "base/string_utils.h"
 
 namespace wgsl {
 
-// Source code location
-struct Location {
-    uint32_t line = 0;
-    uint32_t col = 1;
+// Error code and default string description
+#define ERROR_CODES(V)                                                     \
+    /* Syntax errors */                                                    \
+    V(Unimplemented, "feature is not implemented")                         \
+    V(UnexpectedToken, "unexpected token")                                 \
+    V(ExpectedExpr, "expected an expresssion")                             \
+    V(ExpectedType, "expected a type specifier")                           \
+    V(ExpectedIdent, "expected an identifier")                             \
+    V(ExpectedDecl, "expected a declaration")                              \
+    V(InvalidAttribute, "invalid attribute name")                          \
+    V(ConstNoAttr, "const value may not have attributes")                  \
+    V(IdentReserved, "identifier is reserved")                             \
+    V(ExpectedStorageClass, "const, var, override or let is expected")     \
+    /* Semantic errors */                                                  \
+    V(ConstDeclNoInitializer,                                              \
+      "unexpected token. const value requires an initializer")             \
+    V(TypeNotDefined, "type is not defined")                               \
+    V(IdentNotType, "identifier is not a type name")                       \
+    V(TypeError, "expression cannot be assigned to the value of type")     \
+    V(SymbolAlreadyDefined, "symbol already defined in the current scope") \
+    V(SymbolNotFound, "symbol not found")                                  \
+    V(SymbolNotVariable, "symbol is not a variable")
 
-    constexpr Location() = default;
-
-    constexpr Location(uint32_t line, uint32_t col)
-        : line(line), col(col) {}
-
-    constexpr auto operator<=>(const Location&) const = default;
+// Define enum
+#define ENUM(Name, Str) Name,
+enum class ErrorCode { 
+    ERROR_CODES(ENUM) 
 };
+#undef ENUM
 
-// node source range, including end: [start, end]
-struct LocationRange {
-    Location start;
-    Location end;
+constexpr std::string_view ErrorCodeDefaultMsg(ErrorCode code) {
+#define CASE(Name, Str) case ErrorCode::Name: return Str;
+    switch(code) { 
+        ERROR_CODES(CASE) 
+        default: return ""; 
+    }
+#undef CASE
+}
 
-    constexpr LocationRange() = default;
+constexpr std::string_view ErrorCodeString(ErrorCode code) {
+#define CASE(Name, Str) case ErrorCode::Name: return #Name;
+    switch(code) { 
+        ERROR_CODES(CASE) 
+        default: return ""; 
+    }
+#undef CASE
+}
 
-    constexpr LocationRange(Location start, Location end = {}) 
-        : start(start), end(end) {
-        if(end < start) {
-            end = start;
+} // namespace wgsl
+
+DEFINE_OSTREAM(wgsl::ErrorCode, ErrorCodeString);
+DEFINE_FORMATTER(wgsl::ErrorCode, std::string_view, ErrorCodeString);
+
+namespace wgsl {
+// Source code location and size
+// Basically a std::string_view but with line:col instead of pointer
+struct SourceLoc {
+    uint32_t line = 1;
+    uint32_t col = 1;
+    uint32_t len = 1;
+
+    constexpr SourceLoc() = default;
+
+    constexpr SourceLoc(SourceLoc lhs, SourceLoc rhs)
+        : line(lhs.line), col(lhs.col), len() {
+        if (lhs.line == rhs.line) {
+            if(rhs.col > lhs.col) {
+                len = rhs.col - lhs.col;
+            } else {
+                len = lhs.col - rhs.col;
+            }
         }
     }
 
-    constexpr auto operator<=>(const LocationRange&) const = default;
+    constexpr SourceLoc(SourceLoc lhs, uint32_t len)
+        : line(lhs.line), col(lhs.col), len(len) {}
+
+    constexpr SourceLoc(uint32_t line, uint32_t col, uint32_t len)
+        : line(line), col(col), len(len) {}
+
+    // Add column offset
+    friend constexpr SourceLoc operator+(SourceLoc lhs, uint32_t offset) { 
+        return {lhs.line, lhs.col + offset, lhs.len};
+    }
+
+    constexpr auto operator<=>(const SourceLoc&) const = default;
 };
 
 // clang-format off
@@ -87,7 +146,7 @@ enum class AttributeName {
     Compute,
 };
 
-constexpr std::string to_string(AttributeName attr) {
+constexpr std::string_view to_string(AttributeName attr) {
     switch(attr) {
         case AttributeName::Align: return "align";
         case AttributeName::Binding: return "binding";
@@ -108,13 +167,5 @@ constexpr std::string to_string(AttributeName attr) {
         case AttributeName::Compute: return "compute";
     }
 }
-
-enum class DataType {
-    U32,
-    I32,
-    // Temporary types
-    AbsrInt,
-    AbstrFloat,
-};
 
 } // namespace wgls

@@ -73,31 +73,31 @@ public:
     };
 
     Kind kind = Kind::Invalid;
-    Location loc;
+    SourceLoc loc;
     std::variant<int64_t, double, std::string_view> value;
 
 public:
-    static Token EOF(Location loc) { return {Kind::EOF, loc}; }
-    static Token Invalid(Location loc) { return {Kind::Invalid, loc}; }
+    static Token EOF(SourceLoc loc) { return {Kind::EOF, loc}; }
+    static Token Invalid(SourceLoc loc) { return {Kind::Invalid, loc}; }
 
     constexpr Token() = default;
 
-    constexpr Token(Kind kind, Location loc)
+    constexpr Token(Kind kind, SourceLoc loc)
         : kind(kind), value(int64_t()), loc(loc) {}
 
-    constexpr Token(Kind kind, Location loc, const char* start, const char* end)
+    constexpr Token(Kind kind, SourceLoc loc, const char* start, const char* end)
         : kind(kind), value(std::string_view(start, end)), loc(loc) {}
 
-    constexpr Token(Kind kind, Location loc, const char* start, uint32_t size)
+    constexpr Token(Kind kind, SourceLoc loc, const char* start, uint32_t size)
         : kind(kind), value(std::string_view(start, size)), loc(loc) {}
 
-    constexpr Token(Kind kind, Location loc, std::string_view span)
-        : kind(kind), value(span), loc(loc) {}
+    constexpr Token(Kind kind, SourceLoc loc, std::string_view source)
+        : kind(kind), value(source), loc(loc) {}
 
-    constexpr Token(Kind kind, Location loc, double value) 
+    constexpr Token(Kind kind, SourceLoc loc, double value) 
         : kind(kind), value(value), loc(loc) {}
 
-    constexpr Token(Kind kind, Location loc, int64_t value) 
+    constexpr Token(Kind kind, SourceLoc loc, int64_t value) 
         : kind(kind), value(value), loc(loc) {}
 
     constexpr auto operator<=>(const Token&) const = default;
@@ -132,7 +132,7 @@ public:
         return 0.0;
     }
 
-    std::string_view Source() {
+    std::string_view Source() const {
         if (std::holds_alternative<std::string_view>(value)) {
             return std::get<std::string_view>(value);
         }
@@ -148,7 +148,7 @@ private:
     }
 };
 
-constexpr std::string to_string(Token::Kind kind) {
+constexpr std::string_view to_string(Token::Kind kind) {
     switch (kind) {
         case Token::Kind::EOF: return "EOF";
         case Token::Kind::Invalid: return "Invalid";
