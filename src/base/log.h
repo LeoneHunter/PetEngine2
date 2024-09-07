@@ -63,6 +63,9 @@ inline void Logf(std::string_view file,
                  ArgTypes... args) {
     // If not initialized (in tests) just print to cerr
     if (!IsInitialized()) {
+        if (!ShouldLog(level) || level != Level::Fatal) {
+            return;
+        }
         // Print location for errors and crashes
         if (level < Level::Warning) {
             PrintToCerr(std::format("[{}] {}({}) in {}:", to_string(level),
@@ -108,8 +111,10 @@ inline void Logf(std::string_view file,
     logging::Logf(__FILE__, __LINE__, __FUNCTION__, logging::Level::Error, \
                   fmt, __VA_ARGS__);
 
-// Simple formatter cout print
+// Simple formatter cout print w/o location
 template <class... Types>
 inline void Println(const std::format_string<Types...> fmt, Types&&... args) {
-    PrintToCerr(std::format(fmt, std::forward<Types>(args)...));
+    if(logging::ShouldLog(logging::Level::Verbose)) {
+        PrintToCerr(std::format(fmt, std::forward<Types>(args)...));
+    }
 }

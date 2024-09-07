@@ -10,12 +10,12 @@
 namespace logging {
 
 constexpr auto kBufferSize = 100;
+static Level glevel = Level::All;
 
 void LogProc();
 
 struct Context {
     std::string logDir;
-    Level level;
     std::thread thread;
     std::binary_semaphore sema;
     std::atomic_bool bShouldExit;
@@ -30,7 +30,6 @@ void Init(const std::string& logDirectory) {
         return;
     ctx = new Context{
         .logDir = logDirectory,
-        .level = Level::All,
         .thread = std::thread(LogProc),
         .sema = std::binary_semaphore(0),
         .bShouldExit = false,
@@ -57,14 +56,11 @@ void Flush() {
 }
 
 void SetLevel(Level level) {
-    ctx->level = level;
+    glevel = level;
 }
 
 bool ShouldLog(Level level) {
-    if (!ctx) {
-        return false;
-    }
-    return level <= ctx->level;
+    return level <= glevel;
 }
 
 void DoLog(Record&& record) {
