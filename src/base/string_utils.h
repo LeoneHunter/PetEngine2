@@ -5,6 +5,17 @@
 #include <ostream>
 #include <filesystem>
 
+// Define a std::formatter overload for std::format using adl of to_string()
+#define DEFINE_FORMATTER(TYPE, BASE, FUNC)               \
+    template <>                                          \
+    struct std::formatter<TYPE> : std::formatter<BASE> { \
+        using Base = std::formatter<BASE>;               \
+        using Base::parse;                               \
+        template <class T>                               \
+        auto format(const TYPE& value, T& ctx) const {   \
+            return Base::format(FUNC(value), ctx);       \
+        }                                                \
+    };
 
 // Define a std::formatter overload for std::format using adl of to_string()
 #define DEFINE_TOSTRING_FORMATTER(TYPE)                         \
@@ -34,6 +45,12 @@
 #define DEFINE_TOSTRING_OSTREAM(TYPE)                                          \
     inline std::ostream& operator<<(std::ostream& stream, const TYPE& value) { \
         stream << to_string(value);                                            \
+        return stream;                                                         \
+    }
+
+#define DEFINE_OSTREAM(TYPE, FUNC)                                             \
+    inline std::ostream& operator<<(std::ostream& stream, const TYPE& value) { \
+        stream << FUNC(value);                                                 \
         return stream;                                                         \
     }
 
