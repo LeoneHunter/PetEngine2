@@ -1,19 +1,19 @@
 #pragma once
+#include <array>
 #include "token.h"
 #include "util.h"
-#include <array>
 
 namespace wgsl {
 
 // Text lexer
 class Lexer {
 public:
+    constexpr static uint32_t kLastLine = std::numeric_limits<uint32_t>::max();
+
     constexpr Lexer(std::string_view code) {
         text_ = code;
-        next_ = code.data();
-        end_ = code.data() + code.size();
-        lineStart_ = next_;
-        loc_ = Location{0, 1};
+        next_ = 0;
+        lineOffsets_.push_back(0);
     }
 
     std::vector<Token> ParseAll() {
@@ -45,8 +45,21 @@ public:
         return Token::Invalid(Loc());
     }
 
-    // Get current line
-    std::string_view GetLine() { return {lineStart_, GetLineEnd()}; }
+    // Get current line for diags
+    std::string_view GetLine() { return GetLine(kLastLine); }
+
+    // Get line with index for diags
+    std::string_view GetLine(uint32_t lineIdx) {
+        // Lines are 1 based
+        lineIdx = std::min((uint32_t)lineOffsets_.size() - 1, lineIdx - 1);
+        const uint32_t start = lineOffsets_[lineIdx];
+        // Find end
+        uint32_t end = start + 1;
+        while (end < End() && !ASCII::IsLineBreak(At(end))) {
+            ++end;
+        }
+        return MakeStringView(start, end);
+    }
 
 private:
     // Character kind
@@ -69,14 +82,14 @@ private:
             uint16_t suffixU : 1;
         };
         Flags flags{};
-        const char* start = Pos();
-        Location loc = Loc();
+        uint32_t start = Pos();
+        SourceLoc loc = Loc();
         // Scan for type identifying symbols: 0[xX], [.e+-]
         if (Match("0x", "0X")) {
             flags.prefixHex = true;
             flags.intType = true;
             Advance(2);
-            start = Pos();
+            start += 2;
         }
         while (Match(CharKind::Digit, '.', 'e', '+', '-')) {
             if (Match('.', 'e')) {
@@ -108,8 +121,8 @@ private:
         }
         // Try to parse
         if (flags.floatType) {
-            Token token = Token::Invalid(loc);
-            TryParseAsFloat(start, token);
+            Token token;
+            TryParseAsFloat(&At(start), token);
             if (flags.suffixF) {
                 token.kind = Token::Kind::LitFloat;
             } else if (flags.suffixH) {
@@ -117,11 +130,12 @@ private:
             } else {
                 token.kind = Token::Kind::LitAbstrFloat;
             }
+            token.loc = SourceLoc(loc, Pos() - start);
             return token;
         }
         if (flags.intType) {
-            Token token = Token::Invalid(loc);
-            TryParseAsInt(start, token, flags.prefixHex);
+            Token token;
+            TryParseAsInt(&At(start), token, flags.prefixHex);
             if (flags.suffixU) {
                 token.kind = Token::Kind::LitUint;
             } else if (flags.suffixI) {
@@ -129,6 +143,7 @@ private:
             } else {
                 token.kind = Token::Kind::LitAbstrInt;
             }
+            token.loc = SourceLoc(loc, Pos() - start);
             return token;
         }
         return Token::Invalid(loc);
@@ -137,40 +152,46 @@ private:
     constexpr Token ParseLetter() {
         for (const std::string_view keyword : kKeywords) {
             if (Match(keyword)) {
-                const auto out =
-                    Token(Token::Kind::Keyword, Loc(), Pos(), keyword.size());
+                const auto out = Token(Token::Kind::Keyword,
+                                       SourceLoc(Loc(), keyword.size()),
+                                       &Peek(), keyword.size());
                 Advance(keyword.size());
                 return out;
             }
         }
         for (const std::string_view reserved : kReserved) {
             if (Match(reserved)) {
-                const auto out = 
-                    Token(Token::Kind::Reserved, Loc(), Pos(), reserved.size());
+                const auto out = Token(Token::Kind::Reserved,
+                                       SourceLoc(Loc(), reserved.size()),
+                                       &Peek(), reserved.size());
                 Advance(reserved.size());
                 return out;
             }
         }
         if (Match("true")) {
-            const auto tok = Token(Token::Kind::LitBool, Loc(), 1LL);
+            const auto tok =
+                Token(Token::Kind::LitBool, SourceLoc(Loc(), 4), 1LL);
             Advance(4);
             return tok;
         }
         if (Match("false")) {
-            const auto tok = Token(Token::Kind::LitBool, Loc(), 0LL);
+            const auto tok =
+                Token(Token::Kind::LitBool, SourceLoc(Loc(), 5), 0LL);
             Advance(5);
             return tok;
         }
-        const char* start = next_;
-        Location loc = Loc();
+        const uint32_t start = Pos();
+        SourceLoc loc = Loc();
         while (Match(CharKind::Digit, CharKind::Letter, '_')) {
             Advance();
         }
-        return Token(Token::Kind::Ident, loc, start, Pos());
+        const uint32_t len = Pos() - start;
+        return Token(Token::Kind::Ident, SourceLoc(loc, len),
+                     MakeStringView(start, start + len));
     }
 
     constexpr Token ParsePunctuation() {
-        switch (*Pos()) {
+        switch (Peek()) {
             case '&': {
                 if (Match("&&")) {
                     return Op2(Token::Kind::AndAnd);
@@ -308,19 +329,19 @@ private:
     }
 
     constexpr Token Op3(Token::Kind kind) {
-        auto lex = Token(kind, Loc(), Pos(), 3);
+        auto lex = Token(kind, SourceLoc(Loc(), 3), &Peek(), 3);
         Advance(3);
         return lex;
     }
 
     constexpr Token Op2(Token::Kind kind) {
-        auto lex = Token(kind, Loc(), Pos(), 2);
+        auto lex = Token(kind, SourceLoc(Loc(), 2), &Peek(), 2);
         Advance(2);
         return lex;
     }
 
     constexpr Token Op1(Token::Kind kind) {
-        auto lex = Token(kind, Loc(), Pos(), 1);
+        auto lex = Token(kind, Loc(), &Peek(), 1);
         Advance(1);
         return lex;
     }
@@ -332,33 +353,35 @@ private:
     }
 
     constexpr void SkipComment() {
-        // TODO: Handle nested comments /* /* ... */ */
-        if (Match("//", "/*")) {
-            const std::string_view end = Match("//") ? "\n" : "*/";
+        if (Match("/*")) {
             Advance(2);
-            while (!IsEof()) {
-                if (Match(end)) {
-                    Advance(end.size());
-                    return;
+            while (!IsEof() && !Match("*/")) {
+                // Nested comments /* /* ... */ */
+                if (Match("/*")) {
+                    SkipComment();
                 }
                 Advance();
             }
+            Advance(2);
+        } else if (Match("//")) {
+            Advance(2);
+            while (!IsEof() && !Match(CharKind::LineBreak)) {
+                Advance();
+            }
+            Advance();
         }
     }
 
     constexpr void Advance(uint32_t offset = 1) {
         for (uint32_t i = 0; i < offset && !IsEof(); ++i, ++next_) {
-            ++loc_.col;
-            if (Match('\r')) {
-                loc_.col = 1;
-                lineStart_ = next_ + 1;
-                ++loc_.line;
-            } else if (Match('\n')) {
-                lineStart_ = next_ + 1;
-                const char* prev = next_ - 1;
-                if (prev == text_.data() || *prev != '\r') {
-                    loc_.col = 1;
-                    ++loc_.line;
+            if (Match(CharKind::LineBreak)) {
+                auto nextLineStart = next_ + 1;
+                if (Match("\r\n")) {
+                    ++next_;
+                    ++nextLineStart;
+                }
+                if (nextLineStart < End()) {
+                    lineOffsets_.push_back(nextLineStart);
                 }
             }
         }
@@ -377,20 +400,20 @@ private:
     }
 
     constexpr bool MatchImpl(std::string_view str) {
-        if (str.size() > (uintptr_t)(end_ - Pos())) {
+        if (str.size() > (End() - Pos())) {
             return false;
         }
-        return str == std::string_view(Pos(), Pos() + str.size());
+        return str == std::string_view(&Peek(), str.size());
     }
 
-    constexpr bool MatchImpl(char ch) { return *Pos() == ch; }
+    constexpr bool MatchImpl(char ch) { return Peek() == ch; }
 
     constexpr bool MatchImpl(CharKind kind) { return GetKind() == kind; }
 
     bool TryParseAsFloat(const char* start, Token& token) {
         double val{};
         const std::from_chars_result result =
-            std::from_chars(start, Pos(), val);
+            std::from_chars(start, &Peek(), val);
         if (result.ec != std::error_code()) {
             return false;
         }
@@ -401,7 +424,7 @@ private:
     bool TryParseAsInt(const char* start, Token& token, bool asHex = false) {
         int64_t val{};
         const std::from_chars_result result =
-            std::from_chars(start, Pos(), val, asHex ? 16 : 10);
+            std::from_chars(start, &Peek(), val, asHex ? 16 : 10);
         if (result.ec != std::error_code()) {
             return false;
         }
@@ -409,30 +432,33 @@ private:
         return true;
     }
 
-    const char* GetLineEnd() {
-        const char* ptr = next_;
-        while(ptr < end_ && !ASCII::IsLineBreak(*ptr)) {
-            ++ptr;
-        }
-        return ptr;
+    constexpr std::string_view MakeStringView(uint32_t offset,
+                                              uint32_t end) const {
+        return {&text_[offset], end - offset};
     }
 
-    constexpr bool IsEof() const { return next_ == end_; }
-    constexpr const char* Pos() { return next_; }
-    constexpr Location Loc() const { return loc_; }
+    constexpr SourceLoc Loc() const {
+        return {(uint32_t)lineOffsets_.size(), Pos() - GetLineStart() + 1, 1};
+    }
+
+    constexpr bool IsEof() const { return Pos() == End(); }
+
+    constexpr uint32_t GetLineStart() const { return lineOffsets_.back(); }
+    constexpr uint32_t Pos() const { return next_; }
+    constexpr uint32_t End() const { return text_.size(); }
+
+    constexpr const char& At(size_t offset) const { return text_[offset]; }
+    constexpr const char& Peek() const { return text_[next_]; }
 
 private:
     constexpr CharKind GetKind() const {
-        return (CharKind)ASCII::table[*next_];
+        return (CharKind)ASCII::table[Peek()];
     }
 
 private:
     std::string_view text_;
-    const char* next_;
-    const char* end_;
-    const char* lineStart_;
-    Location loc_;
-    Location lastTokenLoc_;
+    std::vector<uint32_t> lineOffsets_;
+    uint32_t next_;
 };
 
 }  // namespace wgsl
