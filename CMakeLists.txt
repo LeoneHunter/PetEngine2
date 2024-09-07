@@ -70,15 +70,15 @@ target_compile_options(common_config INTERFACE
     # Disable warning about alignment padding
     /wd4324
     # local variable is initialized but not referenced
-    /wd4189
+    # /wd4189
     # declaration of 'identifier' hides class member.
     # class members is suffixed with _ so this shouldn't be a problem
     # detected in tests
-    /wd4458
+    # /wd4458
     # conditional expression is constant
     /wd4127
     # declaration of 'identifier' hides local declaration
-    /wd4456
+    # /wd4456
     # unreachable code
     /wd4702
     # conversion, possible loss of data (in msvc headers)
