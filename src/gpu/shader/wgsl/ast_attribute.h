@@ -12,7 +12,7 @@ public:
 public:
     constexpr static inline auto kStaticType = NodeType::Attribute;
 
-    Attribute(LocationRange loc,
+    Attribute(SourceLoc loc,
               wgsl::AttributeName attr,
               Expression* expr = nullptr)
         : Node(loc, kStaticType), attr(attr), expr(expr) {}

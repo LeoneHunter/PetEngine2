@@ -1,26 +1,31 @@
 #pragma once
 #include "common.h"
+#include "token.h"
+
+#include "base/tree_printer.h"
 
 namespace wgsl::ast {
 
 // Node type and type flags for casting
-enum class NodeType: uint64_t {
+enum class NodeType : uint64_t {
     Unknown = 0,
-    Node = 0x1,
+    Node = 1 << 0,
+    Type = 1 << 1,
     // Expressions
-    Expression = 0x2,
-    UnaryExpression = 0x4,
-    BinaryExpression = 0x8,
-    LiteralExpression = 0x10,
-    FloatLiteralExpression = 0x20,
-    IntLiteralExpression = 0x40,
-    BoolLiteralExpression = 0x80,
+    Expression = 1 << 4,
+    UnaryExpression = 1 << 5,
+    BinaryExpression = 1 << 6,
+    LiteralExpression = 1 << 7,
+    FloatLiteralExpression = 1 << 8,
+    IntLiteralExpression = 1 << 9,
+    BoolLiteralExpression = 1 << 10,
+    IdentExpression = 1 << 11,
     // Variables
-    Variable = 0x100,
-    OverrideVariable = 0x200,
-    ConstVariable = 0x400,
-    VarVariable = 0x800,
-    Attribute = 0x1000,
+    Variable = 1 << 15,
+    OverrideVariable = 1 << 16,
+    ConstVariable = 1 << 17,
+    VarVariable = 1 << 18,
+    Attribute = 1 << 19,
     // Statements
 };
 DEFINE_ENUM_FLAGS_OPERATORS(NodeType);
@@ -43,10 +48,7 @@ public:
     }
 
     // node source range, including end: [start, end]
-    LocationRange GetLocRange() const { return loc_; }
-
-    Location GetLocStart() const { return loc_.start; }
-    Location GetLocEnd() const { return loc_.end; }
+    SourceLoc GetLoc() const { return loc_; }
 
 public:
     constexpr static inline auto kStaticType = NodeType::Node;
@@ -54,12 +56,12 @@ public:
     virtual ~Node() = default;
 
 protected:
-    Node(LocationRange loc, NodeType type)
+    Node(SourceLoc loc, NodeType type)
         : typeFlags_(type | kStaticType), loc_(loc) {}
 
 private:
     NodeType typeFlags_;
-    LocationRange loc_;
+    SourceLoc loc_;
 };
 
-} // namespace wgsl
+}  // namespace wgsl::ast

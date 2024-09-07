@@ -47,11 +47,11 @@ void AstPrinter::PrintExpression(const Expression* node) {
     if(auto literal = node->As<LiteralExpression>()) {
         if(auto iLiteral = node->As<IntLiteralExpression>()) {
             TreePrinter::AutoObject i(printer_, "int_literal");
-            printer_->Entry("type", to_string(iLiteral->type));
+            printer_->Entry("type", to_string(iLiteral->type->kind));
             printer_->Entry("value", iLiteral->value);
         } else if(auto fLiteral = node->As<FloatLiteralExpression>()) {
             TreePrinter::AutoObject f(printer_, "float_literal");
-            printer_->Entry("type", to_string(fLiteral->type));
+            printer_->Entry("type", to_string(fLiteral->type->kind));
             printer_->Entry("value", fLiteral->value);
         } else if(auto bLiteral = node->As<BoolLiteralExpression>()) {
             TreePrinter::AutoObject b(printer_, "bool_literal");
