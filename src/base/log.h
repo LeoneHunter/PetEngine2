@@ -63,7 +63,7 @@ inline void Logf(std::string_view file,
                  ArgTypes... args) {
     // If not initialized (in tests) just print to cerr
     if (!IsInitialized()) {
-        if (!ShouldLog(level) || level != Level::Fatal) {
+        if (!ShouldLog(level)) {
             return;
         }
         // Print location for errors and crashes
