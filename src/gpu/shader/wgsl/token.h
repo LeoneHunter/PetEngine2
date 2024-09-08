@@ -23,7 +23,6 @@ public:
         LitHalf,
         LitAbstrInt,
         LitAbstrFloat,
-        LitBool,
         // Operators
         Negation,          // !
         And,               // &
@@ -114,7 +113,7 @@ public:
     }
 
     constexpr bool IsLiteral() const { 
-        return kind >= Kind::LitInt && kind <= Kind::LitBool;
+        return kind >= Kind::LitInt && kind <= Kind::LitAbstrFloat;
     }
 
 public:
@@ -158,7 +157,6 @@ constexpr std::string_view to_string(Token::Kind kind) {
         case Token::Kind::LitHalf: return "LitHalf";
         case Token::Kind::LitAbstrInt: return "LitAbstrInt";
         case Token::Kind::LitAbstrFloat: return "LitAbstrFloat";
-        case Token::Kind::LitBool: return "LitBool";
         case Token::Kind::Ident: return "Ident";
         case Token::Kind::Keyword: return "Keyword";
         case Token::Kind::Reserved: return "Reserved";
@@ -222,7 +220,6 @@ constexpr std::string TokenToStringDiag(Token::Kind kind) {
             case Token::Kind::LitHalf: return "half literal";
             case Token::Kind::LitAbstrInt: return "int literal";
             case Token::Kind::LitAbstrFloat: return "float literal";
-            case Token::Kind::LitBool: return "bool literal";
             case Token::Kind::Ident: return "identifier";
             case Token::Kind::Keyword: return "keyword";
             case Token::Kind::Reserved: return "reserved";

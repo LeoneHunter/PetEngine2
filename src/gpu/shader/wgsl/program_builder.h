@@ -69,14 +69,14 @@ public:
         const std::vector<ast::Attribute*>& attributes,
         Expression* initializer);
 
-    Expected<BinaryExpression*> CreateBinaryExpr(SourceLoc loc,
-                                                 Expression* lhs,
-                                                 BinaryExpression::OpCode op,
-                                                 Expression* rhs);
+    Expected<Expression*> CreateBinaryExpr(SourceLoc loc,
+                                           Expression* lhs,
+                                           BinaryExpression::OpCode op,
+                                           Expression* rhs);
 
-    Expected<UnaryExpression*> CreateUnaryExpr(SourceLoc loc,
-                                               UnaryExpression::OpCode op,
-                                               Expression* rhs);
+    Expected<Expression*> CreateUnaryExpr(SourceLoc loc,
+                                          UnaryExpression::OpCode op,
+                                          Expression* rhs);
 
     Expected<IdentExpression*> CreateIdentExpr(const Ident& ident);
 
@@ -97,11 +97,16 @@ public:
                                               Expression* expr = nullptr);
 
 private:
-    bool ValidateType();
-    bool ValidateIdentifier();
-    bool ValidateAttribute();
+    // If node is integer literal or const integer ident, returns the value
+    std::optional<int64_t> TryGetConstInt(ast::Node* node);
+    std::optional<double> ReadConstValueDouble(ast::Node* node);
+
+    bool IsNodeConst(ast::Node* node);
 
     void FormatAndAddMsg(SourceLoc loc, ErrorCode code, const std::string& msg);
+
+    Expected<ast::Type*> TypeCheckAndConvert(ast::Expression* lhs,
+                                             ast::Expression* rhs);
 
 private:
     std::unique_ptr<Program> program_;

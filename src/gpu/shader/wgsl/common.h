@@ -17,6 +17,7 @@ namespace wgsl {
     V(ConstNoAttr, "const value may not have attributes")                  \
     V(IdentReserved, "identifier is reserved")                             \
     V(ExpectedStorageClass, "const, var, override or let is expected")     \
+    V(LiteralInitValueTooLarge, "initializer value too large")             \
     /* Semantic errors */                                                  \
     V(ConstDeclNoInitializer,                                              \
       "unexpected token. const value requires an initializer")             \
@@ -25,34 +26,39 @@ namespace wgsl {
     V(TypeError, "expression cannot be assigned to the value of type")     \
     V(SymbolAlreadyDefined, "symbol already defined in the current scope") \
     V(SymbolNotFound, "symbol not found")                                  \
-    V(SymbolNotVariable, "symbol is not a variable")
+    V(SymbolNotVariable, "symbol is not a variable")                       \
+    /* Expression errors */                                                \
+    V(InvalidArgs, "no operator matches the arguments")                      \
+    V(ConstOverflow,                                                       \
+      "this operation cannot result in a constant value. numeric overflow")
+
 
 // Define enum
 #define ENUM(Name, Str) Name,
-enum class ErrorCode { 
-    ERROR_CODES(ENUM) 
-};
+enum class ErrorCode { ERROR_CODES(ENUM) };
 #undef ENUM
 
 constexpr std::string_view ErrorCodeDefaultMsg(ErrorCode code) {
-#define CASE(Name, Str) case ErrorCode::Name: return Str;
-    switch(code) { 
-        ERROR_CODES(CASE) 
-        default: return ""; 
+#define CASE(Name, Str) \
+    case ErrorCode::Name: return Str;
+    switch (code) {
+        ERROR_CODES(CASE)
+        default: return "";
     }
 #undef CASE
 }
 
 constexpr std::string_view ErrorCodeString(ErrorCode code) {
-#define CASE(Name, Str) case ErrorCode::Name: return #Name;
-    switch(code) { 
-        ERROR_CODES(CASE) 
-        default: return ""; 
+#define CASE(Name, Str) \
+    case ErrorCode::Name: return #Name;
+    switch (code) {
+        ERROR_CODES(CASE)
+        default: return "";
     }
 #undef CASE
 }
 
-} // namespace wgsl
+}  // namespace wgsl
 
 DEFINE_OSTREAM(wgsl::ErrorCode, ErrorCodeString);
 DEFINE_FORMATTER(wgsl::ErrorCode, std::string_view, ErrorCodeString);
@@ -70,7 +76,7 @@ struct SourceLoc {
     constexpr SourceLoc(SourceLoc lhs, SourceLoc rhs)
         : line(lhs.line), col(lhs.col), len() {
         if (lhs.line == rhs.line) {
-            if(rhs.col > lhs.col) {
+            if (rhs.col > lhs.col) {
                 len = rhs.col - lhs.col;
             } else {
                 len = lhs.col - rhs.col;
@@ -85,7 +91,7 @@ struct SourceLoc {
         : line(line), col(col), len(len) {}
 
     // Add column offset
-    friend constexpr SourceLoc operator+(SourceLoc lhs, uint32_t offset) { 
+    friend constexpr SourceLoc operator+(SourceLoc lhs, uint32_t offset) {
         return {lhs.line, lhs.col + offset, lhs.len};
     }
 
@@ -133,7 +139,7 @@ enum class AttributeName {
     Builtin,
     Const,
     Diagnostic,
-    Group, 
+    Group,
     ID,
     Interpolate,
     Invariant,
@@ -147,7 +153,7 @@ enum class AttributeName {
 };
 
 constexpr std::string_view to_string(AttributeName attr) {
-    switch(attr) {
+    switch (attr) {
         case AttributeName::Align: return "align";
         case AttributeName::Binding: return "binding";
         case AttributeName::BlendSrc: return "blend_src";
@@ -168,4 +174,4 @@ constexpr std::string_view to_string(AttributeName attr) {
     }
 }
 
-} // namespace wgls
+}  // namespace wgsl

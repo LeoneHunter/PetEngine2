@@ -122,6 +122,7 @@ private:
         // Try to parse
         if (flags.floatType) {
             Token token;
+            // TODO: Check error message, maybe overflow
             TryParseAsFloat(&At(start), token);
             if (flags.suffixF) {
                 token.kind = Token::Kind::LitFloat;
@@ -135,6 +136,7 @@ private:
         }
         if (flags.intType) {
             Token token;
+            // TODO: Check error message, maybe overflow
             TryParseAsInt(&At(start), token, flags.prefixHex);
             if (flags.suffixU) {
                 token.kind = Token::Kind::LitUint;
@@ -167,18 +169,6 @@ private:
                 Advance(reserved.size());
                 return out;
             }
-        }
-        if (Match("true")) {
-            const auto tok =
-                Token(Token::Kind::LitBool, SourceLoc(Loc(), 4), 1LL);
-            Advance(4);
-            return tok;
-        }
-        if (Match("false")) {
-            const auto tok =
-                Token(Token::Kind::LitBool, SourceLoc(Loc(), 5), 0LL);
-            Advance(5);
-            return tok;
         }
         const uint32_t start = Pos();
         SourceLoc loc = Loc();

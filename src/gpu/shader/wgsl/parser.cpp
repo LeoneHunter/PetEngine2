@@ -343,6 +343,7 @@ Expected<ast::Expression*> Parser::UnaryExpr() {
                               "pointers are unsupported");
     }
     if (op) {
+        Advance();
         ast::Expression* rhs = nullptr;
         EXPECT_UNWRAP(rhs, UnaryExpr(), ErrorCode::ExpectedExpr);
         return builder_->CreateUnaryExpr(SourceLoc(opToken.loc, rhs->GetLoc()),
@@ -435,9 +436,18 @@ Expected<ast::FloatLiteralExpression*> Parser::FloatLiteralExpr() {
 }
 
 Expected<ast::BoolLiteralExpression*> Parser::BoolLiteralExpr() {
-    if (Peek(Tok::LitBool)) {
-        Token tok = Advance();
-        return builder_->CreateBoolLiteralExpr(tok.loc, tok.GetInt());
+    if (Peek(Tok::Keyword)) {
+        bool value = false;
+        Token tok = Peek();
+        if(tok.Source() == "true") {
+            value = true;
+        } else if(tok.Source() == "false") {
+            value = false;
+        } else {
+            return Unmatched();
+        }
+        Advance();
+        return builder_->CreateBoolLiteralExpr(tok.loc, value);
     }
     return Unmatched();
 }
