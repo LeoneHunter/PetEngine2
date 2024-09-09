@@ -12,13 +12,6 @@ namespace wgsl {
 class Program;
 class ProgramBuilder;
 
-// Parser or ProgramBuilder result
-enum class Result {
-    Ok,
-    Error,
-    Unmatched,
-};
-
 using TemplateList = std::vector<ast::Expression*>;
 
 struct Ident {
@@ -30,9 +23,6 @@ struct TypeInfo {
     Ident ident;
     TemplateList templateList;
 };
-
-template <class T>
-using Expected = std::expected<T, Result>;
 
 // Parses a wgsl code into an ast tree
 // Top-Down resursive descent parser
@@ -72,18 +62,17 @@ private:
 
 private:
     template <class... Args>
-    std::unexpected<Result> Unexpected(ErrorCode code,
-                                       std::format_string<Args...> fmt,
-                                       Args&&... args) {
+    std::unexpected<ErrorCode> Unexpected(ErrorCode code,
+                                          std::format_string<Args...> fmt,
+                                          Args&&... args) {
         return Unexpected(code, std::format(fmt, std::forward<Args>(args)...));
     }
 
-    std::unexpected<Result> Unexpected(ErrorCode code, const std::string& msg);
-    std::unexpected<Result> Unexpected(ErrorCode err);
-    std::unexpected<Result> Unexpected(Token::Kind kind);
-    std::unexpected<Result> Unmatched();
-    // For forwarding erros up the call stack
-    std::unexpected<Result> Unexpected(Result error);
+    std::unexpected<ErrorCode> Unexpected(ErrorCode code,
+                                          const std::string& msg);
+    std::unexpected<ErrorCode> Unexpected(ErrorCode err);
+    std::unexpected<ErrorCode> Unexpected(Token::Kind kind);
+    std::unexpected<ErrorCode> Unmatched();
 
     template <class... T>
     bool PeekAny(T... tokens) {

@@ -6,6 +6,11 @@ namespace wgsl {
 
 // Error code and default string description
 #define ERROR_CODES(V)                                                     \
+    /* Generic errors */                                                   \
+    V(Ok, "ok")                                                            \
+    /* TODO: Replace error with exact code */                              \
+    V(Error, "error")                                                      \
+    V(Unmatched, "expected token not matched")                             \
     /* Syntax errors */                                                    \
     V(Unimplemented, "feature is not implemented")                         \
     V(UnexpectedToken, "unexpected token")                                 \
@@ -28,7 +33,7 @@ namespace wgsl {
     V(SymbolNotFound, "symbol not found")                                  \
     V(SymbolNotVariable, "symbol is not a variable")                       \
     /* Expression errors */                                                \
-    V(InvalidArgs, "no operator matches the arguments")                      \
+    V(InvalidArgs, "no operator matches the arguments")                    \
     V(ConstOverflow,                                                       \
       "this operation cannot result in a constant value. numeric overflow")
 
@@ -57,6 +62,9 @@ constexpr std::string_view ErrorCodeString(ErrorCode code) {
     }
 #undef CASE
 }
+
+template <class T>
+using Expected = std::expected<T, ErrorCode>;
 
 }  // namespace wgsl
 

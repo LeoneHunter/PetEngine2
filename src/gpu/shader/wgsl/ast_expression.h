@@ -4,6 +4,98 @@
 
 namespace wgsl::ast {
 
+// Builtin operators
+#define OP_CODES(V)       \
+    /* UNARY */           \
+    V(Negation, "-")      \
+    V(BitNot, "~")        \
+    V(LogNot, "!")        \
+    /* BINARY */          \
+    /* arithmetic */      \
+    V(Add, "+")           \
+    V(Sub, "-")           \
+    V(Mul, "*")           \
+    V(Div, "/")           \
+    V(Mod, "%")           \
+    /* logical */         \
+    V(LogAnd, "&&")       \
+    V(LogOr, "||")        \
+    V(Equal, "==")        \
+    V(NotEqual, "!=")     \
+    V(Less, "<")          \
+    V(Greater, ">")       \
+    V(GreaterEqual, ">=") \
+    V(LessEqual, "<=")    \
+    /* bitwise */         \
+    V(BitAnd, "&")        \
+    V(BitOr, "|")         \
+    V(BitXor, "^")        \
+    V(BitLsh, "<<")       \
+    V(BitRsh, ">>")
+
+// Define enum
+#define ENUM(Name, Str) Name,
+enum class OpCode: uint8_t { OP_CODES(ENUM) _Max, };
+#undef ENUM
+
+constexpr std::string_view to_string(OpCode code) {
+#define CASE(Name, Str) \
+    case OpCode::Name: return Str;
+    switch (code) {
+        OP_CODES(CASE)
+        default: return "";
+    }
+#undef CASE
+}
+
+constexpr bool IsOpUnary(OpCode op) {
+    return op <= OpCode::LogNot;
+}
+
+constexpr bool IsOpBinary(OpCode op) {
+    return !IsOpUnary(op);
+}
+
+constexpr bool IsOpArithmetic(OpCode op) {
+    switch (op) {
+        case OpCode::Negation:
+        case OpCode::Add:
+        case OpCode::Sub:
+        case OpCode::Mul:
+        case OpCode::Div:
+        case OpCode::Mod: return true;
+        default: return false;
+    }
+}
+
+constexpr bool IsOpLogical(OpCode op) {
+    switch (op) {
+        case OpCode::LogNot:
+        case OpCode::LogAnd:
+        case OpCode::LogOr:
+        case OpCode::Equal:
+        case OpCode::NotEqual:
+        case OpCode::Less:
+        case OpCode::Greater:
+        case OpCode::LessEqual:
+        case OpCode::GreaterEqual: return true;
+        default: return false;
+    }
+}
+
+constexpr bool IsOpBitwise(OpCode op) {
+    switch (op) {
+        case OpCode::BitNot:
+        case OpCode::BitAnd:
+        case OpCode::BitOr:
+        case OpCode::BitXor:
+        case OpCode::BitLsh:
+        case OpCode::BitRsh: return true;
+        default: return false;
+    }
+}
+
+
 // rhs of an assignement or statement
 // A unit of computation
 class Expression : public Node {
@@ -20,15 +112,6 @@ protected:
 
 class UnaryExpression final : public Expression {
 public:
-    enum class OpCode {
-        BitwiseNot,  // ~
-        Minus,       // -
-        Negation,    // !
-        // Pointers
-        Address,  // &
-        Deref,    // *
-    };
-
     Expression* rhs;
     OpCode op;
 
@@ -38,71 +121,13 @@ public:
     UnaryExpression(SourceLoc loc, Type* type, OpCode op, Expression* rhs)
         : Expression(loc, kStaticType, type), rhs(rhs), op(op) {}
 
-    constexpr static bool IsArithmetic(OpCode op) {
-        return op == OpCode::Minus;
-    }
-
-    constexpr static bool IsRelational(OpCode op) {
-        return op == OpCode::Negation;
-    }
-
-    constexpr static bool IsBitwise(OpCode op) {
-        return op == OpCode::BitwiseNot;
-    }
-
-    constexpr bool IsArithmetic() const { return IsArithmetic(op); }
-    constexpr bool IsRelational() { return IsRelational(op); }
-    constexpr bool IsBitwise() { return IsBitwise(op); }
+    constexpr bool IsArithmetic() const { return IsOpArithmetic(op); }
+    constexpr bool IsLogical() { return IsOpLogical(op); }
+    constexpr bool IsBitwise() { return IsOpBitwise(op); }
 };
-
-constexpr std::string_view to_string(UnaryExpression::OpCode op) {
-    using Op = UnaryExpression::OpCode;
-    switch (op) {
-        case Op::BitwiseNot: return "BitwiseNot";
-        case Op::Address: return "Address";
-        case Op::Minus: return "Minus";
-        case Op::Negation: return "Negation";
-        default: return "";
-    }
-}
-
-constexpr std::string_view OpToStringDiag(UnaryExpression::OpCode op) {
-    using Op = UnaryExpression::OpCode;
-    switch (op) {
-        case Op::BitwiseNot: return "~";
-        case Op::Minus: return "-";
-        case Op::Negation: return "!";
-        case Op::Address: return "&";
-        default: return "";
-    }
-}
 
 class BinaryExpression final : public Expression {
 public:
-    enum class OpCode {
-        // Arithmetic
-        Add,        // +
-        Sub,        // -
-        Mul,        // *
-        Div,        // /
-        Remainder,  // %
-        // Relational
-        LessThan,          // <
-        GreaterThan,       // >
-        LessThanEqual,     // <=
-        GreaterThanEqual,  // >=
-        Equal,             // ==
-        NotEqual,          // !=
-        And,               // &&
-        Or,                // ||
-        // Bitwise
-        BitwiseAnd,         // &
-        BitwiseOr,          // |
-        BitwiseXor,         // ^
-        BitwiseLeftShift,   // <<
-        BitwiseRightShift,  // >>
-    };
-
     Expression* lhs;
     Expression* rhs;
     OpCode op;
@@ -117,72 +142,11 @@ public:
                      Expression* rhs)
         : Expression(loc, kStaticType, type), lhs(lhs), op(op), rhs(rhs) {}
 
-    constexpr static bool IsArithmetic(OpCode op) {
-        return op >= OpCode::Add && op <= OpCode::Remainder;
-    }
-
-    constexpr static bool IsRelational(OpCode op) {
-        return op >= OpCode::LessThan && op <= OpCode::Or;
-    }
-
-    constexpr static bool IsBitwise(OpCode op) {
-        return op >= OpCode::BitwiseAnd && op <= OpCode::BitwiseRightShift;
-    }
-
-    constexpr bool IsArithmetic() const { return IsArithmetic(op); }
-    constexpr bool IsRelational() { return IsRelational(op); }
-    constexpr bool IsBitwise() { return IsBitwise(op); }
+    constexpr bool IsArithmetic() const { return IsOpArithmetic(op); }
+    constexpr bool IsLogical() { return IsOpLogical(op); }
+    constexpr bool IsBitwise() { return IsOpBitwise(op); }
 };
 
-constexpr std::string_view to_string(BinaryExpression::OpCode op) {
-    using Op = BinaryExpression::OpCode;
-    switch (op) {
-        case Op::Add: return "Add";
-        case Op::Sub: return "Sub";
-        case Op::Mul: return "Mul";
-        case Op::Div: return "Div";
-        case Op::LessThan: return "LessThan";
-        case Op::GreaterThan: return "GreaterThan";
-        case Op::LessThanEqual: return "LessThanEqual";
-        case Op::GreaterThanEqual: return "GreaterThanEqual";
-        case Op::Equal: return "Equal";
-        case Op::NotEqual: return "NotEqual";
-        case Op::Remainder: return "Remainder";
-        case Op::And: return "And";
-        case Op::Or: return "Or";
-        case Op::BitwiseAnd: return "BitwiseAnd";
-        case Op::BitwiseOr: return "BitwiseOr";
-        case Op::BitwiseXor: return "BitwiseXor";
-        case Op::BitwiseLeftShift: return "BitwiseLeftShift";
-        case Op::BitwiseRightShift: return "BitwiseRightShift";
-        default: return "";
-    }
-}
-
-constexpr std::string_view OpToStringDiag(BinaryExpression::OpCode op) {
-    using Op = BinaryExpression::OpCode;
-    switch (op) {
-        case Op::Add: return "+";
-        case Op::Sub: return "-";
-        case Op::Mul: return "*";
-        case Op::Div: return "/";
-        case Op::LessThan: return "<";
-        case Op::GreaterThan: return ">";
-        case Op::LessThanEqual: return "<=";
-        case Op::GreaterThanEqual: return ">=";
-        case Op::Equal: return "=";
-        case Op::NotEqual: return "!=";
-        case Op::Remainder: return "%";
-        case Op::And: return "&&";
-        case Op::Or: return "||";
-        case Op::BitwiseAnd: return "&";
-        case Op::BitwiseOr: return "|";
-        case Op::BitwiseXor: return "^";
-        case Op::BitwiseLeftShift: return "<<";
-        case Op::BitwiseRightShift: return ">>";
-        default: return "";
-    }
-}
 
 class LiteralExpression : public Expression {
 public:

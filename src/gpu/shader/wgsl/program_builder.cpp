@@ -6,75 +6,427 @@ namespace wgsl {
 
 namespace {
 
+using EvalResult = std::variant<double, int64_t, bool>;
+using ExpectedType = Expected<ast::Type*>;
+using ExpectedEvalResult = Expected<EvalResult>;
+
 template <class T>
-constexpr T EvalArithmeticOp(BinaryExpression::OpCode op, T lhs, T rhs) {
-    using Op = BinaryExpression::OpCode;
-    switch (op) {
-        case Op::Add: return lhs + rhs;
-        case Op::Sub: return lhs - rhs;
-        case Op::Mul: return lhs * rhs;
-        case Op::Div: return lhs / rhs;
-        default: return {};
+std::optional<T> TryGetConstValueAs(ast::Expression* expr) {
+    if (!expr) {
+        return std::nullopt;
     }
-}
-
-template <class T>
-constexpr T EvalArithmeticOp(UnaryExpression::OpCode op, T rhs) {
-    using Op = UnaryExpression::OpCode;
-    return op == Op::Minus ? -rhs : rhs;
-}
-
-template <class T>
-constexpr bool EvalRelationalOp(BinaryExpression::OpCode op, T lhs, T rhs) {
-    using Op = BinaryExpression::OpCode;
-    switch (op) {
-        case Op::LessThan: return lhs < rhs;
-        case Op::GreaterThan: return lhs > rhs;
-        case Op::LessThanEqual: return lhs <= rhs;
-        case Op::GreaterThanEqual: return lhs >= rhs;
-        case Op::Equal: return lhs == rhs;
-        case Op::NotEqual: return lhs != rhs;
-        case Op::And: return lhs && rhs;
-        case Op::Or: return lhs || rhs;
-        default: return {};
+    if (auto e = expr->As<FloatLiteralExpression>()) {
+        return static_cast<T>(e->value);
     }
-}
-
-constexpr int64_t EvalRelationalOp(UnaryExpression::OpCode op, int64_t rhs) {
-    using Op = UnaryExpression::OpCode;
-    return op == Op::Negation ? !rhs : rhs;
-}
-
-template <class T>
-constexpr T EvalBitwiseOp(BinaryExpression::OpCode op, T lhs, T rhs) {
-    using Op = BinaryExpression::OpCode;
-    switch (op) {
-        case Op::BitwiseAnd: return lhs & rhs;
-        case Op::BitwiseOr: return lhs | rhs;
-        case Op::BitwiseXor: return lhs ^ rhs;
-        case Op::BitwiseLeftShift: return lhs << rhs;
-        case Op::BitwiseRightShift: return lhs >> rhs;
-        default: return {};
+    if (auto e = expr->As<IntLiteralExpression>()) {
+        return static_cast<T>(e->value);
     }
+    if (auto e = expr->As<BoolLiteralExpression>()) {
+        return static_cast<T>(e->value);
+    }
+    // Ident
+    if (auto ident = expr->As<IdentExpression>()) {
+        if (auto var = ident->decl->As<ConstVariable>()) {
+            return TryGetConstValueAs<T>(var->initializer);
+        }
+    }
+    return std::nullopt;
 }
 
-template <class T>
-constexpr T EvalBitwiseOp(UnaryExpression::OpCode op, T rhs) {
-    using Op = UnaryExpression::OpCode;
-    return op == Op::BitwiseNot ? ~rhs : rhs;
+constexpr bool CheckOverflow(ast::Type* type, bool val) {
+    return true;
 }
+
+constexpr bool CheckOverflow(ast::Type* type, int64_t val) {
+    if (type->kind == Type::Kind::U32) {
+        return val <= std::numeric_limits<uint32_t>::max();
+    }
+    if (type->kind == Type::Kind::I32) {
+        return val <= std::numeric_limits<int32_t>::max();
+    }
+    return true;
+}
+
+constexpr bool CheckOverflow(ast::Type* type, double val) {
+    if (type->kind == Type::Kind::F32) {
+        return val <= std::numeric_limits<float>::max();
+    }
+    // TODO: half not implemented
+    return true;
+}
+
+// Type analysis result of an operator expression
+// E.g. (3 + 3.0f) -> { common_type: f32, return_type: f32, value: 6.0f }
+// E.g. (true && true) -> { common_type: bool, return_type: bool, value: true }
+struct OpResult {
+    // Common type for binary operators
+    // null if no conversion possible
+    //   u32, f32 -> error
+    //   f32, abstr_int -> f32
+    //   abstr_int, abstr_float -> abst_float
+    ast::Type* commonType = nullptr;
+    // Result type of the operation
+    // For arithmetic -> common type
+    // For logical -> bool
+    ast::Type* returnType = nullptr;
+    // If all arguments are const tries to evaluate
+    std::optional<EvalResult> value;
+    // Result error code
+    // InvalidArgs if input types are not matched. I.e. float for boolean op
+    // ConstOverflow if types are valid and const but operation overflows
+    ErrorCode err = ErrorCode::Ok;
+};
+
+struct UnaryOp {
+    virtual OpResult CheckAndEval(ast::Expression* arg) const = 0;
+};
+
+// Only negation: '-'
+struct UnaryArithmeticOp : public UnaryOp {
+    OpResult CheckAndEval(ast::Expression* arg) const override {
+        DASSERT(arg);
+        DASSERT(arg->type);
+        OpResult res;
+        res.commonType = arg->type;
+        res.returnType = arg->type;
+        // Check type
+        if (!arg->type->IsArithmetic()) {
+            res.err = ErrorCode::InvalidArgs;
+            return res;
+        }
+        // Try evaluate if const
+        if (arg->type->IsFloat()) {
+            if (auto val = TryGetConstValueAs<double>(arg)) {
+                res.value = EvalResult(-*val);
+            }
+        } else if (arg->type->IsInteger()) {
+            if (auto val = TryGetConstValueAs<int64_t>(arg)) {
+                res.value = EvalResult(-*val);
+            }
+        }
+        return res;
+    }
+};
+
+// Only logical negation: '!'
+struct UnaryLogicalOp : public UnaryOp {
+    ast::Type* boolType = nullptr;
+
+    UnaryLogicalOp(ast::Type* boolType) : boolType(boolType) {}
+
+    OpResult CheckAndEval(ast::Expression* arg) const override {
+        DASSERT(arg);
+        DASSERT(arg->type);
+        OpResult res;
+        res.commonType = arg->type;
+        res.returnType = boolType;
+        // Check type
+        if (!arg->type->IsBool()) {
+            res.err = ErrorCode::InvalidArgs;
+            return res;
+        }
+        // Try evaluate if const
+        if (auto val = TryGetConstValueAs<bool>(arg)) {
+            res.value = EvalResult(!*val);
+        }
+        return res;
+    }
+};
+
+// Only bitwise negation: '~'
+struct UnaryBitwiseOp : public UnaryOp {
+    OpResult CheckAndEval(ast::Expression* arg) const override {
+        DASSERT(arg);
+        DASSERT(arg->type);
+        OpResult res;
+        res.commonType = arg->type;
+        res.returnType = arg->type;
+        // Check type
+        if (!arg->type->IsInteger()) {
+            res.err = ErrorCode::InvalidArgs;
+            return res;
+        }
+        // Try evaluate if const
+        if (auto val = TryGetConstValueAs<int64_t>(arg)) {
+            int64_t resultVal = 0;
+            if (arg->type->IsSigned()) {
+                resultVal = ~*val;
+            } else {
+                if (!CheckOverflow(res.returnType, *val)) {
+                    res.err = ErrorCode::ConstOverflow;
+                    return res;
+                }
+                const auto val32 = ~(static_cast<uint32_t>(*val));
+                resultVal = static_cast<int64_t>(val32);
+            }
+            res.value = EvalResult(resultVal);
+        }
+        return res;
+    }
+};
+
+struct BinaryOp {
+    virtual OpResult CheckAndEval(ast::Expression* lhs,
+                                  ast::Expression* rhs) const = 0;
+
+    // Checks if two types can be converted to a common type
+    Expected<ast::Type*> GetCommonType(ast::Expression* lhs,
+                                       ast::Expression* rhs) const {
+        // Check binary op. I.e. "a + b", "7 + 1", "1.0f + 1"
+        DASSERT(lhs->type && rhs->type);
+        if (lhs->type == rhs->type) {
+            return lhs->type;
+        }
+        // Concrete
+        constexpr uint32_t kMax = std::numeric_limits<uint32_t>::max();
+        const auto lr = lhs->type->GetConversionRankTo(rhs->type);
+        const auto rl = rhs->type->GetConversionRankTo(lhs->type);
+        // Not convertible to each other
+        if (lr == kMax && rl == kMax) {
+            return std::unexpected(ErrorCode::InvalidArgs);
+        }
+        // Find common type
+        auto* resultType = lhs->type;
+        if (rl > lr) {
+            resultType = rhs->type;
+        }
+        return resultType;
+    }
+
+    bool CheckTypes(OpResult& out,
+                    ast::Expression* lhs,
+                    ast::Expression* rhs) const {
+        DASSERT(lhs && rhs);
+        DASSERT(lhs->type && rhs->type);
+        // Check types
+        if (auto result = GetCommonType(lhs, rhs)) {
+            out.commonType = *result;
+        } else {
+            out.err = ErrorCode::InvalidArgs;
+            return false;
+        }
+        return true;
+    }
+
+    // Evaluates an expression using 'EvalOp()' from 'Derived'
+    template <class T, class Derived>
+    void Eval(OpResult& res, ast::Expression* lhs, ast::Expression* rhs) const {
+        auto lval = TryGetConstValueAs<T>(lhs);
+        auto rval = TryGetConstValueAs<T>(rhs);
+        auto* retType = res.returnType;
+
+        if (lval && rval) {
+            auto* derived = (Derived*)this;
+            const auto result = derived->EvalOp<T>(*lval, *rval);
+
+            if (!retType->IsAbstract() && !CheckOverflow(retType, result)) {
+                res.err = ErrorCode::ConstOverflow;
+            }
+            res.value = result;
+        }
+    }
+};
+
+// Operators: + - * / %
+struct BinaryArithmeticOp : public BinaryOp {
+    OpCode op;
+
+    BinaryArithmeticOp(OpCode op) : op(op) {}
+
+    OpResult CheckAndEval(ast::Expression* lhs,
+                          ast::Expression* rhs) const override {
+        OpResult res;
+        if (!CheckTypes(res, lhs, rhs)) {
+            return res;
+        }
+        res.returnType = res.commonType;
+        if (!res.returnType->IsArithmetic()) {
+            res.err = ErrorCode::InvalidArgs;
+            return res;
+        }
+        ast::Type* commonType = res.commonType;
+        // Try evaluate if const
+        if (commonType->IsFloat()) {
+            Eval<double, BinaryArithmeticOp>(res, lhs, rhs);
+        } else if (commonType->IsInteger()) {
+            Eval<int64_t, BinaryArithmeticOp>(res, lhs, rhs);
+        }
+        return res;
+    }
+
+    // Used by 'Eval' from parent
+    template <class T>
+    constexpr T EvalOp(T lhs, T rhs) const {
+        using Op = OpCode;
+        switch (op) {
+            case Op::Add: return lhs + rhs;
+            case Op::Sub: return lhs - rhs;
+            case Op::Mul: return lhs * rhs;
+            case Op::Div: return lhs / rhs;
+            default: return {};
+        }
+    }
+};
+
+// Operators: > >= < <= == !=
+struct BinaryLogicalOp : public BinaryOp {
+    OpCode op;
+    ast::Type* boolType;
+
+    BinaryLogicalOp(OpCode op, ast::Type* boolType)
+        : op(op), boolType(boolType) {}
+
+    OpResult CheckAndEval(ast::Expression* lhs,
+                          ast::Expression* rhs) const override {
+        OpResult res;
+        if (!CheckTypes(res, lhs, rhs)) {
+            return res;
+        }
+        ast::Type* commonType = res.commonType;
+        res.returnType = boolType;
+
+        // Try evaluate if const
+        if (commonType->IsFloat()) {
+            Eval<double, BinaryLogicalOp>(res, lhs, rhs);
+        } else if (commonType->IsInteger()) {
+            Eval<int64_t, BinaryLogicalOp>(res, lhs, rhs);
+        } else if (commonType->IsBool()) {
+            Eval<bool, BinaryLogicalOp>(res, lhs, rhs);
+        }
+        return res;
+    }
+
+    template <class T>
+    constexpr bool EvalOp(T lhs, T rhs) const {
+        using Op = OpCode;
+        switch (op) {
+            case Op::Less: return lhs < rhs;
+            case Op::Greater: return lhs > rhs;
+            case Op::LessEqual: return lhs <= rhs;
+            case Op::GreaterEqual: return lhs >= rhs;
+            case Op::Equal: return lhs == rhs;
+            case Op::NotEqual: return lhs != rhs;
+            case Op::LogAnd: return lhs && rhs;
+            case Op::LogOr: return lhs || rhs;
+            default: return {};
+        }
+    }
+};
+
+// Operators:
+struct BinaryBitwiseOp : public BinaryOp {
+    OpCode op;
+
+    BinaryBitwiseOp(OpCode op) : op(op) {}
+
+    OpResult CheckAndEval(ast::Expression* lhs,
+                          ast::Expression* rhs) const override {
+        OpResult res;
+        if (!CheckTypes(res, lhs, rhs)) {
+            return res;
+        }
+        res.returnType = res.commonType;
+        if (!res.returnType->IsInteger()) {
+            res.err = ErrorCode::InvalidArgs;
+            return res;
+        }
+        Eval<int64_t, BinaryBitwiseOp>(res, lhs, rhs);
+        return res;
+    }
+
+    template <class T>
+    constexpr bool EvalOp(T lhs, T rhs) const {
+        using Op = OpCode;
+        switch (op) {
+            case Op::Less: return lhs < rhs;
+            case Op::Greater: return lhs > rhs;
+            case Op::LessEqual: return lhs <= rhs;
+            case Op::GreaterEqual: return lhs >= rhs;
+            case Op::Equal: return lhs == rhs;
+            case Op::NotEqual: return lhs != rhs;
+            case Op::LogAnd: return lhs && rhs;
+            case Op::LogOr: return lhs || rhs;
+            default: return {};
+        }
+    }
+};
 
 }  // namespace
 
+// Helper to check and evaluate builtin operations
+struct ProgramBuilder::OpTable {
+    OpTable(ast::Type* boolType) {
+        unaryMap.resize(uint8_t(OpCode::_Max));
+        unaryMap[uint8_t(OpCode::Negation)] = new UnaryArithmeticOp();
+        unaryMap[uint8_t(OpCode::BitNot)] = new UnaryBitwiseOp();
+        unaryMap[uint8_t(OpCode::LogNot)] = new UnaryLogicalOp(boolType);
+
+        binaryOp.resize(uint8_t(OpCode::_Max));
+        binaryOp[uint8_t(OpCode::Mul)] = new BinaryArithmeticOp(OpCode::Mul);
+        binaryOp[uint8_t(OpCode::Div)] = new BinaryArithmeticOp(OpCode::Div);
+        binaryOp[uint8_t(OpCode::Add)] = new BinaryArithmeticOp(OpCode::Add);
+        binaryOp[uint8_t(OpCode::Sub)] = new BinaryArithmeticOp(OpCode::Sub);
+        binaryOp[uint8_t(OpCode::Mod)] = new BinaryArithmeticOp(OpCode::Mod);
+
+        binaryOp[uint8_t(OpCode::LogAnd)] =
+            new BinaryLogicalOp(OpCode::LogAnd, boolType);
+        binaryOp[uint8_t(OpCode::LogOr)] =
+            new BinaryLogicalOp(OpCode::LogOr, boolType);
+        binaryOp[uint8_t(OpCode::Less)] =
+            new BinaryLogicalOp(OpCode::Less, boolType);
+        binaryOp[uint8_t(OpCode::Greater)] =
+            new BinaryLogicalOp(OpCode::Greater, boolType);
+        binaryOp[uint8_t(OpCode::LessEqual)] =
+            new BinaryLogicalOp(OpCode::LessEqual, boolType);
+        binaryOp[uint8_t(OpCode::GreaterEqual)] =
+            new BinaryLogicalOp(OpCode::GreaterEqual, boolType);
+        binaryOp[uint8_t(OpCode::Equal)] =
+            new BinaryLogicalOp(OpCode::Equal, boolType);
+        binaryOp[uint8_t(OpCode::NotEqual)] =
+            new BinaryLogicalOp(OpCode::NotEqual, boolType);
+
+        binaryOp[uint8_t(OpCode::BitAnd)] = new BinaryBitwiseOp(OpCode::BitAnd);
+        binaryOp[uint8_t(OpCode::BitOr)] = new BinaryBitwiseOp(OpCode::BitOr);
+        binaryOp[uint8_t(OpCode::BitXor)] = new BinaryBitwiseOp(OpCode::BitXor);
+        binaryOp[uint8_t(OpCode::BitLsh)] = new BinaryBitwiseOp(OpCode::BitLsh);
+        binaryOp[uint8_t(OpCode::BitRsh)] = new BinaryBitwiseOp(OpCode::BitRsh);
+    }
+
+    UnaryOp* GetUnaryOp(OpCode op) {
+        if (!IsOpUnary(op)) {
+            return nullptr;
+        }
+        return unaryMap[uint8_t(op)];
+    }
+
+    BinaryOp* GetBinaryOp(OpCode op) {
+        if (IsOpUnary(op)) {
+            return nullptr;
+        }
+        return binaryOp[uint8_t(op)];
+    }
+
+    std::vector<UnaryOp*> unaryMap;
+    std::vector<BinaryOp*> binaryOp;
+};
+
+//===========================================================================//
+
 ProgramBuilder::ProgramBuilder() : program_(new Program()) {}
 
-ProgramBuilder::~ProgramBuilder() = default;
+ProgramBuilder::~ProgramBuilder() {}
 
 void ProgramBuilder::Build(std::string_view code) {
+    // Copy source code
     program_->sourceCode_ = std::string(code);
     code = program_->sourceCode_;
     currentScope_ = program_->globalScope_;
+
     program_->CreateBuiltinTypes();
+    ast::Type* type = currentScope_->FindType("bool");
+    DASSERT(type);
+    opTable_.reset(new OpTable(type));
+
     auto parser = Parser(code, this);
     parser_ = &parser;
     parser.Parse();
@@ -103,7 +455,7 @@ Expected<ConstVariable*> ProgramBuilder::CreateConstVar(
     // 3. Both are present, check if types are convertible
     if (!initializer) {
         AddError(loc, ErrorCode::ConstDeclNoInitializer);
-        return std::unexpected(Result::Error);
+        return std::unexpected(ErrorCode::Error);
     }
     // Result type of the variable [struct | builtin]
     ast::Type* resultType = nullptr;
@@ -118,7 +470,7 @@ Expected<ConstVariable*> ProgramBuilder::CreateConstVar(
         if (!decl) {
             AddError(typeInfo->ident.loc, ErrorCode::TypeNotDefined,
                      "type '{}' is not defined", typeName);
-            return std::unexpected(Result::Error);
+            return std::unexpected(ErrorCode::Error);
         }
         if (auto* t = decl->As<ast::Type>()) {
             resultType = t;
@@ -126,7 +478,7 @@ Expected<ConstVariable*> ProgramBuilder::CreateConstVar(
             // Symbol exists but does not refer to a type
             AddError(typeInfo->ident.loc, ErrorCode::IdentNotType,
                      "identifier is not a type name");
-            return std::unexpected(Result::Error);
+            return std::unexpected(ErrorCode::Error);
         }
     }
     // Validate initializer expression type
@@ -146,7 +498,7 @@ Expected<ConstVariable*> ProgramBuilder::CreateConstVar(
                      "this expression cannot be assigned to a const "
                      "value of type {}",
                      to_string(resultType->kind));
-            return std::unexpected(Result::Error);
+            return std::unexpected(ErrorCode::Error);
         }
     } else {
         // No explicit type specified
@@ -158,7 +510,7 @@ Expected<ConstVariable*> ProgramBuilder::CreateConstVar(
         AddError(ident.loc, ErrorCode::SymbolAlreadyDefined,
                  "symbol '{}' already defined in the current scope",
                  ident.name);
-        return std::unexpected(Result::Error);
+        return std::unexpected(ErrorCode::Error);
     }
     auto* decl = program_->alloc_.Allocate<ConstVariable>(
         loc, ident.name, resultType, initializer);
@@ -183,277 +535,75 @@ Expected<VarVariable*> ProgramBuilder::CreateVar(
                                                   attributes, initializer);
 }
 
-Expected<Expression*> ProgramBuilder::CreateBinaryExpr(
-    SourceLoc loc,
-    Expression* lhs,
-    BinaryExpression::OpCode op,
-    Expression* rhs) {
-
-    // TODO: Handle templates
-    // Validate types
-    auto typeRes = TypeCheckAndConvert(lhs, rhs);
-    if (!typeRes) {
-        AddError(loc, ErrorCode::InvalidArgs);
-        return std::unexpected(Result::Error);
-    }
-    ast::Type* argsType = *typeRes;
-    ast::Type* returnType = *typeRes;
-
-    if (BinaryExpression::IsRelational(op)) {
-        ast::Type* type = currentScope_->FindType("bool");
-        DASSERT(type);
-        returnType = type;
-    }
-
-    // Validate arguments
-    if (BinaryExpression::IsArithmetic(op) && !argsType->IsArithmetic()) {
+Expected<Expression*> ProgramBuilder::CreateBinaryExpr(SourceLoc loc,
+                                                       Expression* lhs,
+                                                       OpCode op,
+                                                       Expression* rhs) {
+    BinaryOp* handler = opTable_->GetBinaryOp(op);
+    DASSERT(handler);
+    OpResult result = handler->CheckAndEval(lhs, rhs);
+    // Check errors
+    if (result.err == ErrorCode::InvalidArgs) {
         AddError(loc, ErrorCode::InvalidArgs,
-                 "no operator {} can accept all arguments."
-                 " Arguments are {} {}",
-                 OpToStringDiag(op), lhs->type->name, rhs->type->name);
-        return std::unexpected(Result::Error);
+                 "no operator {} can accept all arguments. Arguments types are "
+                 "{}, {}",
+                 to_string(op), lhs->type->name, rhs->type->name);
+        return std::unexpected(ErrorCode::Error);
     }
-    if (BinaryExpression::IsBitwise(op) && !argsType->IsInteger()) {
-        AddError(loc, ErrorCode::InvalidArgs,
-                 "no operator {} can accept all arguments."
-                 " Arguments are {} {}",
-                 OpToStringDiag(op), lhs->type->name, rhs->type->name);
-        return std::unexpected(Result::Error);
+    if (result.err == ErrorCode::ConstOverflow) {
+        AddError(loc, ErrorCode::ConstOverflow);
+        return std::unexpected(ErrorCode::Error);
     }
-    // Check if not const
-    if (!IsNodeConst(lhs) || !IsNodeConst(rhs)) {
-        return program_->alloc_.Allocate<BinaryExpression>(loc, argsType, lhs,
-                                                           op, rhs);
-    }
-    // Evaluate if const
-    if (argsType->IsFloat()) {
-        std::optional<double> lhsVal = ReadConstValueDouble(lhs);
-        std::optional<double> rhsVal = ReadConstValueDouble(rhs);
-        DASSERT(lhsVal && rhsVal);
-
-        if (BinaryExpression::IsRelational(op)) {
-            const bool res = EvalRelationalOp(op, *lhsVal, *rhsVal);
-            return program_->alloc_.Allocate<ast::BoolLiteralExpression>(
-                loc, returnType, res);
+    // If const evaluated, replace the result expression with a literal
+    if (result.value) {
+        if (result.returnType->IsInteger()) {
+            return program_->alloc_.Allocate<ast::IntLiteralExpression>(
+                loc, result.returnType, std::get<int64_t>(*result.value));
         }
-        if (BinaryExpression::IsArithmetic(op)) {
-            const double res = EvalArithmeticOp(op, *lhsVal, *rhsVal);
-            // Validate overflow
-            if (!argsType->IsAbstract()) {
-                if (res > std::numeric_limits<float>::max()) {
-                    AddError(loc, ErrorCode::ConstOverflow);
-                    return std::unexpected(Result::Error);
-                }
-            }
+        if (result.returnType->IsFloat()) {
             return program_->alloc_.Allocate<ast::FloatLiteralExpression>(
-                loc, returnType, res);
+                loc, result.returnType, std::get<double>(*result.value));
         }
+        return program_->alloc_.Allocate<ast::BoolLiteralExpression>(
+            loc, result.returnType, std::get<bool>(*result.value));
     }
-    // Integer
-    if (argsType->IsInteger()) {
-        std::optional<int64_t> lhsVal = TryGetConstInt(lhs);
-        std::optional<int64_t> rhsVal = TryGetConstInt(rhs);
-        // Both are const
-        DASSERT(lhsVal && rhsVal);
-
-        if (BinaryExpression::IsRelational(op)) {
-            const bool res = EvalRelationalOp(op, *lhsVal, *rhsVal);
-            return program_->alloc_.Allocate<ast::BoolLiteralExpression>(
-                loc, returnType, res);
-        }
-        if (BinaryExpression::IsArithmetic(op)) {
-            const int64_t res = EvalArithmeticOp(op, *lhsVal, *rhsVal);
-            // Validate overflow
-            if (argsType->kind == Type::Kind::U32) {
-                if (res > std::numeric_limits<uint32_t>::max()) {
-                    AddError(loc, ErrorCode::ConstOverflow);
-                    return std::unexpected(Result::Error);
-                }
-            } else if (argsType->kind == Type::Kind::I32) {
-                if (res > std::numeric_limits<int32_t>::max()) {
-                    AddError(loc, ErrorCode::ConstOverflow);
-                    return std::unexpected(Result::Error);
-                }
-            }
-            return program_->alloc_.Allocate<ast::IntLiteralExpression>(
-                loc, returnType, res);
-        }
-        if (BinaryExpression::IsBitwise(op)) {
-            int64_t res = 0;
-            if (argsType->IsSigned()) {
-                res = EvalBitwiseOp<int64_t>(op, *lhsVal, *rhsVal);
-            } else {
-                res = static_cast<int64_t>(
-                    EvalBitwiseOp<uint64_t>(op, *lhsVal, *rhsVal));
-            }
-            // Validate overflow
-            if (argsType->kind == Type::Kind::U32) {
-                if (res > std::numeric_limits<uint32_t>::max()) {
-                    AddError(loc, ErrorCode::ConstOverflow);
-                    return std::unexpected(Result::Error);
-                }
-            } else if (argsType->kind == Type::Kind::I32) {
-                if (res > std::numeric_limits<int32_t>::max()) {
-                    AddError(loc, ErrorCode::ConstOverflow);
-                    return std::unexpected(Result::Error);
-                }
-            }
-            return program_->alloc_.Allocate<ast::IntLiteralExpression>(
-                loc, argsType, res);
-        }
-    }
-    // Both argumetns are bool
-    if (argsType->IsBool()) {
-        std::optional<int64_t> lhsVal = TryGetConstInt(lhs);
-        std::optional<int64_t> rhsVal = TryGetConstInt(rhs);
-        // Both are const
-        DASSERT(lhsVal && rhsVal);
-
-        if (BinaryExpression::IsRelational(op)) {
-            const bool res = EvalRelationalOp(op, *lhsVal, *rhsVal);
-            return program_->alloc_.Allocate<ast::BoolLiteralExpression>(
-                loc, returnType, res);
-        }
-    }
-    UNREACHABLE();
-    return std::unexpected(Result::Error);
+    return program_->alloc_.Allocate<ast::BinaryExpression>(
+        loc, result.returnType, lhs, op, rhs);
 }
 
-Expected<Expression*> ProgramBuilder::CreateUnaryExpr(
-    SourceLoc loc,
-    UnaryExpression::OpCode op,
-    Expression* rhs) {
-
+Expected<Expression*> ProgramBuilder::CreateUnaryExpr(SourceLoc loc,
+                                                      OpCode op,
+                                                      Expression* rhs) {
     // TODO: Handle templates
-    ast::Type* argType = rhs->type;
-    ast::Type* returnType = argType;
-
-    if (UnaryExpression::IsRelational(op)) {
-        ast::Type* type = currentScope_->FindType("bool");
-        DASSERT(type);
-        returnType = type;
-
-        if (!argType->IsBool()) {
-            AddError(loc, ErrorCode::InvalidArgs,
-                     "no operator {} can accept the argument."
-                     " Argument is {}",
-                     OpToStringDiag(op), rhs->type->name);
-            return std::unexpected(Result::Error);
-        }
-    }
-    // Validate arguments
-    // TODO: Explicitly-typed unsigned integer literal cannot be negated.
-    // var u32_neg = -1u; // invalid: unary minus does not support u32
-    if (UnaryExpression::IsArithmetic(op) && !argType->IsArithmetic()) {
+    UnaryOp* handler = opTable_->GetUnaryOp(op);
+    DASSERT(handler);
+    OpResult result = handler->CheckAndEval(rhs);
+    // Check errors
+    if (result.err == ErrorCode::InvalidArgs) {
         AddError(loc, ErrorCode::InvalidArgs,
-                 "no operator {} can accept the argument."
-                 " Argument is {}",
-                 OpToStringDiag(op), rhs->type->name);
-        return std::unexpected(Result::Error);
+                 "no operator {} can accept the argument of type {}",
+                 to_string(op), rhs->type->name);
+        return std::unexpected(ErrorCode::Error);
     }
-    if (UnaryExpression::IsBitwise(op) && !argType->IsInteger()) {
-        AddError(loc, ErrorCode::InvalidArgs,
-                 "no operator {} can accept the argument."
-                 " Argument is {}",
-                 OpToStringDiag(op), rhs->type->name);
-        return std::unexpected(Result::Error);
+    if (result.err == ErrorCode::ConstOverflow) {
+        AddError(loc, ErrorCode::ConstOverflow);
+        return std::unexpected(ErrorCode::Error);
     }
-    // Check if not const
-    if (!IsNodeConst(rhs)) {
-        return program_->alloc_.Allocate<UnaryExpression>(loc, returnType, op,
-                                                          rhs);
-    }
-    // Evaluate if const
-    if (argType->IsFloat()) {
-        std::optional<double> rhsVal = ReadConstValueDouble(rhs);
-        DASSERT(rhsVal);
-
-        if (UnaryExpression::IsRelational(op)) {
-            const bool res = EvalRelationalOp(op, *rhsVal);
-            return program_->alloc_.Allocate<ast::BoolLiteralExpression>(
-                loc, returnType, res);
+    // If const evaluated, replace the result expression with a literal
+    if (result.value) {
+        if (result.returnType->IsInteger()) {
+            return program_->alloc_.Allocate<ast::IntLiteralExpression>(
+                loc, result.returnType, std::get<int64_t>(*result.value));
         }
-        if (UnaryExpression::IsArithmetic(op)) {
-            const double res = EvalArithmeticOp(op, *rhsVal);
-            // Validate overflow
-            if (!argType->IsAbstract()) {
-                if (res > std::numeric_limits<float>::max()) {
-                    AddError(loc, ErrorCode::ConstOverflow);
-                    return std::unexpected(Result::Error);
-                }
-            }
+        if (result.returnType->IsFloat()) {
             return program_->alloc_.Allocate<ast::FloatLiteralExpression>(
-                loc, argType, res);
+                loc, result.returnType, std::get<double>(*result.value));
         }
+        return program_->alloc_.Allocate<ast::BoolLiteralExpression>(
+            loc, result.returnType, std::get<bool>(*result.value));
     }
-    // Integer types
-    if (argType->IsInteger()) {
-        std::optional<int64_t> rhsVal = TryGetConstInt(rhs);
-        DASSERT(rhsVal);
-
-        if (UnaryExpression::IsRelational(op)) {
-            const bool res = EvalRelationalOp(op, *rhsVal);
-            return program_->alloc_.Allocate<ast::BoolLiteralExpression>(
-                loc, returnType, res);
-        }
-        if (UnaryExpression::IsArithmetic(op)) {
-            const int64_t res = EvalArithmeticOp(op, *rhsVal);
-            // Validate overflow
-            if (argType->kind == Type::Kind::U32) {
-                if (res > std::numeric_limits<uint32_t>::max()) {
-                    AddError(loc, ErrorCode::ConstOverflow);
-                    return std::unexpected(Result::Error);
-                }
-            } else if (argType->kind == Type::Kind::I32) {
-                if (res > std::numeric_limits<int32_t>::max()) {
-                    AddError(loc, ErrorCode::ConstOverflow);
-                    return std::unexpected(Result::Error);
-                }
-            }
-            return program_->alloc_.Allocate<ast::IntLiteralExpression>(
-                loc, argType, res);
-        }
-        if (UnaryExpression::IsBitwise(op)) {
-            int64_t res = 0;
-            if (argType->IsSigned()) {
-                res = EvalBitwiseOp<int64_t>(op, *rhsVal);
-            } else {
-                if(*rhsVal > std::numeric_limits<uint32_t>::max()) {
-                    AddError(loc, ErrorCode::ConstOverflow);
-                    return std::unexpected(Result::Error);
-                }
-                const auto val32 = static_cast<uint32_t>(*rhsVal);
-                res = static_cast<int64_t>(EvalBitwiseOp<uint32_t>(op, val32));
-            }
-            // Validate overflow
-            if (argType->kind == Type::Kind::U32) {
-                if (res > std::numeric_limits<uint32_t>::max()) {
-                    AddError(loc, ErrorCode::ConstOverflow);
-                    return std::unexpected(Result::Error);
-                }
-            } else if (argType->kind == Type::Kind::I32) {
-                if (res > std::numeric_limits<int32_t>::max()) {
-                    AddError(loc, ErrorCode::ConstOverflow);
-                    return std::unexpected(Result::Error);
-                }
-            }
-            return program_->alloc_.Allocate<ast::IntLiteralExpression>(
-                loc, argType, res);
-        }
-    }
-    // bool
-    if (argType->IsBool()) {
-        std::optional<int64_t> rhsVal = TryGetConstInt(rhs);
-        DASSERT(rhsVal);
-
-        if (UnaryExpression::IsRelational(op)) {
-            const bool res = EvalRelationalOp(op, *rhsVal);
-            return program_->alloc_.Allocate<ast::BoolLiteralExpression>(
-                loc, returnType, res);
-        }
-    }
-    UNREACHABLE();
-    return std::unexpected(Result::Error);
+    return program_->alloc_.Allocate<UnaryExpression>(loc, result.returnType,
+                                                      op, rhs);
 }
 
 Expected<IdentExpression*> ProgramBuilder::CreateIdentExpr(const Ident& ident) {
@@ -462,12 +612,12 @@ Expected<IdentExpression*> ProgramBuilder::CreateIdentExpr(const Ident& ident) {
     if (!symbol) {
         AddError(ident.loc, ErrorCode::SymbolNotFound,
                  "symbol '{}' not found in the current scope", ident.name);
-        return std::unexpected(Result::Error);
+        return std::unexpected(ErrorCode::Error);
     }
     if (symbol && !symbol->Is<ast::Variable>()) {
         AddError(ident.loc, ErrorCode::SymbolNotVariable,
                  "symbol '{}' is not a variable", ident.name);
-        return std::unexpected(Result::Error);
+        return std::unexpected(ErrorCode::Error);
     }
     auto* var = symbol->As<ast::Variable>();
     return program_->alloc_.Allocate<IdentExpression>(ident.loc, var,
@@ -484,13 +634,13 @@ Expected<IntLiteralExpression*> ProgramBuilder::CreateIntLiteralExpr(
     if (type == Type::Kind::U32) {
         if (value > std::numeric_limits<uint32_t>::max()) {
             AddError(loc, ErrorCode::LiteralInitValueTooLarge);
-            return std::unexpected(Result::Error);
+            return std::unexpected(ErrorCode::Error);
         }
     } else {
         // AbstractInt || i32
         if (value > std::numeric_limits<int32_t>::max()) {
             AddError(loc, ErrorCode::LiteralInitValueTooLarge);
-            return std::unexpected(Result::Error);
+            return std::unexpected(ErrorCode::Error);
         }
     }
     return program_->alloc_.Allocate<IntLiteralExpression>(
@@ -507,12 +657,12 @@ Expected<FloatLiteralExpression*> ProgramBuilder::CreateFloatLiteralExpr(
     if (type == Type::Kind::F32 || type == Type::Kind::AbstrFloat) {
         if (value > std::numeric_limits<float>::max()) {
             AddError(loc, ErrorCode::LiteralInitValueTooLarge);
-            return std::unexpected(Result::Error);
+            return std::unexpected(ErrorCode::Error);
         }
     } else {
         AddError(loc, ErrorCode::Unimplemented,
                  "half types are not implemented");
-        return std::unexpected(Result::Error);
+        return std::unexpected(ErrorCode::Error);
     }
     return program_->alloc_.Allocate<FloatLiteralExpression>(
         loc, typeNode->As<ast::Type>(), value);
@@ -609,7 +759,7 @@ Expected<ast::Type*> ProgramBuilder::TypeCheckAndConvert(ast::Expression* lhs,
     // Not convertible to each other
     if (lr == kMax && rl == kMax) {
         // TODO: Generate more detailed error for mismatched types
-        return std::unexpected(Result::Error);
+        return std::unexpected(ErrorCode::Error);
     }
     // Find common type
     auto* resultType = lhs->type;

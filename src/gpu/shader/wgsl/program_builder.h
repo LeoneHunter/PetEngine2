@@ -71,11 +71,11 @@ public:
 
     Expected<Expression*> CreateBinaryExpr(SourceLoc loc,
                                            Expression* lhs,
-                                           BinaryExpression::OpCode op,
+                                           OpCode op,
                                            Expression* rhs);
 
     Expected<Expression*> CreateUnaryExpr(SourceLoc loc,
-                                          UnaryExpression::OpCode op,
+                                          OpCode op,
                                           Expression* rhs);
 
     Expected<IdentExpression*> CreateIdentExpr(const Ident& ident);
@@ -114,6 +114,10 @@ private:
     Program::Scope* currentScope_ = nullptr;
     Parser* parser_ = nullptr;
     bool stopParsing_ = false;
+
+    struct OpTable;
+    // Helper to check and evaluate builtin operations
+    std::unique_ptr<OpTable> opTable_;
 };
 
 

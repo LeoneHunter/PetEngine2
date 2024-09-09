@@ -64,25 +64,25 @@ namespace wgsl {
     } while (false)
 
 // Expect a result and skip if unmatched
-#define EXPECT_UNWRAP_OPT(node, expr)              \
-    do {                                           \
-        auto res = expr;                           \
-        if (res) {                                 \
-            node = *res;                           \
-        } else if (res.error() == Result::Error) { \
-            return Unexpected(res.error());        \
-        }                                          \
+#define EXPECT_UNWRAP_OPT(node, expr)                 \
+    do {                                              \
+        auto res = expr;                              \
+        if (res) {                                    \
+            node = *res;                              \
+        } else if (res.error() == ErrorCode::Error) { \
+            return std::unexpected(res.error());      \
+        }                                             \
     } while (false)
 
 // Expect a result and return if ok
-#define EXPECT_UNWRAP_RET(expr)                    \
-    do {                                           \
-        auto res = expr;                           \
-        if (res) {                                 \
-            return *res;                           \
-        } else if (res.error() == Result::Error) { \
-            return Unexpected(res.error());        \
-        }                                          \
+#define EXPECT_UNWRAP_RET(expr)                       \
+    do {                                              \
+        auto res = expr;                              \
+        if (res) {                                    \
+            return *res;                              \
+        } else if (res.error() == ErrorCode::Error) { \
+            return std::unexpected(res.error());      \
+        }                                             \
     } while (false)
 
 using Tok = wgsl::Token::Kind;
@@ -114,7 +114,7 @@ void Parser::Parse() {
             builder_->PushGlobalDecl(*res);
             continue;
         }
-        if (res.error() == Result::Error) {
+        if (res.error() == ErrorCode::Error) {
             continue;
         }
         // Empty decl ';'
@@ -267,33 +267,32 @@ Expected<ast::Expression*> Parser::Expression() {
     ast::Expression* unary = nullptr;
     EXPECT_UNWRAP(unary, UnaryExpr(), ErrorCode::ExpectedExpr);
     // binary operator
-    using BinaryOp = ast::BinaryExpression::OpCode;
-    std::optional<BinaryOp> op;
+    std::optional<OpCode> op;
 
     Token tok = Peek();
     switch (tok.kind) {
         // Arithmetic
-        case Tok::Mul: op = BinaryOp::Mul; break;
-        case Tok::Div: op = BinaryOp::Div; break;
-        case Tok::Plus: op = BinaryOp::Add; break;
-        case Tok::Minus: op = BinaryOp::Sub; break;
-        case Tok::Mod: op = BinaryOp::Remainder; break;
+        case Tok::Mul: op = OpCode::Mul; break;
+        case Tok::Div: op = OpCode::Div; break;
+        case Tok::Plus: op = OpCode::Add; break;
+        case Tok::Minus: op = OpCode::Sub; break;
+        case Tok::Mod: op = OpCode::Mod; break;
         // Relation
-        case Tok::LessThan: op = BinaryOp::LessThan; break;
-        case Tok::GreaterThan: op = BinaryOp::GreaterThan; break;
-        case Tok::LessThanEqual: op = BinaryOp::LessThanEqual; break;
-        case Tok::GreaterThanEqual: op = BinaryOp::GreaterThanEqual; break;
-        case Tok::Equal: op = BinaryOp::Equal; break;
-        case Tok::NotEqual: op = BinaryOp::NotEqual; break;
+        case Tok::LessThan: op = OpCode::Less; break;
+        case Tok::GreaterThan: op = OpCode::Greater; break;
+        case Tok::LessThanEqual: op = OpCode::LessEqual; break;
+        case Tok::GreaterThanEqual: op = OpCode::GreaterEqual; break;
+        case Tok::Equal: op = OpCode::Equal; break;
+        case Tok::NotEqual: op = OpCode::NotEqual; break;
         // Logic
-        case Tok::AndAnd: op = BinaryOp::And; break;
-        case Tok::OrOr: op = BinaryOp::Or; break;
+        case Tok::AndAnd: op = OpCode::LogAnd; break;
+        case Tok::OrOr: op = OpCode::LogOr; break;
         // Bitwise
-        case Tok::And: op = BinaryOp::BitwiseAnd; break;
-        case Tok::Or: op = BinaryOp::BitwiseOr; break;
-        case Tok::Xor: op = BinaryOp::BitwiseXor; break;
-        case Tok::LeftShift: op = BinaryOp::BitwiseLeftShift; break;
-        case Tok::RightShift: op = BinaryOp::BitwiseRightShift; break;
+        case Tok::And: op = OpCode::BitAnd; break;
+        case Tok::Or: op = OpCode::BitOr; break;
+        case Tok::Xor: op = OpCode::BitXor; break;
+        case Tok::LeftShift: op = OpCode::BitLsh; break;
+        case Tok::RightShift: op = OpCode::BitRsh; break;
     }
     if (!op) {
         return unary;
@@ -323,20 +322,19 @@ Expected<ast::Expression*> Parser::UnaryExpr() {
         if (res2) {
             return *res2;
         }
-        if (res2.error() == Result::Unmatched) {
+        if (res2.error() == ErrorCode::Unmatched) {
             return primary;
         }
         return Unexpected(res2.error());
     }
     // Unary operator
-    using Op = ast::UnaryExpression::OpCode;
     Token opToken = Peek();
-    std::optional<Op> op;
+    std::optional<OpCode> op;
 
     switch (opToken.kind) {
-        case Tok::Negation: op = Op::Negation; break;
-        case Tok::Tilde: op = Op::BitwiseNot; break;
-        case Tok::Minus: op = Op::Minus; break;
+        case Tok::Negation: op = OpCode::LogNot; break;
+        case Tok::Tilde: op = OpCode::BitNot; break;
+        case Tok::Minus: op = OpCode::Negation; break;
         case Tok::And:
         case Tok::Mul:
             return Unexpected(ErrorCode::Unimplemented,
@@ -439,9 +437,9 @@ Expected<ast::BoolLiteralExpression*> Parser::BoolLiteralExpr() {
     if (Peek(Tok::Keyword)) {
         bool value = false;
         Token tok = Peek();
-        if(tok.Source() == "true") {
+        if (tok.Source() == "true") {
             value = true;
-        } else if(tok.Source() == "false") {
+        } else if (tok.Source() == "false") {
             value = false;
         } else {
             return Unmatched();
@@ -518,28 +516,24 @@ Expected<ast::Attribute*> Parser::Attribute() {
 
 //==========================================================================//
 
-std::unexpected<Result> Parser::Unexpected(ErrorCode code,
-                                           const std::string& msg) {
+std::unexpected<ErrorCode> Parser::Unexpected(ErrorCode code,
+                                              const std::string& msg) {
     builder_->AddError(token_.loc, code, msg);
-    return std::unexpected(Result::Error);
+    return std::unexpected(ErrorCode::Error);
 }
 
-std::unexpected<Result> Parser::Unexpected(ErrorCode code) {
+std::unexpected<ErrorCode> Parser::Unexpected(ErrorCode code) {
     return Unexpected(code, std::string(ErrorCodeDefaultMsg(code)));
 }
 
-std::unexpected<Result> Parser::Unexpected(Result res) {
-    return std::unexpected(res);
-}
-
-std::unexpected<Result> Parser::Unexpected(Token::Kind kind) {
+std::unexpected<ErrorCode> Parser::Unexpected(Token::Kind kind) {
     auto msg = std::format("expected a {}", TokenToStringDiag(kind));
     builder_->AddError(token_.loc, ErrorCode::UnexpectedToken, msg);
-    return std::unexpected(Result::Error);
+    return std::unexpected(ErrorCode::Error);
 }
 
-std::unexpected<Result> Parser::Unmatched() {
-    return std::unexpected(Result::Unmatched);
+std::unexpected<ErrorCode> Parser::Unmatched() {
+    return std::unexpected(ErrorCode::Unmatched);
 }
 
 bool Parser::Peek(Token::Kind kind) {
