@@ -1,6 +1,7 @@
 #pragma once
 #include "ast_node.h"
 #include "ast_type.h"
+#include "ast_variable.h"
 
 namespace wgsl::ast {
 
@@ -35,7 +36,9 @@ namespace wgsl::ast {
 
 // Define enum
 #define ENUM(Name, Str) Name,
-enum class OpCode: uint8_t { OP_CODES(ENUM) _Max, };
+enum class OpCode : uint8_t {
+    OP_CODES(ENUM) _Max,
+};
 #undef ENUM
 
 constexpr std::string_view to_string(OpCode code) {
@@ -104,6 +107,10 @@ public:
 
     // Result type of the expression after all conversions
     ast::Type* type = nullptr;
+
+public:
+    template <class T>
+    std::optional<T> TryGetConstValueAs();
 
 protected:
     Expression(SourceLoc loc, NodeType nodeType, Type* type)
@@ -208,3 +215,23 @@ public:
 };
 
 }  // namespace wgsl::ast
+
+template <class T>
+std::optional<T> wgsl::ast::Expression::TryGetConstValueAs() {
+    if (auto e = this->As<FloatLiteralExpression>()) {
+        return static_cast<T>(e->value);
+    }
+    if (auto e = this->As<IntLiteralExpression>()) {
+        return static_cast<T>(e->value);
+    }
+    if (auto e = this->As<BoolLiteralExpression>()) {
+        return static_cast<T>(e->value);
+    }
+    // Ident
+    if (auto ident = this->As<IdentExpression>()) {
+        if (auto var = ident->decl->As<ConstVariable>()) {
+            return var->initializer->TryGetConstValueAs<T>();
+        }
+    }
+    return std::nullopt;
+}

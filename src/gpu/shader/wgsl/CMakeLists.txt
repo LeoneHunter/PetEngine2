@@ -11,6 +11,7 @@ module(
         parser.h
         program.h
         program_builder.h
+        builtin_op.h
         lexer.h
         token.h
         common.h

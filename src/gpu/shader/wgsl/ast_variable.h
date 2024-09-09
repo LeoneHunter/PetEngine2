@@ -1,11 +1,11 @@
 #pragma once
-#include "ast_expression.h"
 #include "ast_node.h"
 #include "ast_type.h"
 
 namespace wgsl::ast {
 
 class Attribute;
+class Expression;
 
 // Abstract base for 'var', 'override', 'const'
 class Variable : public Node {

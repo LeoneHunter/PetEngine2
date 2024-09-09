@@ -55,6 +55,10 @@ public:
 
     constexpr bool IsBool() const { return kind == Kind::Bool; }
 
+    constexpr bool IsScalar() const {
+        return IsInteger() || IsFloat() || IsBool();
+    }
+
     // TODO: Handle templates
     constexpr bool IsInteger() const {
         switch (kind) {
@@ -142,6 +146,27 @@ constexpr std::string_view GetTypeSymbolName(Type::Kind kind) {
     return to_string(kind);
 }
 
+constexpr bool CheckOverflow(ast::Type* type, bool val) {
+    return true;
+}
+
+constexpr bool CheckOverflow(ast::Type* type, int64_t val) {
+    if (type->kind == ast::Type::Kind::U32) {
+        return val <= std::numeric_limits<uint32_t>::max();
+    }
+    if (type->kind == ast::Type::Kind::I32) {
+        return val <= std::numeric_limits<int32_t>::max();
+    }
+    return true;
+}
+
+constexpr bool CheckOverflow(ast::Type* type, double val) {
+    if (type->kind == ast::Type::Kind::F32) {
+        return val <= std::numeric_limits<float>::max();
+    }
+    // TODO: half not implemented
+    return true;
+}
 
 }  // namespace wgsl::ast
 

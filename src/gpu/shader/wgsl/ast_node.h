@@ -10,26 +10,31 @@ namespace wgsl::ast {
 enum class NodeType : uint64_t {
     Unknown = 0,
     Node = 1 << 0,
+    // Support nodes
     Type = 1 << 1,
+    BuiltinOp = 1 << 2,
+    TypeGen = 1 << 3,
     // Expressions
-    Expression = 1 << 4,
-    UnaryExpression = 1 << 5,
-    BinaryExpression = 1 << 6,
-    LiteralExpression = 1 << 7,
-    FloatLiteralExpression = 1 << 8,
-    IntLiteralExpression = 1 << 9,
-    BoolLiteralExpression = 1 << 10,
-    IdentExpression = 1 << 11,
+    Expression = 1 << 10,
+    UnaryExpression = 1 << 11,
+    BinaryExpression = 1 << 12,
+    LiteralExpression = 1 << 13,
+    FloatLiteralExpression = 1 << 14,
+    IntLiteralExpression = 1 << 15,
+    BoolLiteralExpression = 1 << 16,
+    IdentExpression = 1 << 17,
     // Variables
-    Variable = 1 << 15,
-    OverrideVariable = 1 << 16,
-    ConstVariable = 1 << 17,
-    VarVariable = 1 << 18,
-    Attribute = 1 << 19,
+    Variable = 1 << 20,
+    OverrideVariable = 1 << 21,
+    ConstVariable = 1 << 22,
+    VarVariable = 1 << 23,
+    Attribute = 1 << 24,
     // Statements
 };
 DEFINE_ENUM_FLAGS_OPERATORS(NodeType);
 
+// A base class for various classes owned by Program
+// Main subclasses are ast nodes
 class Node {
 public:
     template <std::derived_from<Node> T>
@@ -58,6 +63,9 @@ public:
 protected:
     Node(SourceLoc loc, NodeType type)
         : typeFlags_(type | kStaticType), loc_(loc) {}
+
+    Node(NodeType type)
+        : typeFlags_(type | kStaticType) {}
 
 private:
     NodeType typeFlags_;

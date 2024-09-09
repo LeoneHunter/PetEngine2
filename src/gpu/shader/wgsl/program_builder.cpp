@@ -1,431 +1,94 @@
 #include "program_builder.h"
+#include "builtin_op.h"
 #include "parser.h"
 #include "program.h"
 
 namespace wgsl {
 
-namespace {
-
-using EvalResult = std::variant<double, int64_t, bool>;
-using ExpectedType = Expected<ast::Type*>;
-using ExpectedEvalResult = Expected<EvalResult>;
-
-template <class T>
-std::optional<T> TryGetConstValueAs(ast::Expression* expr) {
-    if (!expr) {
-        return std::nullopt;
-    }
-    if (auto e = expr->As<FloatLiteralExpression>()) {
-        return static_cast<T>(e->value);
-    }
-    if (auto e = expr->As<IntLiteralExpression>()) {
-        return static_cast<T>(e->value);
-    }
-    if (auto e = expr->As<BoolLiteralExpression>()) {
-        return static_cast<T>(e->value);
-    }
-    // Ident
-    if (auto ident = expr->As<IdentExpression>()) {
-        if (auto var = ident->decl->As<ConstVariable>()) {
-            return TryGetConstValueAs<T>(var->initializer);
-        }
-    }
-    return std::nullopt;
-}
-
-constexpr bool CheckOverflow(ast::Type* type, bool val) {
-    return true;
-}
-
-constexpr bool CheckOverflow(ast::Type* type, int64_t val) {
-    if (type->kind == Type::Kind::U32) {
-        return val <= std::numeric_limits<uint32_t>::max();
-    }
-    if (type->kind == Type::Kind::I32) {
-        return val <= std::numeric_limits<int32_t>::max();
-    }
-    return true;
-}
-
-constexpr bool CheckOverflow(ast::Type* type, double val) {
-    if (type->kind == Type::Kind::F32) {
-        return val <= std::numeric_limits<float>::max();
-    }
-    // TODO: half not implemented
-    return true;
-}
-
-// Type analysis result of an operator expression
-// E.g. (3 + 3.0f) -> { common_type: f32, return_type: f32, value: 6.0f }
-// E.g. (true && true) -> { common_type: bool, return_type: bool, value: true }
-struct OpResult {
-    // Common type for binary operators
-    // null if no conversion possible
-    //   u32, f32 -> error
-    //   f32, abstr_int -> f32
-    //   abstr_int, abstr_float -> abst_float
-    ast::Type* commonType = nullptr;
-    // Result type of the operation
-    // For arithmetic -> common type
-    // For logical -> bool
-    ast::Type* returnType = nullptr;
-    // If all arguments are const tries to evaluate
-    std::optional<EvalResult> value;
-    // Result error code
-    // InvalidArgs if input types are not matched. I.e. float for boolean op
-    // ConstOverflow if types are valid and const but operation overflows
-    ErrorCode err = ErrorCode::Ok;
-};
-
-struct UnaryOp {
-    virtual OpResult CheckAndEval(ast::Expression* arg) const = 0;
-};
-
-// Only negation: '-'
-struct UnaryArithmeticOp : public UnaryOp {
-    OpResult CheckAndEval(ast::Expression* arg) const override {
-        DASSERT(arg);
-        DASSERT(arg->type);
-        OpResult res;
-        res.commonType = arg->type;
-        res.returnType = arg->type;
-        // Check type
-        if (!arg->type->IsArithmetic()) {
-            res.err = ErrorCode::InvalidArgs;
-            return res;
-        }
-        // Try evaluate if const
-        if (arg->type->IsFloat()) {
-            if (auto val = TryGetConstValueAs<double>(arg)) {
-                res.value = EvalResult(-*val);
-            }
-        } else if (arg->type->IsInteger()) {
-            if (auto val = TryGetConstValueAs<int64_t>(arg)) {
-                res.value = EvalResult(-*val);
-            }
-        }
-        return res;
-    }
-};
-
-// Only logical negation: '!'
-struct UnaryLogicalOp : public UnaryOp {
-    ast::Type* boolType = nullptr;
-
-    UnaryLogicalOp(ast::Type* boolType) : boolType(boolType) {}
-
-    OpResult CheckAndEval(ast::Expression* arg) const override {
-        DASSERT(arg);
-        DASSERT(arg->type);
-        OpResult res;
-        res.commonType = arg->type;
-        res.returnType = boolType;
-        // Check type
-        if (!arg->type->IsBool()) {
-            res.err = ErrorCode::InvalidArgs;
-            return res;
-        }
-        // Try evaluate if const
-        if (auto val = TryGetConstValueAs<bool>(arg)) {
-            res.value = EvalResult(!*val);
-        }
-        return res;
-    }
-};
-
-// Only bitwise negation: '~'
-struct UnaryBitwiseOp : public UnaryOp {
-    OpResult CheckAndEval(ast::Expression* arg) const override {
-        DASSERT(arg);
-        DASSERT(arg->type);
-        OpResult res;
-        res.commonType = arg->type;
-        res.returnType = arg->type;
-        // Check type
-        if (!arg->type->IsInteger()) {
-            res.err = ErrorCode::InvalidArgs;
-            return res;
-        }
-        // Try evaluate if const
-        if (auto val = TryGetConstValueAs<int64_t>(arg)) {
-            int64_t resultVal = 0;
-            if (arg->type->IsSigned()) {
-                resultVal = ~*val;
-            } else {
-                if (!CheckOverflow(res.returnType, *val)) {
-                    res.err = ErrorCode::ConstOverflow;
-                    return res;
-                }
-                const auto val32 = ~(static_cast<uint32_t>(*val));
-                resultVal = static_cast<int64_t>(val32);
-            }
-            res.value = EvalResult(resultVal);
-        }
-        return res;
-    }
-};
-
-struct BinaryOp {
-    virtual OpResult CheckAndEval(ast::Expression* lhs,
-                                  ast::Expression* rhs) const = 0;
-
-    // Checks if two types can be converted to a common type
-    Expected<ast::Type*> GetCommonType(ast::Expression* lhs,
-                                       ast::Expression* rhs) const {
-        // Check binary op. I.e. "a + b", "7 + 1", "1.0f + 1"
-        DASSERT(lhs->type && rhs->type);
-        if (lhs->type == rhs->type) {
-            return lhs->type;
-        }
-        // Concrete
-        constexpr uint32_t kMax = std::numeric_limits<uint32_t>::max();
-        const auto lr = lhs->type->GetConversionRankTo(rhs->type);
-        const auto rl = rhs->type->GetConversionRankTo(lhs->type);
-        // Not convertible to each other
-        if (lr == kMax && rl == kMax) {
-            return std::unexpected(ErrorCode::InvalidArgs);
-        }
-        // Find common type
-        auto* resultType = lhs->type;
-        if (rl > lr) {
-            resultType = rhs->type;
-        }
-        return resultType;
-    }
-
-    bool CheckTypes(OpResult& out,
-                    ast::Expression* lhs,
-                    ast::Expression* rhs) const {
-        DASSERT(lhs && rhs);
-        DASSERT(lhs->type && rhs->type);
-        // Check types
-        if (auto result = GetCommonType(lhs, rhs)) {
-            out.commonType = *result;
-        } else {
-            out.err = ErrorCode::InvalidArgs;
-            return false;
-        }
-        return true;
-    }
-
-    // Evaluates an expression using 'EvalOp()' from 'Derived'
-    template <class T, class Derived>
-    void Eval(OpResult& res, ast::Expression* lhs, ast::Expression* rhs) const {
-        auto lval = TryGetConstValueAs<T>(lhs);
-        auto rval = TryGetConstValueAs<T>(rhs);
-        auto* retType = res.returnType;
-
-        if (lval && rval) {
-            auto* derived = (Derived*)this;
-            const auto result = derived->EvalOp<T>(*lval, *rval);
-
-            if (!retType->IsAbstract() && !CheckOverflow(retType, result)) {
-                res.err = ErrorCode::ConstOverflow;
-            }
-            res.value = result;
-        }
-    }
-};
-
-// Operators: + - * / %
-struct BinaryArithmeticOp : public BinaryOp {
-    OpCode op;
-
-    BinaryArithmeticOp(OpCode op) : op(op) {}
-
-    OpResult CheckAndEval(ast::Expression* lhs,
-                          ast::Expression* rhs) const override {
-        OpResult res;
-        if (!CheckTypes(res, lhs, rhs)) {
-            return res;
-        }
-        res.returnType = res.commonType;
-        if (!res.returnType->IsArithmetic()) {
-            res.err = ErrorCode::InvalidArgs;
-            return res;
-        }
-        ast::Type* commonType = res.commonType;
-        // Try evaluate if const
-        if (commonType->IsFloat()) {
-            Eval<double, BinaryArithmeticOp>(res, lhs, rhs);
-        } else if (commonType->IsInteger()) {
-            Eval<int64_t, BinaryArithmeticOp>(res, lhs, rhs);
-        }
-        return res;
-    }
-
-    // Used by 'Eval' from parent
-    template <class T>
-    constexpr T EvalOp(T lhs, T rhs) const {
-        using Op = OpCode;
-        switch (op) {
-            case Op::Add: return lhs + rhs;
-            case Op::Sub: return lhs - rhs;
-            case Op::Mul: return lhs * rhs;
-            case Op::Div: return lhs / rhs;
-            default: return {};
-        }
-    }
-};
-
-// Operators: > >= < <= == !=
-struct BinaryLogicalOp : public BinaryOp {
-    OpCode op;
-    ast::Type* boolType;
-
-    BinaryLogicalOp(OpCode op, ast::Type* boolType)
-        : op(op), boolType(boolType) {}
-
-    OpResult CheckAndEval(ast::Expression* lhs,
-                          ast::Expression* rhs) const override {
-        OpResult res;
-        if (!CheckTypes(res, lhs, rhs)) {
-            return res;
-        }
-        ast::Type* commonType = res.commonType;
-        res.returnType = boolType;
-
-        // Try evaluate if const
-        if (commonType->IsFloat()) {
-            Eval<double, BinaryLogicalOp>(res, lhs, rhs);
-        } else if (commonType->IsInteger()) {
-            Eval<int64_t, BinaryLogicalOp>(res, lhs, rhs);
-        } else if (commonType->IsBool()) {
-            Eval<bool, BinaryLogicalOp>(res, lhs, rhs);
-        }
-        return res;
-    }
-
-    template <class T>
-    constexpr bool EvalOp(T lhs, T rhs) const {
-        using Op = OpCode;
-        switch (op) {
-            case Op::Less: return lhs < rhs;
-            case Op::Greater: return lhs > rhs;
-            case Op::LessEqual: return lhs <= rhs;
-            case Op::GreaterEqual: return lhs >= rhs;
-            case Op::Equal: return lhs == rhs;
-            case Op::NotEqual: return lhs != rhs;
-            case Op::LogAnd: return lhs && rhs;
-            case Op::LogOr: return lhs || rhs;
-            default: return {};
-        }
-    }
-};
-
-// Operators:
-struct BinaryBitwiseOp : public BinaryOp {
-    OpCode op;
-
-    BinaryBitwiseOp(OpCode op) : op(op) {}
-
-    OpResult CheckAndEval(ast::Expression* lhs,
-                          ast::Expression* rhs) const override {
-        OpResult res;
-        if (!CheckTypes(res, lhs, rhs)) {
-            return res;
-        }
-        res.returnType = res.commonType;
-        if (!res.returnType->IsInteger()) {
-            res.err = ErrorCode::InvalidArgs;
-            return res;
-        }
-        Eval<int64_t, BinaryBitwiseOp>(res, lhs, rhs);
-        return res;
-    }
-
-    template <class T>
-    constexpr bool EvalOp(T lhs, T rhs) const {
-        using Op = OpCode;
-        switch (op) {
-            case Op::Less: return lhs < rhs;
-            case Op::Greater: return lhs > rhs;
-            case Op::LessEqual: return lhs <= rhs;
-            case Op::GreaterEqual: return lhs >= rhs;
-            case Op::Equal: return lhs == rhs;
-            case Op::NotEqual: return lhs != rhs;
-            case Op::LogAnd: return lhs && rhs;
-            case Op::LogOr: return lhs || rhs;
-            default: return {};
-        }
-    }
-};
-
-}  // namespace
-
-// Helper to check and evaluate builtin operations
-struct ProgramBuilder::OpTable {
-    OpTable(ast::Type* boolType) {
-        unaryMap.resize(uint8_t(OpCode::_Max));
-        unaryMap[uint8_t(OpCode::Negation)] = new UnaryArithmeticOp();
-        unaryMap[uint8_t(OpCode::BitNot)] = new UnaryBitwiseOp();
-        unaryMap[uint8_t(OpCode::LogNot)] = new UnaryLogicalOp(boolType);
-
-        binaryOp.resize(uint8_t(OpCode::_Max));
-        binaryOp[uint8_t(OpCode::Mul)] = new BinaryArithmeticOp(OpCode::Mul);
-        binaryOp[uint8_t(OpCode::Div)] = new BinaryArithmeticOp(OpCode::Div);
-        binaryOp[uint8_t(OpCode::Add)] = new BinaryArithmeticOp(OpCode::Add);
-        binaryOp[uint8_t(OpCode::Sub)] = new BinaryArithmeticOp(OpCode::Sub);
-        binaryOp[uint8_t(OpCode::Mod)] = new BinaryArithmeticOp(OpCode::Mod);
-
-        binaryOp[uint8_t(OpCode::LogAnd)] =
-            new BinaryLogicalOp(OpCode::LogAnd, boolType);
-        binaryOp[uint8_t(OpCode::LogOr)] =
-            new BinaryLogicalOp(OpCode::LogOr, boolType);
-        binaryOp[uint8_t(OpCode::Less)] =
-            new BinaryLogicalOp(OpCode::Less, boolType);
-        binaryOp[uint8_t(OpCode::Greater)] =
-            new BinaryLogicalOp(OpCode::Greater, boolType);
-        binaryOp[uint8_t(OpCode::LessEqual)] =
-            new BinaryLogicalOp(OpCode::LessEqual, boolType);
-        binaryOp[uint8_t(OpCode::GreaterEqual)] =
-            new BinaryLogicalOp(OpCode::GreaterEqual, boolType);
-        binaryOp[uint8_t(OpCode::Equal)] =
-            new BinaryLogicalOp(OpCode::Equal, boolType);
-        binaryOp[uint8_t(OpCode::NotEqual)] =
-            new BinaryLogicalOp(OpCode::NotEqual, boolType);
-
-        binaryOp[uint8_t(OpCode::BitAnd)] = new BinaryBitwiseOp(OpCode::BitAnd);
-        binaryOp[uint8_t(OpCode::BitOr)] = new BinaryBitwiseOp(OpCode::BitOr);
-        binaryOp[uint8_t(OpCode::BitXor)] = new BinaryBitwiseOp(OpCode::BitXor);
-        binaryOp[uint8_t(OpCode::BitLsh)] = new BinaryBitwiseOp(OpCode::BitLsh);
-        binaryOp[uint8_t(OpCode::BitRsh)] = new BinaryBitwiseOp(OpCode::BitRsh);
-    }
-
-    UnaryOp* GetUnaryOp(OpCode op) {
-        if (!IsOpUnary(op)) {
-            return nullptr;
-        }
-        return unaryMap[uint8_t(op)];
-    }
-
-    BinaryOp* GetBinaryOp(OpCode op) {
-        if (IsOpUnary(op)) {
-            return nullptr;
-        }
-        return binaryOp[uint8_t(op)];
-    }
-
-    std::vector<UnaryOp*> unaryMap;
-    std::vector<BinaryOp*> binaryOp;
-};
-
-//===========================================================================//
-
 ProgramBuilder::ProgramBuilder() : program_(new Program()) {}
 
 ProgramBuilder::~ProgramBuilder() {}
+
+void ProgramBuilder::CreateBuiltinSymbols() {
+    Program::Scope& scope = *program_->globalScope_;
+    BumpAllocator& alloc = program_->alloc_;
+
+    const auto makeScalarTypeSymbol = [&](ast::Type::Kind kind) {
+        auto* type =
+            alloc.Allocate<ast::Type>(SourceLoc(), kind, to_string(kind));
+        scope.InsertSymbol(to_string(kind), type);
+    };
+    makeScalarTypeSymbol(ast::Type::Kind::AbstrFloat);
+    makeScalarTypeSymbol(ast::Type::Kind::AbstrInt);
+    makeScalarTypeSymbol(ast::Type::Kind::U32);
+    makeScalarTypeSymbol(ast::Type::Kind::I32);
+    makeScalarTypeSymbol(ast::Type::Kind::F32);
+    makeScalarTypeSymbol(ast::Type::Kind::Bool);
+
+    ast::Type* boolType = currentScope_->FindType("bool");
+
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::Negation),
+                       alloc.Allocate<UnaryArithmeticOp>());
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::Negation),
+                       alloc.Allocate<UnaryArithmeticOp>());
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::BitNot),
+                       alloc.Allocate<UnaryBitwiseOp>());
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::LogNot),
+                       alloc.Allocate<UnaryLogicalOp>(boolType));
+
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::Mul),
+                       alloc.Allocate<BinaryArithmeticOp>(OpCode::Mul));
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::Div),
+                       alloc.Allocate<BinaryArithmeticOp>(OpCode::Div));
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::Add),
+                       alloc.Allocate<BinaryArithmeticOp>(OpCode::Add));
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::Sub),
+                       alloc.Allocate<BinaryArithmeticOp>(OpCode::Sub));
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::Mod),
+                       alloc.Allocate<BinaryArithmeticOp>(OpCode::Mod));
+
+    scope.InsertSymbol(
+        GetBuiltinOpName(OpCode::LogAnd),
+        alloc.Allocate<BinaryLogicalOp>(OpCode::LogAnd, boolType));
+    scope.InsertSymbol(
+        GetBuiltinOpName(OpCode::LogOr),
+        alloc.Allocate<BinaryLogicalOp>(OpCode::LogOr, boolType));
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::Less),
+                       alloc.Allocate<BinaryLogicalOp>(OpCode::Less, boolType));
+    scope.InsertSymbol(
+        GetBuiltinOpName(OpCode::Greater),
+        alloc.Allocate<BinaryLogicalOp>(OpCode::Greater, boolType));
+    scope.InsertSymbol(
+        GetBuiltinOpName(OpCode::LessEqual),
+        alloc.Allocate<BinaryLogicalOp>(OpCode::LessEqual, boolType));
+    scope.InsertSymbol(
+        GetBuiltinOpName(OpCode::GreaterEqual),
+        alloc.Allocate<BinaryLogicalOp>(OpCode::GreaterEqual, boolType));
+    scope.InsertSymbol(
+        GetBuiltinOpName(OpCode::Equal),
+        alloc.Allocate<BinaryLogicalOp>(OpCode::Equal, boolType));
+    scope.InsertSymbol(
+        GetBuiltinOpName(OpCode::NotEqual),
+        alloc.Allocate<BinaryLogicalOp>(OpCode::NotEqual, boolType));
+
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::BitAnd),
+                       alloc.Allocate<BinaryBitwiseOp>(OpCode::BitAnd));
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::BitOr),
+                       alloc.Allocate<BinaryBitwiseOp>(OpCode::BitOr));
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::BitXor),
+                       alloc.Allocate<BinaryBitwiseOp>(OpCode::BitXor));
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::BitLsh),
+                       alloc.Allocate<BinaryBitwiseOp>(OpCode::BitLsh));
+    scope.InsertSymbol(GetBuiltinOpName(OpCode::BitRsh),
+                       alloc.Allocate<BinaryBitwiseOp>(OpCode::BitRsh));
+}
 
 void ProgramBuilder::Build(std::string_view code) {
     // Copy source code
     program_->sourceCode_ = std::string(code);
     code = program_->sourceCode_;
     currentScope_ = program_->globalScope_;
-
-    program_->CreateBuiltinTypes();
-    ast::Type* type = currentScope_->FindType("bool");
-    DASSERT(type);
-    opTable_.reset(new OpTable(type));
+    CreateBuiltinSymbols();
 
     auto parser = Parser(code, this);
     parser_ = &parser;
@@ -539,8 +202,11 @@ Expected<Expression*> ProgramBuilder::CreateBinaryExpr(SourceLoc loc,
                                                        Expression* lhs,
                                                        OpCode op,
                                                        Expression* rhs) {
-    BinaryOp* handler = opTable_->GetBinaryOp(op);
+    auto* symbol = currentScope_->FindSymbol(GetBuiltinOpName(op));
+    DASSERT(symbol);
+    BuiltinOp* handler = symbol->As<BuiltinOp>();
     DASSERT(handler);
+
     OpResult result = handler->CheckAndEval(lhs, rhs);
     // Check errors
     if (result.err == ErrorCode::InvalidArgs) {
@@ -574,9 +240,11 @@ Expected<Expression*> ProgramBuilder::CreateBinaryExpr(SourceLoc loc,
 Expected<Expression*> ProgramBuilder::CreateUnaryExpr(SourceLoc loc,
                                                       OpCode op,
                                                       Expression* rhs) {
-    // TODO: Handle templates
-    UnaryOp* handler = opTable_->GetUnaryOp(op);
+    auto* symbol = currentScope_->FindSymbol(GetBuiltinOpName(op));
+    DASSERT(symbol);
+    BuiltinOp* handler = symbol->As<BuiltinOp>();
     DASSERT(handler);
+
     OpResult result = handler->CheckAndEval(rhs);
     // Check errors
     if (result.err == ErrorCode::InvalidArgs) {
