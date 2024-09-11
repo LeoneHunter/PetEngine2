@@ -4,6 +4,7 @@
 
 #include "ast_attribute.h"
 #include "ast_expression.h"
+#include "ast_function.h"
 #include "ast_type.h"
 #include "ast_variable.h"
 
@@ -22,91 +23,164 @@ public:
     ~ProgramBuilder();
 
     void Build(std::string_view code);
-
     std::unique_ptr<Program> Finalize();
 
     void PushGlobalDecl(ast::Variable* var);
-
-    // void PushGlobalDecl(ast::Struct* var);
-
-    // void PushGlobalDecl(ast::Function* fn);
+    void PushGlobalDecl(ast::Struct* var);
+    void PushGlobalDecl(ast::Function* fn);
 
 public:
-    // Error with message
-    template <class... Args>
-    void AddError(SourceLoc loc,
-                  ErrorCode code,
-                  std::format_string<Args...> fmt,
-                  Args&&... args) {
-        const auto msg = std::format(fmt, std::forward<Args>(args)...);
-        FormatAndAddMsg(loc, code, msg);
-    }
-
-    void AddError(SourceLoc loc, ErrorCode code, const std::string& str) {
-        FormatAndAddMsg(loc, code, str);
-    }
-
-    // Error with default message
-    void AddError(SourceLoc loc, ErrorCode code) {
-        FormatAndAddMsg(loc, code, std::string(ErrorCodeDefaultMsg(code)));
-    }
-
     bool ShouldStopParsing();
+
+    template <class... Args>
+    std::unexpected<ErrorCode> ReportError(SourceLoc loc,
+                                           ErrorCode code,
+                                           std::format_string<Args...> fmt,
+                                           Args&&... args) {
+        return ReportError(loc, code,
+                           std::format(fmt, std::forward<Args>(args)...));
+    }
+
+    std::unexpected<ErrorCode> ReportError(SourceLoc loc, ErrorCode code) {
+        return ReportErrorImpl(loc, code, "");
+    }
+
+    std::unexpected<ErrorCode> ReportError(SourceLoc loc,
+                                           ErrorCode code,
+                                           const std::string& msg) {
+        return ReportErrorImpl(loc, code, msg);
+    }
 
 public:
     Expected<ConstVariable*> CreateConstVar(
         SourceLoc loc,
-        Ident ident,
-        const std::optional<TypeInfo>& typeInfo,
-        Expression* initializer);
+        const Ident& ident,
+        const std::optional<Ident>& typeSpecifier,
+        const Expression* initializer);
 
     // 'var' variable declaration
-    Expected<VarVariable*> CreateVar(
-        SourceLoc loc,
-        Ident ident,
-        const std::optional<TemplateList>& varTemplate,
-        const std::optional<TypeInfo>& typeSpecifier,
-        const std::vector<ast::Attribute*>& attributes,
-        Expression* initializer);
+    Expected<VarVariable*> CreateVar(SourceLoc loc,
+                                     const Ident& ident,
+                                     std::optional<AddressSpace> addrSpace,
+                                     std::optional<AccessMode> accessMode,
+                                     const std::optional<Ident>& typeSpecifier,
+                                     AttributeList& attributes,
+                                     const Expression* initializer);
+
+    Expected<Struct*> CreateStruct(SourceLoc loc,
+                                   const Ident& ident,
+                                   MemberList& members);
+
+    Expected<Member*> CreateMember(SourceLoc loc,
+                                   const Ident& ident,
+                                   const Ident& typeSpecifier,
+                                   AttributeList& attributes);
 
     Expected<Expression*> CreateBinaryExpr(SourceLoc loc,
-                                           Expression* lhs,
                                            OpCode op,
-                                           Expression* rhs);
+                                           const Expression* lhs,
+                                           const Expression* rhs);
 
     Expected<Expression*> CreateUnaryExpr(SourceLoc loc,
                                           OpCode op,
-                                          Expression* rhs);
+                                          const Expression* rhs);
 
     Expected<IdentExpression*> CreateIdentExpr(const Ident& ident);
 
+    Expected<Expression*> CreateFnCallExpr(const Ident& ident,
+                                           const ExpressionList& args);
+
     Expected<IntLiteralExpression*> CreateIntLiteralExpr(SourceLoc loc,
                                                          int64_t value,
-                                                         Type::Kind type);
+                                                         ScalarKind type);
 
 
     Expected<FloatLiteralExpression*> CreateFloatLiteralExpr(SourceLoc loc,
                                                              double value,
-                                                             Type::Kind type);
+                                                             ScalarKind type);
 
     Expected<BoolLiteralExpression*> CreateBoolLiteralExpr(SourceLoc loc,
                                                            bool value);
 
     Expected<ast::Attribute*> CreateAttribute(SourceLoc loc,
-                                              wgsl::AttributeName attr,
-                                              Expression* expr = nullptr);
+                                              AttributeName attr,
+                                              const Expression* expr = nullptr);
 
 private:
-    // If node is integer literal or const integer ident, returns the value
-    std::optional<int64_t> TryGetConstInt(ast::Node* node);
-    std::optional<double> ReadConstValueDouble(ast::Node* node);
+    Expected<Expression*> ResolveArithmeticUnaryOp(SourceLoc loc,
+                                                   OpCode op,
+                                                   const Expression* rhs);
 
-    bool IsNodeConst(ast::Node* node);
+    Expected<Expression*> ResolveLogicalUnaryOp(SourceLoc loc,
+                                                OpCode op,
+                                                const Expression* rhs);
+
+    Expected<Expression*> ResolveBitwiseUnaryOp(SourceLoc loc,
+                                                OpCode op,
+                                                const Expression* rhs);
+
+    Expected<Expression*> ResolveArithmeticBinaryOp(SourceLoc loc,
+                                                    OpCode op,
+                                                    const Expression* lhs,
+                                                    const Expression* rhs);
+
+    Expected<Expression*> ResolveLogicalBinaryOp(SourceLoc loc,
+                                                 OpCode op,
+                                                 const Expression* lhs,
+                                                 const Expression* rhs);
+
+    Expected<Expression*> ResolveBitwiseBinaryOp(SourceLoc loc,
+                                                 OpCode op,
+                                                 const Expression* lhs,
+                                                 const Expression* rhs);
+
+
+    Expected<const ast::Type*> ResolveTypeName(const Ident& typeSpecifier);
+
+    Expected<const ast::Array*> ResolveArray(const Ident& ident);
+    Expected<const ast::Vec*> ResolveVec(const Ident& ident);
+    Expected<const ast::BuiltinFunction*> ResolveBuiltinFunc(
+        const Ident& symbol);
+
+private:
+    template <class T>
+    ErrorCode CheckOverflow(const ast::Scalar* type, T val) const {
+        if (type->kind == ast::ScalarKind::U32) {
+            if (val > std::numeric_limits<uint32_t>::max()) {
+                return ErrorCode::ConstOverflow;
+            }
+        }
+        if (type->kind == ast::ScalarKind::I32) {
+            if (val > std::numeric_limits<int32_t>::max()) {
+                return ErrorCode::ConstOverflow;
+            }
+        }
+        if (type->kind == ast::ScalarKind::F32) {
+            if (val > std::numeric_limits<float>::max()) {
+                return ErrorCode::ConstOverflow;
+            }
+        }
+        return ErrorCode::Ok;
+    }
+
+    Expected<const ast::Scalar*> ResolveBinaryExprTypes(SourceLoc loc,
+                                              const ast::Expression* lhs,
+                                              const ast::Expression* rhs);
+
+    ErrorCode CheckExpressionArg(SourceLoc loc, const ast::Expression* arg);
+
+    void CreateBuiltinSymbols();
+
+    std::unexpected<ErrorCode> ReportErrorImpl(SourceLoc loc,
+                                               ErrorCode code,
+                                               const std::string& msg = {}) {
+        const auto m =
+            msg.empty() ? std::string(ErrorCodeDefaultMsg(code)) : msg;
+        FormatAndAddMsg(loc, code, m);
+        return std::unexpected(code);
+    }
 
     void FormatAndAddMsg(SourceLoc loc, ErrorCode code, const std::string& msg);
-
-    Expected<ast::Type*> TypeCheckAndConvert(ast::Expression* lhs,
-                                             ast::Expression* rhs);
 
 private:
     std::unique_ptr<Program> program_;
@@ -114,10 +188,6 @@ private:
     Program::Scope* currentScope_ = nullptr;
     Parser* parser_ = nullptr;
     bool stopParsing_ = false;
-
-    struct OpTable;
-    // Helper to check and evaluate builtin operations
-    std::unique_ptr<OpTable> opTable_;
 };
 
 

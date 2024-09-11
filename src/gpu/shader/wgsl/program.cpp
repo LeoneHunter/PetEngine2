@@ -8,6 +8,8 @@
 
 namespace wgsl {
 
+thread_local Program* currentProgram = nullptr;
+
 std::unique_ptr<Program> Program::Create(std::string_view code) {
     auto builder = ProgramBuilder();
     builder.Build(code);
@@ -16,7 +18,19 @@ std::unique_ptr<Program> Program::Create(std::string_view code) {
 }
 
 Program::Program() {
+    // Nested program building doesn't make sense
+    DASSERT(!currentProgram);
+    currentProgram = this;
     globalScope_ = alloc_.Allocate<Scope>(nullptr);
+}
+
+Program::~Program() {
+    currentProgram = nullptr;
+}
+
+Program* Program::GetCurrent() {
+    DASSERT(currentProgram);
+    return currentProgram;
 }
 
 std::string Program::GetDiagsAsString() {
@@ -32,32 +46,17 @@ std::string Program::GetDiagsAsString() {
     return out;
 }
 
-const std::vector<Program::DiagMsg>& Program::GetDiags() {
-    return diags_;
-}
-
 void Program::PrintAst(TreePrinter* printer) const {
     ast::AstPrinter astPrinter;
-    for (const ast::Variable* var : globalScope_->variables) {
-        astPrinter.Print(printer, var);
-    }
+    // for (const ast::Variable* var : globalScope_->variables) {
+    //     astPrinter.Print(printer, var);
+    // }
 }
 
-const ast::Node* Program::FindSymbol(std::string_view name,
-                                     std::string_view scope) const {
+const ast::Symbol* Program::FindSymbol(std::string_view name,
+                                       std::string_view scope) const {
     DASSERT(scope.empty() && "Unimplemented");
     return globalScope_->FindSymbol(name);
-}
-
-void Program::CreateBuiltinTypes() {
-    auto start = (uint64_t)Type::Kind::AbstrInt;
-    auto end = (uint64_t)Type::Kind::F16;
-    for (uint32_t i = start; i <= end; ++i) {
-        const auto kind = (Type::Kind)i;
-        auto* type =
-            alloc_.Allocate<ast::Type>(SourceLoc(), kind, to_string(kind));
-        globalScope_->InsertSymbol(to_string(kind), type);
-    }
 }
 
 }  // namespace wgsl

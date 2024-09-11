@@ -131,7 +131,7 @@ public:
         return 0.0;
     }
 
-    std::string_view Source() const {
+    const std::string_view Source() const {
         if (std::holds_alternative<std::string_view>(value)) {
             return std::get<std::string_view>(value);
         }
@@ -139,10 +139,10 @@ public:
     }
 
     template<class... T>
-    constexpr bool Match(T&&... val) { return (MatchImpl(val) || ...); }
+    constexpr bool Match(T&&... val) const { return (MatchImpl(val) || ...); }
 
 private:
-    constexpr bool MatchImpl(std::string_view val) {
+    constexpr bool MatchImpl(std::string_view val) const {
         return Source() == val;
     }
 };
