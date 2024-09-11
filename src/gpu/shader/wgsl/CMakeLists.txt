@@ -7,11 +7,12 @@ module(
         program.cpp
         program_builder.cpp
         ast_printer.cpp
+        program_alloc.cpp
     HDRS
         parser.h
         program.h
         program_builder.h
-        builtin_op.h
+        program_alloc.h
         lexer.h
         token.h
         common.h
@@ -20,6 +21,7 @@ module(
         ast_attribute.h
         ast_expression.h
         ast_variable.h
+        ast_function.h
     DEPS
         base
 )

@@ -7,29 +7,41 @@
 namespace wgsl::ast {
 
 // Node type and type flags for casting
+#define NODE_TYPE_LIST(V)         \
+    V(Node, 1)                    \
+    V(Symbol, 2)                  \
+    /* Types */                   \
+    V(Type, 3)                    \
+    V(Scalar, 4)                  \
+    V(Vector, 5)                  \
+    V(Array, 6)                   \
+    V(Matrix, 7)                  \
+    V(Texture, 8)                 \
+    V(Sampler, 9)                 \
+    V(Alias, 10)                  \
+    V(Struct, 11)                 \
+    V(Member, 12)                 \
+    V(Function, 13)               \
+    /* Expressions */             \
+    V(Expression, 20)             \
+    V(UnaryExpression, 21)        \
+    V(BinaryExpression, 22)       \
+    V(LiteralExpression, 23)      \
+    V(FloatLiteralExpression, 24) \
+    V(IntLiteralExpression, 25)   \
+    V(BoolLiteralExpression, 26)  \
+    V(IdentExpression, 27)        \
+    /* Variables */               \
+    V(Variable, 30)               \
+    V(OverrideVariable, 31)       \
+    V(ConstVariable, 32)          \
+    V(VarVariable, 33)            \
+    V(Attribute, 34)
+
 enum class NodeType : uint64_t {
-    Unknown = 0,
-    Node = 1 << 0,
-    // Support nodes
-    Type = 1 << 1,
-    BuiltinOp = 1 << 2,
-    TypeGen = 1 << 3,
-    // Expressions
-    Expression = 1 << 10,
-    UnaryExpression = 1 << 11,
-    BinaryExpression = 1 << 12,
-    LiteralExpression = 1 << 13,
-    FloatLiteralExpression = 1 << 14,
-    IntLiteralExpression = 1 << 15,
-    BoolLiteralExpression = 1 << 16,
-    IdentExpression = 1 << 17,
-    // Variables
-    Variable = 1 << 20,
-    OverrideVariable = 1 << 21,
-    ConstVariable = 1 << 22,
-    VarVariable = 1 << 23,
-    Attribute = 1 << 24,
-    // Statements
+#define ENUM(NAME, BIT) NAME = 1ULL << BIT,
+    NODE_TYPE_LIST(ENUM)
+#undef ENUM
 };
 DEFINE_ENUM_FLAGS_OPERATORS(NodeType);
 
@@ -70,6 +82,22 @@ protected:
 private:
     NodeType typeFlags_;
     SourceLoc loc_;
+};
+
+// A node with a unique program scope name
+// - A type
+// - A variable 
+class Symbol : public Node {
+public:
+    static constexpr auto kStaticType = NodeType::Symbol;
+
+protected:
+    Symbol(SourceLoc loc, NodeType type)
+        : Node(type | kStaticType) {}
+
+    Symbol(NodeType type)
+        : Node(type | kStaticType) {}
+
 };
 
 }  // namespace wgsl::ast

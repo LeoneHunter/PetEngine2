@@ -1,5 +1,7 @@
 #pragma once
 #include "ast_node.h"
+#include "ast_attribute.h"
+#include "program_alloc.h"
 #include "base/string_utils.h"
 
 namespace wgsl::ast {
@@ -11,163 +13,317 @@ namespace wgsl::ast {
 //   User types:
 //     Structs: struct Foo {};  struct Bar {};
 //     Aliases: alias Foo = Bar;
-class Type : public Node {
-public:
-    enum class Kind {
-        AbstrInt,
-        AbstrFloat,
-        // Concrete
-        Bool,
-        U32,
-        I32,
-        F32,
-        F16,
-        // Templated
-        Array,
-        Vec2,
-        Vec3,
-        Vec4,
-        Mat,
-        // User defined
-        Struct,
-        Alias,
-    };
-
-    Kind kind;
-    // full mangled name: array<array<u32, 10>, 10>
-    std::string_view name;
-    // Declaration for custom user defined types [alias | struct]
-    ast::Node* customDecl = nullptr;
-
+class Type : public Symbol {
 public:
     constexpr static inline auto kStaticType = NodeType::Type;
 
-    Type(SourceLoc loc, Kind kind, std::string_view name)
-        : Node(loc, kStaticType), kind(kind), name(name) {}
+    const std::string_view name;
 
+protected:
+    Type(SourceLoc loc, NodeType type, std::string_view name)
+        : Symbol(loc, type | kStaticType), name(name) {}
+};
+
+
+// Builtin types
+#define SCALAR_KIND_LIST(V) \
+    V(Bool, "bool")         \
+    V(Int, "int")           \
+    V(Float, "float")       \
+    V(U32, "u32")           \
+    V(I32, "i32")           \
+    V(F32, "f32")           \
+    V(F16, "f16")
+
+enum class ScalarKind {
+#define ENUM(NAME, STR) NAME,
+    SCALAR_KIND_LIST(ENUM)
+#undef ENUM
+};
+
+constexpr std::string_view to_string(ScalarKind type) {
+#define CASE(NAME, STR) \
+    case ScalarKind::NAME: return STR;
+    switch (type) {
+        SCALAR_KIND_LIST(CASE)
+        default: return "";
+    }
+#undef CASE
+}
+
+
+// Builtin primitive type
+// i32, u32, f32, abstr_int, abst_float
+class Scalar final : public Type {
+public:
+    ScalarKind kind;
+
+public:
+    constexpr static auto kStaticType = NodeType::Scalar;
+
+    Scalar(ScalarKind kind)
+        : Type({}, kStaticType, to_string(kind)), kind(kind) {}
+
+public:
     constexpr bool IsArithmetic() const { return IsInteger() || IsFloat(); }
 
     constexpr bool IsAbstract() const {
-        return kind == Kind::AbstrFloat || kind == Kind::AbstrInt;
+        return kind == ScalarKind ::Float || kind == ScalarKind ::Int;
     }
 
-    constexpr bool IsSigned() const { return kind != Kind::U32; }
+    constexpr bool IsSigned() const { return kind != ScalarKind ::U32; }
 
-    constexpr bool IsBool() const { return kind == Kind::Bool; }
+    constexpr bool IsBool() const { return kind == ScalarKind::Bool; }
 
     constexpr bool IsScalar() const {
         return IsInteger() || IsFloat() || IsBool();
     }
 
-    // TODO: Handle templates
     constexpr bool IsInteger() const {
         switch (kind) {
-            case Kind::U32:
-            case Kind::I32:
-            case Kind::AbstrInt: return true;
+            case ScalarKind::U32:
+            case ScalarKind::I32:
+            case ScalarKind::Int: return true;
             default: return false;
         }
     }
 
-    // TODO: Handle templates
     constexpr bool IsFloat() const {
         switch (kind) {
-            case Kind::F32:
-            case Kind::F16:
-            case Kind::AbstrFloat: return true;
+            case ScalarKind::F32:
+            case ScalarKind::Float: return true;
             default: return false;
         }
     }
 
-    constexpr bool AutoConvertibleTo(const ast::Type* other) {
+    constexpr uint32_t GetConversionRankTo(const ast::Scalar* other) const {
+        constexpr uint32_t kMax = std::numeric_limits<uint32_t>::max();
+        if (this == other) {
+            return 0;
+        }
+        // Automatic conversion table for abstract kinds
+        // https://www.w3.org/TR/WGSL/#conversion-rank
+        if (kind == ScalarKind::Float) {
+            switch (other->kind) {
+                case ScalarKind::F32: return 1;
+                case ScalarKind::F16: return 2;
+                default: return kMax;
+            }
+        }
+        if (kind == ScalarKind::Int) {
+            switch (other->kind) {
+                case ScalarKind::I32: return 3;
+                case ScalarKind::U32: return 4;
+                case ScalarKind::Float: return 5;
+                case ScalarKind::F32: return 6;
+                case ScalarKind::F16: return 7;
+                default: return kMax;
+            }
+        }
+        // Concrete kinds are not convertible
+        return kMax;
+    }
+
+    constexpr bool AutoConvertibleTo(const ast::Scalar* other) const {
         if (this == other) {
             return true;
         }
         if (!IsAbstract()) {
             return kind == other->kind;
         }
-        if (kind == Kind::AbstrFloat) {
-            return other->kind == Kind::F32 || other->kind == Kind::F16;
+        if (kind == ScalarKind::Float) {
+            return other->kind == ScalarKind::F32 ||
+                   other->kind == ScalarKind::F16;
         }
-        // Abstract int is convertible to all other types
+        // Abstract int is convertible to all other kinds
         return true;
-    }
-
-    constexpr uint32_t GetConversionRankTo(const ast::Type* other) {
-        constexpr uint32_t kMax = std::numeric_limits<uint32_t>::max();
-        if (this == other) {
-            return 0;
-        }
-        // Automatic conversion table for abstract types
-        // https://www.w3.org/TR/WGSL/#conversion-rank
-        if (kind == Kind::AbstrFloat) {
-            switch (other->kind) {
-                case Kind::F32: return 1;
-                case Kind::F16: return 2;
-                default: return kMax;
-            }
-        }
-        if (kind == Kind::AbstrInt) {
-            switch (other->kind) {
-                case Kind::I32: return 3;
-                case Kind::U32: return 4;
-                case Kind::AbstrFloat: return 5;
-                case Kind::F32: return 6;
-                case Kind::F16: return 7;
-                default: return kMax;
-            }
-        }
-        // Concrete types are not convertible
-        return kMax;
     }
 };
 
-constexpr std::string_view to_string(Type::Kind kind) {
+
+// Vector subtypes
+#define VECTOR_KIND_LIST(V) \
+    V(Vec2, "vec2")         \
+    V(Vec3, "vec3")         \
+    V(Vec4, "vec4")
+
+enum class VecKind {
+#define ENUM(NAME, STR) NAME,
+    VECTOR_KIND_LIST(ENUM)
+#undef ENUM
+};
+
+constexpr std::string_view to_string(VecKind kind) {
+#define CASE(NAME, STR) \
+    case VecKind::NAME: return STR;
     switch (kind) {
-        case Type::Kind::AbstrInt: return "abstr_int";
-        case Type::Kind::AbstrFloat: return "abstr_float";
-        case Type::Kind::Bool: return "bool";
-        case Type::Kind::U32: return "u32";
-        case Type::Kind::I32: return "i32";
-        case Type::Kind::F32: return "f32";
-        case Type::Kind::F16: return "f16";
-        case Type::Kind::Array: return "array";
-        case Type::Kind::Vec2: return "vec2";
-        case Type::Kind::Vec3: return "vec3";
-        case Type::Kind::Vec4: return "vec4";
-        case Type::Kind::Mat: return "mat";
-        case Type::Kind::Struct: return "struct";
-        case Type::Kind::Alias: return "alias";
+        VECTOR_KIND_LIST(CASE)
         default: return "";
     }
+#undef CASE
 }
 
-constexpr std::string_view GetTypeSymbolName(Type::Kind kind) {
-    return to_string(kind);
-}
+// Builtin vector: vec2, vec3
+class Vec final : public Type {
+public:
+    const VecKind kind;
+    const Scalar* valueType;
 
-constexpr bool CheckOverflow(ast::Type* type, bool val) {
-    return true;
-}
+public:
+    constexpr static auto kStaticType = NodeType::Vector;
 
-constexpr bool CheckOverflow(ast::Type* type, int64_t val) {
-    if (type->kind == ast::Type::Kind::U32) {
-        return val <= std::numeric_limits<uint32_t>::max();
+    Vec(VecKind kind, const Scalar* valueType)
+        : Type({}, kStaticType, to_string(kind))
+        , kind(kind)
+        , valueType(valueType) {}
+};
+
+
+// Builtin array: array<f32, 10>
+class Array final : public Type {
+public:
+    const Type* valueType;
+    const uint32_t size;
+
+public:
+    constexpr static auto kStaticType = NodeType::Array;
+
+    Array(const Type* valueType, uint32_t size, std::string_view fullName)
+        : Type({}, kStaticType, fullName), valueType(valueType), size(size) {}
+};
+
+
+
+// Matrix subtypes
+#define MATRIX_KIND_LIST(V) \
+    V(Mat2x2, "mat2x2")     \
+    V(Mat2x3, "mat2x3")     \
+    V(Mat2x4, "mat2x4")     \
+    V(Mat3x2, "mat3x2")     \
+    V(Mat3x3, "mat3x3")     \
+    V(Mat3x4, "mat3x4")     \
+    V(Mat4x2, "mat4x2")     \
+    V(Mat4x3, "mat4x3")     \
+    V(Mat4x4, "mat4x4")
+
+enum class MatrixKind {
+#define ENUM(NAME, STR) NAME,
+    MATRIX_KIND_LIST(ENUM)
+#undef ENUM
+};
+
+constexpr std::string_view to_string(MatrixKind kind) {
+#define CASE(NAME, STR) \
+    case MatrixKind::NAME: return STR;
+    switch (kind) {
+        MATRIX_KIND_LIST(CASE)
+        default: return "";
     }
-    if (type->kind == ast::Type::Kind::I32) {
-        return val <= std::numeric_limits<int32_t>::max();
-    }
-    return true;
+#undef CASE
 }
 
-constexpr bool CheckOverflow(ast::Type* type, double val) {
-    if (type->kind == ast::Type::Kind::F32) {
-        return val <= std::numeric_limits<float>::max();
+// Builtin matrix: mat2x3<f32>
+class Matrix final : public Type {
+public:
+    const MatrixKind kind;
+    const Type* valueType;
+
+public:
+    constexpr static auto kStaticType = NodeType::Matrix;
+
+    Matrix(MatrixKind kind, const Type* valueType)
+        : Type({}, kStaticType, to_string(kind))
+        , kind(kind)
+        , valueType(valueType) {}
+};
+
+
+
+// Texture subtypes
+#define TEXTURE_KIND_LIST(V)                      \
+    V(Tex1d, "texture_1d")                        \
+    V(Tex2d, "texture_2d")                        \
+    V(Tex2dArray, "texture_2d_array")             \
+    V(Tex3d, "texture_3d")                        \
+    V(TexCube, "texture_cube")                    \
+    V(TexCubeArray, "texture_cube_array")         \
+    V(TexMS2D, "texture_multisampled_2d")         \
+    V(TexStor1D, "texture_storage_1d")            \
+    V(TexStor2D, "texture_storage_2d")            \
+    V(TexStor2DArray, "texture_storage_2d_array") \
+    V(TexStor3D, "texture_storage_3d")
+
+enum class TextureKind {
+#define ENUM(NAME, STR) NAME,
+    TEXTURE_KIND_LIST(ENUM)
+#undef ENUM
+};
+
+constexpr std::string_view to_string(TextureKind kind) {
+#define CASE(NAME, STR) \
+    case TextureKind::NAME: return STR;
+    switch (kind) {
+        TEXTURE_KIND_LIST(CASE)
+        default: return "";
     }
-    // TODO: half not implemented
-    return true;
+#undef CASE
 }
+
+// Builtin texture
+class Texture final : public Type {
+public:
+    const TextureKind kind;
+
+public:
+    constexpr static auto kStaticType = NodeType::Texture;
+
+    Texture(TextureKind kind)
+        : Type({}, kStaticType, to_string(kind)), kind(kind) {}
+};
+
+
+
+// Builtin sampler: sampler
+class Sampler final : public Type {
+public:
+    constexpr static auto kStaticType = NodeType::Sampler;
+
+    Sampler() : Type({}, kStaticType, "sampler") {}
+};
+
+
+
+class Member;
+using MemberList = ProgramList<const Member*>;
+
+// User defined struct
+class Struct final : public Type {
+public:
+    static constexpr auto kStaticType = NodeType::Struct;
+
+    const SourceLoc loc;
+    const MemberList members;
+
+public:
+    Struct(SourceLoc loc, std::string_view name, MemberList&& members)
+        : Type(loc, kStaticType, name), members(std::move(members)) {}
+};
+
+// A struct field
+class Member final : public Node {
+public:
+    constexpr static inline auto kStaticType = NodeType::Member;
+
+    const std::string_view name;
+    const Type* type;
+    const AttributeList attributes;
+
+public:
+    Member(SourceLoc loc, std::string_view name, AttributeList&& attributes)
+        : Node(loc, kStaticType)
+        , name(name)
+        , type(type)
+        , attributes(std::move(attributes)) {}
+};
 
 }  // namespace wgsl::ast
-
-DEFINE_FORMATTER(wgsl::ast::Type::Kind, std::string_view, to_string);

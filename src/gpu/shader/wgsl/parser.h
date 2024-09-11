@@ -1,27 +1,34 @@
 #pragma once
+#include "ast_attribute.h"
 #include "common.h"
 #include "lexer.h"
 #include "token.h"
 
-#include "ast_attribute.h"
-#include "ast_expression.h"
-#include "ast_variable.h"
-
 namespace wgsl {
+
+namespace ast {
+
+class Variable;
+class Expression;
+class Attribute;
+class IntLiteralExpression;
+class BoolLiteralExpression;
+class FloatLiteralExpression;
+class Struct;
+
+}  // namespace ast
 
 class Program;
 class ProgramBuilder;
 
-using TemplateList = std::vector<ast::Expression*>;
+using ExpressionList = std::vector<ast::Expression*>;
 
+// Parsed template elaborated identifier
+// : ident ( '<' template_arg_expression ( ',' expression )* ',' ? '>' )?
 struct Ident {
     SourceLoc loc;
     std::string_view name;
-};
-
-struct TypeInfo {
-    Ident ident;
-    TemplateList templateList;
+    ExpressionList templateList;
 };
 
 // Parses a wgsl code into an ast tree
@@ -36,14 +43,12 @@ public:
 private:
     // Variables
     Expected<ast::Variable*> GlobalVariable();
-    Expected<ast::Variable*> GlobValueDecl(
-        const std::vector<ast::Attribute*>& attributes);
+    Expected<ast::Variable*> GlobValueDecl(ast::AttributeList& attributes);
     Expected<ast::Variable*> ConstValueDecl();
-    Expected<ast::Variable*> OverrideValueDecl(
-        const std::vector<ast::Attribute*>& attributes);
-    Expected<ast::Variable*> VarDecl(
-        const std::vector<ast::Attribute*>& attributes);
+    Expected<ast::Variable*> OverrideValueDecl(ast::AttributeList& attributes);
+    Expected<ast::Variable*> VarDecl(ast::AttributeList& attributes);
     Expected<ast::Attribute*> Attribute();
+    Expected<ast::Struct*> Struct();
 
     // Expressions
     Expected<ast::Expression*> Expression();
@@ -56,9 +61,7 @@ private:
     Expected<ast::FloatLiteralExpression*> FloatLiteralExpr();
     Expected<ast::BoolLiteralExpression*> BoolLiteralExpr();
 
-    // Types
-    Expected<TypeInfo> TypeSpecifier();
-    Expected<TypeInfo> TypeGenerator();
+    Expected<Ident> TemplatedIdent();
 
 private:
     template <class... Args>
@@ -81,6 +84,7 @@ private:
 
     // Try match with current token
     bool Peek(Token::Kind kind);
+    bool PeekKeyword(std::string_view name);
     bool PeekWith(Token::Kind kind, std::string_view val);
     bool PeekValue(std::string_view val);
     Token Peek() { return token_; }

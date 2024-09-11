@@ -2,6 +2,7 @@
 #include "ast_node.h"
 #include "ast_type.h"
 #include "ast_variable.h"
+#include "ast_function.h"
 
 namespace wgsl::ast {
 
@@ -98,6 +99,7 @@ constexpr bool IsOpBitwise(OpCode op) {
     }
 }
 
+class Function;
 
 // rhs of an assignement or statement
 // A unit of computation
@@ -106,26 +108,29 @@ public:
     constexpr static inline auto kStaticType = NodeType::Expression;
 
     // Result type of the expression after all conversions
-    ast::Type* type = nullptr;
+    const ast::Type* type = nullptr;
 
 public:
     template <class T>
-    std::optional<T> TryGetConstValueAs();
+    std::optional<T> TryGetConstValueAs() const;
 
 protected:
-    Expression(SourceLoc loc, NodeType nodeType, Type* type)
+    Expression(SourceLoc loc, NodeType nodeType, const Type* type)
         : Node(loc, nodeType | kStaticType), type(type) {}
 };
 
 class UnaryExpression final : public Expression {
 public:
-    Expression* rhs;
+    const Expression* rhs;
     OpCode op;
 
 public:
     constexpr static inline auto kStaticType = NodeType::UnaryExpression;
 
-    UnaryExpression(SourceLoc loc, Type* type, OpCode op, Expression* rhs)
+    UnaryExpression(SourceLoc loc,
+                    const Type* type,
+                    OpCode op,
+                    const Expression* rhs)
         : Expression(loc, kStaticType, type), rhs(rhs), op(op) {}
 
     constexpr bool IsArithmetic() const { return IsOpArithmetic(op); }
@@ -135,18 +140,18 @@ public:
 
 class BinaryExpression final : public Expression {
 public:
-    Expression* lhs;
-    Expression* rhs;
+    const Expression* lhs;
+    const Expression* rhs;
     OpCode op;
 
 public:
     constexpr static inline auto kStaticType = NodeType::BinaryExpression;
 
     BinaryExpression(SourceLoc loc,
-                     Type* type,
-                     Expression* lhs,
+                     const Type* type,
+                     const Expression* lhs,
                      OpCode op,
-                     Expression* rhs)
+                     const Expression* rhs)
         : Expression(loc, kStaticType, type), lhs(lhs), op(op), rhs(rhs) {}
 
     constexpr bool IsArithmetic() const { return IsOpArithmetic(op); }
@@ -160,7 +165,7 @@ public:
     constexpr static inline auto kStaticType = NodeType::LiteralExpression;
 
 protected:
-    LiteralExpression(SourceLoc loc, NodeType nodeType, Type* type)
+    LiteralExpression(SourceLoc loc, NodeType nodeType, const Type* type)
         : Expression(loc, nodeType | kStaticType, type) {}
 };
 
@@ -173,7 +178,7 @@ public:
 public:
     constexpr static inline auto kStaticType = NodeType::IntLiteralExpression;
 
-    IntLiteralExpression(SourceLoc loc, Type* type, int64_t value)
+    IntLiteralExpression(SourceLoc loc, const Type* type, int64_t value)
         : LiteralExpression(loc, kStaticType, type), value(value) {}
 };
 
@@ -186,7 +191,7 @@ public:
 public:
     constexpr static inline auto kStaticType = NodeType::FloatLiteralExpression;
 
-    FloatLiteralExpression(SourceLoc loc, Type* type, double value)
+    FloatLiteralExpression(SourceLoc loc, const Type* type, double value)
         : LiteralExpression(loc, kStaticType, type), value(value) {}
 };
 
@@ -198,7 +203,7 @@ public:
 public:
     constexpr static inline auto kStaticType = NodeType::BoolLiteralExpression;
 
-    BoolLiteralExpression(SourceLoc loc, Type* type, bool value)
+    BoolLiteralExpression(SourceLoc loc, const Type* type, bool value)
         : LiteralExpression(loc, kStaticType, type), value(value) {}
 };
 
@@ -206,18 +211,24 @@ public:
 class IdentExpression final : public Expression {
 public:
     constexpr static inline auto kStaticType = NodeType::IdentExpression;
-
-    ast::Node* decl;
+    // Variable Type or Function
+    const ast::Symbol* symbol;
 
 public:
-    IdentExpression(SourceLoc loc, ast::Node* decl, ast::Type* type)
-        : Expression(loc, kStaticType, type), decl(decl) {}
+    IdentExpression(SourceLoc loc, const ast::Variable* var)
+        : Expression(loc, kStaticType, var->type), symbol(var) {}
+
+    IdentExpression(SourceLoc loc, const ast::Type* type)
+        : Expression(loc, kStaticType, type), symbol(type) {}
+
+    IdentExpression(SourceLoc loc, const ast::Function* func)
+        : Expression(loc, kStaticType, nullptr), symbol(func) {}
 };
 
 }  // namespace wgsl::ast
 
 template <class T>
-std::optional<T> wgsl::ast::Expression::TryGetConstValueAs() {
+std::optional<T> wgsl::ast::Expression::TryGetConstValueAs() const {
     if (auto e = this->As<FloatLiteralExpression>()) {
         return static_cast<T>(e->value);
     }
@@ -229,7 +240,7 @@ std::optional<T> wgsl::ast::Expression::TryGetConstValueAs() {
     }
     // Ident
     if (auto ident = this->As<IdentExpression>()) {
-        if (auto var = ident->decl->As<ConstVariable>()) {
+        if (auto var = ident->symbol->As<ConstVariable>()) {
             return var->initializer->TryGetConstValueAs<T>();
         }
     }

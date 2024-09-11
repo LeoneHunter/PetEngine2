@@ -4,7 +4,7 @@
 #include <doctest.h>
 
 using namespace wgsl;
-using TypeName = ast::Type::Kind;
+using namespace ast;
 
 namespace {
 
@@ -33,8 +33,11 @@ void CheckErrImpl(Program* program, ErrorCode code) {
             break;
         }
     }
+    LOG_VERBOSE("Program: {}\n Errors: {}\n", program->GetSource(),
+                program->GetDiagsAsString());
     CHECK_MESSAGE(hasErrorCode, "expected an error code '",
-                  ErrorCodeString(code), "'");
+                  ErrorCodeString(code),
+                  "'. Got: ", program->GetDiagsAsString());
 }
 
 // Expect a program to have an error |code| || ...
@@ -55,19 +58,20 @@ struct ProgramTest {
         program = Program::Create(code);
     }
 
-    void ExpectGlobalConst(std::string_view s, TypeName type) {
+    void ExpectGlobalConst(std::string_view s, ScalarKind kind) {
         auto* symbol = program->FindSymbol(s);
         auto* var = symbol->As<ast::ConstVariable>();
-        if (!var || !var->type || var->type->kind != type) {
+        CHECK(var != nullptr);
+        CHECK(var->type != nullptr);
+        auto* scalar = var->type->As<ast::Scalar>();
+        CHECK_EQ(scalar->kind, kind);
+        if (scalar->kind != kind) {
             auto errs = program->GetDiags();
             if (!errs.empty()) {
                 const std::string diag = program->GetDiagsAsString();
                 LOG_ERROR("WGSL: Errors : \"{}\"", diag);
             }
         }
-        CHECK(var != nullptr);
-        CHECK(var->type != nullptr);
-        CHECK_EQ(var->type->kind, type);
     }
 
     void ExpectErrNum(uint8_t num) {
@@ -99,7 +103,7 @@ TEST_CASE("[WGSL] basic errors") {
     // FIXME: Gets ErrorCode::ExpectedIdent
     // ExpectError(" const auto = 3; ", ErrorCode::IdentReserved);
     ExpectError(" const a : i32; ", ErrorCode::ConstDeclNoInitializer);
-    ExpectError(" const a : p32 = 3; ", ErrorCode::TypeNotDefined);
+    ExpectError(" const a : p32 = 3; ", ErrorCode::SymbolNotFound);
     ExpectError(" const a = 3; const b : a = 4; ", ErrorCode::IdentNotType);
     ExpectError(" const a : i32 = 3.2f; ", ErrorCode::TypeError);
     ExpectError(" const a = 3; const a = 4; ", ErrorCode::SymbolAlreadyDefined);
@@ -127,15 +131,15 @@ const l = a * f;              // AbstractFloat
 
 TEST_CASE_FIXTURE(ProgramTest, "[WGSL] type checks") {
     Build(kConstVariables);
-    ExpectGlobalConst("a", TypeName::AbstrInt);
-    ExpectGlobalConst("b", TypeName::I32);
-    ExpectGlobalConst("c", TypeName::U32);
-    ExpectGlobalConst("d", TypeName::F32);
-    ExpectGlobalConst("f", TypeName::AbstrFloat);
-    ExpectGlobalConst("h", TypeName::I32);
-    ExpectGlobalConst("g", TypeName::U32);
-    ExpectGlobalConst("k", TypeName::F32);
-    ExpectGlobalConst("l", TypeName::AbstrFloat);
+    ExpectGlobalConst("a", ScalarKind::Int);
+    ExpectGlobalConst("b", ScalarKind::I32);
+    ExpectGlobalConst("c", ScalarKind::U32);
+    ExpectGlobalConst("d", ScalarKind::F32);
+    ExpectGlobalConst("f", ScalarKind::Float);
+    ExpectGlobalConst("h", ScalarKind::I32);
+    ExpectGlobalConst("g", ScalarKind::U32);
+    ExpectGlobalConst("k", ScalarKind::F32);
+    ExpectGlobalConst("l", ScalarKind::Float);
     ExpectErrNum(0);
 }
 
@@ -167,11 +171,11 @@ TEST_CASE("[WGSL] unary operators") {
 }
 
 TEST_CASE("[WGSL] unary operators errors") {
-    ExpectError(" const a = ~4.0; ", ErrorCode::InvalidArgs);
-    ExpectError(" const a = ~true; ", ErrorCode::InvalidArgs);
-    ExpectError(" const a = -true; ", ErrorCode::InvalidArgs);
-    ExpectError(" const a = !4.0; ", ErrorCode::InvalidArgs);
-    ExpectError(" const a = !3; ", ErrorCode::InvalidArgs);
+    ExpectError(" const a = ~4.0; ", ErrorCode::InvalidArg);
+    ExpectError(" const a = ~true; ", ErrorCode::InvalidArg);
+    ExpectError(" const a = -true; ", ErrorCode::InvalidArg);
+    ExpectError(" const a = !4.0; ", ErrorCode::InvalidArg);
+    ExpectError(" const a = !3; ", ErrorCode::InvalidArg);
 }
 
 TEST_CASE("[WGSL] binary operators") {
@@ -188,12 +192,12 @@ TEST_CASE("[WGSL] binary operators") {
 }
 
 TEST_CASE("[WGSL] binary operators errors") {
-    ExpectError(" const a = 3 * true; ", ErrorCode::InvalidArgs);
+    ExpectError(" const a = 3 * true; ", ErrorCode::InvalidArg);
     ExpectError(" const a = ~1u + 100; ", ErrorCode::ConstOverflow);
 
-    ExpectError(" const a = 3 < false; ", ErrorCode::InvalidArgs);
-    ExpectError(" const a = 3f < 3u; ", ErrorCode::InvalidArgs);
-    ExpectError(" const a = false && 3.0; ", ErrorCode::InvalidArgs);
+    ExpectError(" const a = 3 < false; ", ErrorCode::InvalidArg);
+    ExpectError(" const a = 3f < 3u; ", ErrorCode::InvalidArg);
+    ExpectError(" const a = false && 3.0; ", ErrorCode::InvalidArg);
 }
 
 TEST_CASE_FIXTURE(ProgramTest, "[WGSL] operators type checks") {
@@ -203,9 +207,20 @@ TEST_CASE_FIXTURE(ProgramTest, "[WGSL] operators type checks") {
         const c = 1f + ((2 + 3) + 4);
         const d = ((2 + (3 + 1f)) + 4);
     )");
-    ExpectGlobalConst("a", TypeName::AbstrFloat);
-    ExpectGlobalConst("b", TypeName::AbstrFloat);
-    ExpectGlobalConst("c", TypeName::F32);
-    ExpectGlobalConst("d", TypeName::F32);
+    ExpectGlobalConst("a", ScalarKind::Float);
+    ExpectGlobalConst("b", ScalarKind::Float);
+    ExpectGlobalConst("c", ScalarKind::F32);
+    ExpectGlobalConst("d", ScalarKind::F32);
+    ExpectErrNum(0);
+}
+
+TEST_CASE_FIXTURE(ProgramTest, "[WGSL] struct type") {
+    Build(R"(
+        struct MyStruct { 
+            a : vec2<f32>,
+            b : vec2f,  
+            c : vec3<i32>,
+        };
+    )");
     ExpectErrNum(0);
 }

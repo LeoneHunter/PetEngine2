@@ -1,20 +1,24 @@
 #pragma once
-#include "ast_expression.h"
 #include "ast_node.h"
+#include "program_alloc.h"
 
 namespace wgsl::ast {
 
+class Expression;
+class Attribute;
+using AttributeList = ProgramVector<const Attribute*>;
+
 class Attribute : public Node {
 public:
-    wgsl::AttributeName attr;
-    Expression* expr;
+    AttributeName attr;
+    const Expression* expr;
 
 public:
     constexpr static inline auto kStaticType = NodeType::Attribute;
 
     Attribute(SourceLoc loc,
-              wgsl::AttributeName attr,
-              Expression* expr = nullptr)
+              AttributeName attr,
+              const Expression* expr = nullptr)
         : Node(loc, kStaticType), attr(attr), expr(expr) {}
 };
 
