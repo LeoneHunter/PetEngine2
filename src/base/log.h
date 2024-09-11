@@ -99,6 +99,10 @@ inline void Logf(std::string_view file,
     logging::Logf(__FILE__, __LINE__, __FUNCTION__, logging::Level::level, \
                   fmt, __VA_ARGS__);
 
+#define LOG_VERBOSE(fmt, ...)                                                \
+    logging::Logf(__FILE__, __LINE__, __FUNCTION__, logging::Level::Verbose, \
+                  fmt, __VA_ARGS__);
+
 #define LOG_INFO(fmt, ...)                                                     \
     logging::Logf(__FILE__, __LINE__, __FUNCTION__, logging::Level::Info, fmt, \
                   __VA_ARGS__);

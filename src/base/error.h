@@ -31,6 +31,8 @@
 #define DASSERT_F(x, fmt, ...)
 #endif  // IS_DEBUG_BUILD
 
+#define FATAL(...) DASSERT_F(false, __VA_ARGS__)
+
 #define BREAK_IN_DEBUGGER_CONDITIONAL(cond) \
     if (!!(cond)) {                         \
         __debugbreak();                     \
