@@ -54,38 +54,55 @@ void ExpectNoErrors(std::string_view code) {
 
 struct ProgramTest {
 
+#define EXPECT(COND)     \
+    PrintCondDiag(COND); \
+    CHECK(COND);         \
+    do {                 \
+        if (!COND) {     \
+            return;      \
+        }                \
+    } while (false)
+
+#define EXPECT_M(COND, ...)           \
+    PrintCondDiag(!COND);             \
+    CHECK_MESSAGE(COND, __VA_ARGS__); \
+    do {                              \
+        if (!COND) {                  \
+            return;                   \
+        }                             \
+    } while (false)
+
     void Build(std::string_view code) { program = Program::Create(code); }
+
+    template <class T>
+    void ExpectGlobalVar(std::string_view s) {
+        auto* symbol = program->FindSymbol(s);
+        EXPECT(symbol);
+        auto* var = symbol->As<ast::VarVariable>();
+        EXPECT(var);
+        const auto* type = var->type->As<T>();
+        EXPECT(type);
+    }
 
     void ExpectGlobalConst(std::string_view s, ScalarKind kind) {
         auto* symbol = program->FindSymbol(s);
-        auto* var = symbol->As<ast::ConstVariable>();
-        CHECK(var != nullptr);
-        CHECK(var->type != nullptr);
-        auto* scalar = var->type->As<ast::Scalar>();
-        CHECK_EQ(scalar->kind, kind);
-        if (scalar->kind != kind) {
-            auto errs = program->GetDiags();
-            if (!errs.empty()) {
-                const std::string diag = program->GetDiagsAsString();
-                LOG_ERROR("WGSL: Errors : \"{}\"", diag);
-            }
-        }
+        EXPECT(symbol);
+        const auto* var = symbol->As<ast::ConstVariable>();
+        EXPECT(var);
+        const auto* scalar = var->type->As<ast::Scalar>();
+        EXPECT(scalar);
     }
 
     void ExpectErrNum(uint8_t num) {
         auto errs = program->GetDiags();
-        CHECK_EQ(errs.size(), num);
-        if (!errs.empty()) {
-            const std::string diag = program->GetDiagsAsString();
-            LOG_ERROR("WGSL: Errors : \"{}\"", diag);
-        }
+        EXPECT(errs.empty());
     }
 
     void ExpectStruct(std::string_view name) {
         const ast::Symbol* symbol = program->FindSymbol(name);
-        CHECK(symbol);
+        EXPECT(symbol);
         const ast::Struct* structType = symbol->As<ast::Struct>();
-        CHECK_MESSAGE(structType, "expected a struct with the name ", name);
+        EXPECT_M(structType, "expected a struct with the name ", name);
     }
 
     // Checks whether a struct has a member with type 'Type'
@@ -100,9 +117,10 @@ struct ProgramTest {
         const std::string_view memberName = name.substr(sepPos + 2);
 
         const ast::Symbol* symbol = program->FindSymbol(structName);
-        CHECK(symbol);
+        EXPECT(symbol);
+
         const ast::Struct* structType = symbol->As<ast::Struct>();
-        CHECK_MESSAGE(structType, "expected a struct '", name, "'");
+        EXPECT_M(structType, "expected a struct '", name, "'");
 
         const ast::Member* member = [&] {
             for (const ast::Member* member : structType->members) {
@@ -112,9 +130,21 @@ struct ProgramTest {
             }
             return (const Member*)nullptr;
         }();
-        CHECK_MESSAGE(member, "expected a struct member '", name, "'");
-        CHECK_MESSAGE(member->type->Is<Type>(), "expected a struct member '",
-                      name, "' with type '", to_string(Type::kStaticType), "'");
+        const bool errored = !member || !member->type->Is<Type>();
+        EXPECT_M(!errored, "expected a struct member '", name, "' with type '",
+                 to_string(Type::kStaticType), "'");
+    }
+
+    // Print diags if cond == true
+    void PrintCondDiag(bool cond) {
+        if (cond) {
+            return;
+        }
+        auto errs = program->GetDiags();
+        if (!errs.empty()) {
+            const std::string diag = program->GetDiagsAsString();
+            LOG_ERROR("WGSL: Errors : \"{}\"", diag);
+        }
     }
 
     std::unique_ptr<Program> program;
@@ -268,5 +298,17 @@ TEST_CASE_FIXTURE(ProgramTest, "[WGSL] struct type, templates") {
     ExpectStructMember<ast::Scalar>("MyStruct::e");
     ExpectStructMember<ast::Array>("MyStruct::f");
     ExpectStructMember<ast::Matrix>("MyStruct::h");
+    ExpectErrNum(0);
+}
+
+TEST_CASE_FIXTURE(ProgramTest, "[WGSL] global var, attributes") {
+    Build(R"(
+        @binding(0) @group(0) var<uniform> a : f32;
+        @binding(1) @group(0) var<storage, read_write> b : i32;
+        @binding(2) @group(0) var<storage, read_write> c : u32;
+    )");
+    ExpectGlobalVar<ast::Scalar>("a");
+    ExpectGlobalVar<ast::Scalar>("b");
+    ExpectGlobalVar<ast::Scalar>("c");
     ExpectErrNum(0);
 }

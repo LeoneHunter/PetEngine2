@@ -508,63 +508,63 @@ Expected<ast::BoolLiteralExpression*> Parser::BoolLiteralExpr() {
 
 // attribute :
 //   '@' ident_pattern_token argument_expression_list ?
-//   | align_attr
-//   | binding_attr
-//   | blend_src_attr
-//   | builtin_attr
-//   | const_attr
-//   | diagnostic_attr
-//   | group_attr
-//   | id_attr
-//   | interpolate_attr
-//   | invariant_attr
-//   | location_attr
-//   | must_use_attr
-//   | size_attr
-//   | workgroup_size_attr
-//   | vertex_attr
-//   | fragment_attr
-//   | compute_attr
 Expected<ast::Attribute*> Parser::Attribute() {
     EXPECT_MATCH(Tok::Attr);
     EXPECT_TOK(Tok::Ident);
     const Token ident = GetLastToken();
-    // '@' 'align' '(' expression ',' ? ')'
-    // positive, pow2, const u32 | i32
-    if (ident.Match("align")) {
-        EXPECT_TOK(Tok::OpenParen);
-        ast::Expression* expr = nullptr;
-        EXPECT_UNWRAP(expr, Expression(false), ErrorCode::ExpectedExpr);
-        EXPECT_OPT(Tok::Comma);
-        EXPECT_TOK(Tok::CloseParen);
-        return builder_->CreateAttribute(ident.loc, wgsl::AttributeName::Align,
-                                         expr);
-    }
-    // '@' 'binding' '(' expression ',' ? ')'
-    // positive, const u32 | i32
-    if (ident.Match("align")) {
-        EXPECT_TOK(Tok::OpenParen);
-        ast::Expression* expr = nullptr;
-        EXPECT_UNWRAP(expr, Expression(false), ErrorCode::ExpectedExpr);
-        EXPECT_OPT(Tok::Comma);
-        EXPECT_TOK(Tok::CloseParen);
-        return builder_->CreateAttribute(ident.loc,
-                                         wgsl::AttributeName::Binding, expr);
-    }
-    // @ vertex
-    if (ident.Match("vertex")) {
-        return builder_->CreateAttribute(ident.loc,
-                                         wgsl::AttributeName::Vertex);
-    }
-    // @ fragment
-    if (ident.Match("fragment")) {
-        return builder_->CreateAttribute(ident.loc,
-                                         wgsl::AttributeName::Fragment);
-    }
-    // @ compute
-    if (ident.Match("compute")) {
-        return builder_->CreateAttribute(ident.loc,
-                                         wgsl::AttributeName::Compute);
+    AttributeName attr;
+    EXPECT_UNWRAP(attr, AttributeFromString(ident.Source()),
+                  ErrorCode::InvalidAttribute);
+    EXPECT_COND(attr != AttributeName::Const, ErrorCode::InvalidAttribute);
+    // TODO: implement
+    EXPECT_COND(attr != AttributeName::Diagnostic, ErrorCode::Unimplemented);
+    EXPECT_COND(attr != AttributeName::Interpolate, ErrorCode::Unimplemented);
+    // Expect a single param inside parens
+    switch (attr) {
+        case AttributeName::MustUse:
+        case AttributeName::Invariant:
+        case AttributeName::Vertex:
+        case AttributeName::Fragment:
+        case AttributeName::Compute: {
+            return builder_->CreateAttribute(ident.loc, attr, nullptr);
+        }
+        case AttributeName::Align:
+        case AttributeName::Binding:
+        case AttributeName::BlendSrc:
+        case AttributeName::Group:
+        case AttributeName::ID:
+        case AttributeName::Location:
+        case AttributeName::Size: {
+            EXPECT_TOK(Tok::OpenParen);
+            ast::Expression* expr = nullptr;
+            EXPECT_UNWRAP(expr, Expression(false), ErrorCode::InvalidAttribute);
+            EXPECT_OPT(Tok::Comma);
+            EXPECT_TOK(Tok::CloseParen);
+            return builder_->CreateAttribute(ident.loc, attr, expr);
+        }
+        case AttributeName::WorkgroupSize: {
+            EXPECT_TOK(Tok::OpenParen);
+            const ast::Expression* xyz[] = {nullptr};
+            for (uint32_t i = 0; i < 3; ++i) {
+                if (Peek(Tok::CloseParen)) {
+                    break;
+                }
+                EXPECT_UNWRAP(xyz[i], Expression(false),
+                              ErrorCode::InvalidAttribute);
+                EXPECT_OPT(Tok::Comma);
+            }
+            return builder_->CreateWorkGroupAttr(ident.loc, xyz[0], xyz[1],
+                                                 xyz[2]);
+        }
+        case AttributeName::Builtin: {
+            EXPECT_TOK(Tok::OpenParen);
+            EXPECT_TOK(Tok::Builtin);
+            const Token tok = GetLastToken();
+            const Builtin value = *BuiltinFromString(tok.Source());
+            EXPECT_OPT(Tok::Comma);
+            EXPECT_TOK(Tok::CloseParen);
+            return builder_->CreateBuiltinAttribute(ident.loc, value);
+        }
     }
     return Unexpected(ErrorCode::InvalidAttribute,
                       "'{}' is not a valid attribute name", ident.Source());

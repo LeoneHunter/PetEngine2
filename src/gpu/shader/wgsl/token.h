@@ -16,6 +16,7 @@ public:
         Ident,
         Keyword,
         Reserved,
+        Builtin,
         // Literal
         LitInt,
         LitUint,

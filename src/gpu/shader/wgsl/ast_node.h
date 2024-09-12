@@ -36,7 +36,11 @@ namespace wgsl::ast {
     V(OverrideVariable, 31, "override variable")    \
     V(ConstVariable, 32, "const value")             \
     V(VarVariable, 33, "var variable")              \
-    V(Attribute, 34, "attribute")
+    /* Attributes */                                \
+    V(Attribute, 34, "attribute")                   \
+    V(ScalarAttribute, 35, "scalar attribute")      \
+    V(BuiltinAttribute, 36, "builtin attribute")    \
+    V(WorkgroupAttribute, 37, "worgroup attribute")
 
 enum class NodeType : uint64_t {
 #define ENUM(NAME, BIT, STR) NAME = 1ULL << BIT,

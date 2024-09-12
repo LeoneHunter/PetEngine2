@@ -193,47 +193,51 @@ constexpr std::string_view to_string(AttributeName attr) {
 #undef CASE
 }
 
-}  // namespace wgsl
 
-DEFINE_OSTREAM(wgsl::ErrorCode, ErrorCodeString);
-DEFINE_FORMATTER(wgsl::ErrorCode, std::string_view, ErrorCodeString);
 
-namespace wgsl {
-// Source code location and size
-// Basically a std::string_view but with line:col instead of pointer
-struct SourceLoc {
-    uint32_t line = 1;
-    uint32_t col = 1;
-    uint32_t len = 1;
+//=====================================================//
+// Builtins
+//=====================================================//
 
-    constexpr SourceLoc() = default;
+#define BUILTINS_LIST(V)                              \
+    V(VertexIndex, "vertex_index")                    \
+    V(InstanceIndex, "instance_index")                \
+    V(Position, "position")                           \
+    V(FrontFacing, "front_facing")                    \
+    V(FragDepth, "frag_depth")                        \
+    V(SampleIndex, "sample_index")                    \
+    V(SampleMask, "sample_mask")                      \
+    V(LocalInvocationID, "local_invocation_id")       \
+    V(LocalInvocationIndex, "local_invocation_index") \
+    V(GlobalInvocationID, "global_invocation_id")     \
+    V(WorkGroupID, "workgroup_id")                    \
+    V(NumWorkgroups, "num_workgroups")
 
-    constexpr SourceLoc(SourceLoc lhs, SourceLoc rhs)
-        : line(lhs.line), col(lhs.col), len() {
-        if (lhs.line == rhs.line) {
-            if (rhs.col > lhs.col) {
-                len = rhs.col - lhs.col;
-            } else {
-                len = lhs.col - rhs.col;
-            }
-        }
-    }
-
-    constexpr SourceLoc(SourceLoc lhs, uint32_t len)
-        : line(lhs.line), col(lhs.col), len(len) {}
-
-    constexpr SourceLoc(uint32_t line, uint32_t col, uint32_t len)
-        : line(line), col(col), len(len) {}
-
-    // Add column offset
-    friend constexpr SourceLoc operator+(SourceLoc lhs, uint32_t offset) {
-        return {lhs.line, lhs.col + offset, lhs.len};
-    }
-
-    constexpr auto operator<=>(const SourceLoc&) const = default;
+constexpr std::string_view kBuiltinValues[] = {
+#define V(NAME, STR) STR,
+    BUILTINS_LIST(V)
+#undef V
 };
 
-// clang-format off
+enum class Builtin {
+#define ENUM(NAME, STR) NAME,
+    BUILTINS_LIST(ENUM)
+#undef ENUM
+};
+
+constexpr std::optional<Builtin> BuiltinFromString(std::string_view str) {
+#define CASE(NAME, STR)       \
+    if (str == STR)           \
+        return Builtin::NAME; \
+    else
+    BUILTINS_LIST(CASE)
+    return std::nullopt;
+#undef CASE
+}
+
+
+
+// Keywords
 constexpr std::string_view kKeywords[] = {
     "alias",    "break",      "case",    "const",      "const_assert",
     "continue", "continuing", "default", "diagnostic", "discard",
@@ -244,6 +248,7 @@ constexpr std::string_view kKeywords[] = {
 };
 
 // Reserved identifiers for future use
+// clang-format off
 constexpr std::string_view kReserved[] = {
     "NULL", "Self", "abstract", "active", "alignas", "alignof", "as",
     "asm", "asm_fragment", "async", "attribute", "auto", "await", "become",
@@ -266,5 +271,46 @@ constexpr std::string_view kReserved[] = {
     "virtual", "volatile", "wgsl", "where", "with", "writeonly", "yield",
 };
 // clang-format on
+
+}  // namespace wgsl
+
+DEFINE_OSTREAM(wgsl::ErrorCode, ErrorCodeString);
+DEFINE_FORMATTER(wgsl::ErrorCode, std::string_view, ErrorCodeString);
+
+namespace wgsl {
+// Source code location and size
+// Basically a std::string_view but with line:col instead of pointer
+struct SourceLoc {
+    uint32_t line = 1;
+    uint32_t col = 1;
+    uint32_t len = 1;
+
+    constexpr SourceLoc() = default;
+
+    constexpr SourceLoc(SourceLoc lhs, SourceLoc rhs)
+        : line(lhs.line), col(lhs.col), len() {
+        if (lhs.line == rhs.line) {
+            if (rhs.col > lhs.col) {
+                len = rhs.col + rhs.len - lhs.col;
+            } else {
+                len = lhs.col + rhs.len - rhs.col;
+            }
+        }
+    }
+
+    constexpr SourceLoc(SourceLoc lhs, uint32_t len)
+        : line(lhs.line), col(lhs.col), len(len) {}
+
+    constexpr SourceLoc(uint32_t line, uint32_t col, uint32_t len)
+        : line(line), col(col), len(len) {}
+
+    // Add column offset
+    friend constexpr SourceLoc operator+(SourceLoc lhs, uint32_t offset) {
+        return {lhs.line, lhs.col + offset, lhs.len};
+    }
+
+    constexpr auto operator<=>(const SourceLoc&) const = default;
+};
+
 
 }  // namespace wgsl

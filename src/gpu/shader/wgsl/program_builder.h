@@ -106,6 +106,14 @@ public:
                                               AttributeName attr,
                                               const Expression* expr = nullptr);
 
+    Expected<ast::Attribute*> CreateBuiltinAttribute(SourceLoc loc,
+                                                     Builtin value);
+
+    Expected<ast::Attribute*> CreateWorkGroupAttr(SourceLoc loc,
+                                                  const ast::Expression* x,
+                                                  const ast::Expression* y,
+                                                  const ast::Expression* z);
+
 private:
     Expected<Expression*> ResolveArithmeticUnaryOp(SourceLoc loc,
                                                    OpCode op,

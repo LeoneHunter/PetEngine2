@@ -170,6 +170,15 @@ private:
                 return out;
             }
         }
+        for (const std::string_view builtin : kBuiltinValues) {
+            if (Match(builtin)) {
+                const auto out = Token(Token::Kind::Builtin,
+                                       SourceLoc(Loc(), builtin.size()),
+                                       &Peek(), builtin.size());
+                Advance(builtin.size());
+                return out;
+            }
+        }
         const uint32_t start = Pos();
         SourceLoc loc = Loc();
         while (Match(CharKind::Digit, CharKind::Letter, '_')) {

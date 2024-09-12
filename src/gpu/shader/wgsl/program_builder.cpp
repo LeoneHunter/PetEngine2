@@ -328,9 +328,11 @@ Expected<VarVariable*> ProgramBuilder::CreateVar(
             isTextureSampler || srcAddrSpace, loc, ErrorCode::InvalidAddrSpace,
             "the address space must be specified for all address spaces "
             "except handle and function");
-        return program_->Allocate<VarVariable>(
+        auto* var = program_->Allocate<VarVariable>(
             loc, ident.name, addrSpace, accessMode, valueType,
             std::move(attributes), initializer);
+        currentScope_->InsertSymbol(ident.name, var);
+        return var;
     }
     // Function scope 'normal' variable
     EXPECT_TRUE(addrSpace == AddressSpace::Function, loc,
@@ -341,9 +343,11 @@ Expected<VarVariable*> ProgramBuilder::CreateVar(
     // TODO: Match initializer type with the specified type
     if (initializer) {
     }
-    return program_->Allocate<VarVariable>(loc, ident.name, addrSpace,
-                                           accessMode, valueType,
-                                           std::move(attributes), initializer);
+    auto* var = program_->Allocate<VarVariable>(
+        loc, ident.name, addrSpace, accessMode, valueType,
+        std::move(attributes), initializer);
+    currentScope_->InsertSymbol(ident.name, var);
+    return var;
 }
 
 Expected<Struct*> ProgramBuilder::CreateStruct(SourceLoc loc,
@@ -517,12 +521,61 @@ Expected<BoolLiteralExpression*> ProgramBuilder::CreateBoolLiteralExpr(
     return program_->Allocate<BoolLiteralExpression>(loc, type, value);
 }
 
+Expected<ast::Attribute*> ProgramBuilder::CreateWorkGroupAttr(
+    SourceLoc loc,
+    const ast::Expression* x,
+    const ast::Expression* y,
+    const ast::Expression* z) {
+    EXPECT_TRUE(x && x->Is<ast::IntLiteralExpression>(), loc,
+                ErrorCode::InvalidAttribute,
+                "@workgroup value must be a const i32 or u32");
+    EXPECT_TRUE(!y && y->Is<ast::IntLiteralExpression>(), loc,
+                ErrorCode::InvalidAttribute,
+                "@workgroup value must be a const i32 or u32");
+    EXPECT_TRUE(!z && z->Is<ast::IntLiteralExpression>(), loc,
+                ErrorCode::InvalidAttribute,
+                "@workgroup value must be a const i32 or u32");
+    const auto xval = x->TryGetConstValueAs<int64_t>();
+    const auto yval = y ? y->TryGetConstValueAs<int64_t>() : 0;
+    const auto zval = z ? z->TryGetConstValueAs<int64_t>() : 0;
+    return program_->Allocate<ast::WorkgroupAttribute>(loc, *xval, *yval,
+                                                       *zval);
+}
+
 Expected<ast::Attribute*> ProgramBuilder::CreateAttribute(
     SourceLoc loc,
     wgsl::AttributeName attr,
     const Expression* expr) {
-    // Validate expression
-    return program_->Allocate<ast::Attribute>(loc, attr, expr);
+    // Valueless attributes
+    switch (attr) {
+        case AttributeName::MustUse:
+        case AttributeName::Invariant:
+        case AttributeName::Vertex:
+        case AttributeName::Compute:
+        case AttributeName::Fragment: {
+            return program_->Allocate<ast::Attribute>(loc, attr);
+        }
+    }
+    // Expect a single i32 or u32 expr
+    // AttributeName::Align:
+    // AttributeName::Binding:
+    // AttributeName::BlendSrc:
+    // AttributeName::Group:
+    // AttributeName::ID:
+    // AttributeName::Location:
+    // AttributeName::Size:
+    EXPECT_TRUE(expr && expr->Is<ast::IntLiteralExpression>(), loc,
+                ErrorCode::InvalidAttribute,
+                "@'{}' value must be a const i32 or u32", to_string(attr));
+    const auto value = expr->TryGetConstValueAs<int64_t>();
+    DASSERT(value);
+    return program_->Allocate<ast::ScalarAttribute>(loc, attr, *value);
+}
+
+Expected<ast::Attribute*> ProgramBuilder::CreateBuiltinAttribute(
+    SourceLoc loc,
+    Builtin value) {
+    return program_->Allocate<ast::BuiltinAttribute>(loc, value);
 }
 
 //===========================================================================//
