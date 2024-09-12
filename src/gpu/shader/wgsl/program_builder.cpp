@@ -352,15 +352,20 @@ Expected<Struct*> ProgramBuilder::CreateStruct(SourceLoc loc,
     EXPECT_TRUE(!currentScope_->FindSymbol(ident.name), loc,
                 ErrorCode::SymbolAlreadyDefined,
                 "identifier '{}' already defined", ident.name);
+    EXPECT_TRUE(currentScope_->IsGlobal(), loc, ErrorCode::InvalidScope,
+                "a struct declaration may not appear in a function scope");
     // Check member name uniqueness
-    std::set<const ast::Member*> identifiers;
+    std::set<std::string_view> identifiers;
     for (const ast::Member* member : members) {
-        const auto [it, ok] = identifiers.emplace(member);
+        const auto [it, ok] = identifiers.emplace(member->name);
         if (!ok) {
             return ReportError(member->GetLoc(), ErrorCode::DuplicateMember);
         }
     }
-    return program_->Allocate<ast::Struct>(loc, ident.name, std::move(members));
+    ast::Struct* out =
+        program_->Allocate<ast::Struct>(loc, ident.name, std::move(members));
+    currentScope_->InsertSymbol(ident.name, out);
+    return out;
 }
 
 Expected<Member*> ProgramBuilder::CreateMember(SourceLoc loc,
@@ -375,7 +380,7 @@ Expected<Member*> ProgramBuilder::CreateMember(SourceLoc loc,
                 "struct member type must be scalar, array, mat, vec or "
                 "struct of such types");
     // TODO: validate that type has fixed footprint
-    return program_->Allocate<ast::Member>(loc, ident.name,
+    return program_->Allocate<ast::Member>(loc, ident.name, type,
                                            std::move(attributes));
 }
 
@@ -531,10 +536,24 @@ Expected<const ast::Type*> ProgramBuilder::ResolveTypeName(
     // Process templated type
     // Parse top level template name: vec2, array, mat2x3
     if (!templateList.empty()) {
-        if (auto arr = ResolveArray(typeSpecifier)) {
-            type = *arr;
-        } else if (auto vec = ResolveVec(typeSpecifier)) {
-            type = *vec;
+        if (name == "array") {
+            if (auto res = ResolveArray(typeSpecifier)) {
+                type = res.value();
+            } else {
+                return std::unexpected(res.error());
+            }
+        } else if (auto vecKind = VecKindFromString(name)) {
+            if (auto res = ResolveVec(typeSpecifier, *vecKind)) {
+                type = res.value();
+            } else {
+                return std::unexpected(res.error());
+            }
+        } else if (auto matKind = MatrixKindFromString(name)) {
+            if (auto res = ResolveMatrix(typeSpecifier)) {
+                type = res.value();
+            } else {
+                return std::unexpected(res.error());
+            }
         } else {
             if (!symbol) {
                 return ReportError(loc, ErrorCode::TypeNotDefined);
@@ -827,14 +846,13 @@ Expected<const ast::Array*> ProgramBuilder::ResolveArray(const Ident& ident) {
                        "expected a scalar type");
 }
 
-Expected<const ast::Vec*> ProgramBuilder::ResolveVec(const Ident& ident) {
+Expected<const ast::Vec*> ProgramBuilder::ResolveVec(const Ident& ident,
+                                                     VecKind) {
     auto [loc, name, params] = ident;
     EXPECT_TRUE(params.size() == 1 && params[0]->Is<ast::IdentExpression>(),
                 loc, ErrorCode::InvalidTemplateParam,
                 "expected a type specifier");
     const auto* identExpr = params[0]->As<ast::IdentExpression>();
-    EXPECT_TRUE(identExpr->symbol->Is<ast::Type>(), loc,
-                ErrorCode::InvalidTemplateParam, "expected a type specifier");
     const auto* valueType = identExpr->symbol->As<ast::Scalar>();
     EXPECT_TRUE(valueType, loc, ErrorCode::InvalidTemplateParam,
                 "vec type param must be of scalar type");
@@ -845,6 +863,26 @@ Expected<const ast::Vec*> ProgramBuilder::ResolveVec(const Ident& ident) {
     const ast::Symbol* symbol = currentScope_->FindSymbol(fullName);
     DASSERT(symbol && symbol->Is<ast::Vec>());
     return symbol->As<ast::Vec>();
+}
+
+Expected<const ast::Matrix*> ProgramBuilder::ResolveMatrix(const Ident& ident) {
+    auto [loc, name, params] = ident;
+    EXPECT_TRUE(params.size() == 1 && params[0]->Is<ast::IdentExpression>(),
+                loc, ErrorCode::InvalidTemplateParam,
+                "expected a type specifier");
+    const auto* identExpr = params[0]->As<ast::IdentExpression>();
+    const auto* valueType = identExpr->symbol->As<ast::Scalar>();
+    EXPECT_TRUE(valueType, loc, ErrorCode::InvalidTemplateParam,
+                "matrix type must be f32 or f16");
+    EXPECT_TRUE(valueType->IsFloat(), loc, ErrorCode::InvalidTemplateParam,
+                "matrix type must be f32 or f16");
+    const std::string fullName =
+        std::format("{}<{}>", ident.name, valueType->name);
+
+    // All matrix types are predeclared
+    const ast::Symbol* symbol = currentScope_->FindSymbol(fullName);
+    DASSERT(symbol && symbol->Is<ast::Vec>());
+    return symbol->As<ast::Matrix>();
 }
 
 

@@ -138,7 +138,8 @@ private:
     Expected<const ast::Type*> ResolveTypeName(const Ident& typeSpecifier);
 
     Expected<const ast::Array*> ResolveArray(const Ident& ident);
-    Expected<const ast::Vec*> ResolveVec(const Ident& ident);
+    Expected<const ast::Vec*> ResolveVec(const Ident& ident, VecKind kind);
+    Expected<const ast::Matrix*> ResolveMatrix(const Ident& ident);
     Expected<const ast::BuiltinFunction*> ResolveBuiltinFunc(
         const Ident& symbol);
 

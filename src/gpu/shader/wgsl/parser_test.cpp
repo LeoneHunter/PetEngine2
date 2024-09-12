@@ -54,9 +54,7 @@ void ExpectNoErrors(std::string_view code) {
 
 struct ProgramTest {
 
-    void Build(std::string_view code) {
-        program = Program::Create(code);
-    }
+    void Build(std::string_view code) { program = Program::Create(code); }
 
     void ExpectGlobalConst(std::string_view s, ScalarKind kind) {
         auto* symbol = program->FindSymbol(s);
@@ -81,6 +79,42 @@ struct ProgramTest {
             const std::string diag = program->GetDiagsAsString();
             LOG_ERROR("WGSL: Errors : \"{}\"", diag);
         }
+    }
+
+    void ExpectStruct(std::string_view name) {
+        const ast::Symbol* symbol = program->FindSymbol(name);
+        CHECK(symbol);
+        const ast::Struct* structType = symbol->As<ast::Struct>();
+        CHECK_MESSAGE(structType, "expected a struct with the name ", name);
+    }
+
+    // Checks whether a struct has a member with type 'Type'
+    //   and a name 'name'
+    // Full "c++ namespace" style name
+    // MyStruct::a, MyStruct::my_member_a
+    template <class Type>
+    void ExpectStructMember(std::string_view name) {
+        const size_t sepPos = name.find("::");
+        DASSERT(sepPos != name.npos);
+        const std::string_view structName = name.substr(0, sepPos);
+        const std::string_view memberName = name.substr(sepPos + 2);
+
+        const ast::Symbol* symbol = program->FindSymbol(structName);
+        CHECK(symbol);
+        const ast::Struct* structType = symbol->As<ast::Struct>();
+        CHECK_MESSAGE(structType, "expected a struct '", name, "'");
+
+        const ast::Member* member = [&] {
+            for (const ast::Member* member : structType->members) {
+                if (member->name == memberName) {
+                    return member;
+                }
+            }
+            return (const Member*)nullptr;
+        }();
+        CHECK_MESSAGE(member, "expected a struct member '", name, "'");
+        CHECK_MESSAGE(member->type->Is<Type>(), "expected a struct member '",
+                      name, "' with type '", to_string(Type::kStaticType), "'");
     }
 
     std::unique_ptr<Program> program;
@@ -214,13 +248,25 @@ TEST_CASE_FIXTURE(ProgramTest, "[WGSL] operators type checks") {
     ExpectErrNum(0);
 }
 
-TEST_CASE_FIXTURE(ProgramTest, "[WGSL] struct type") {
+TEST_CASE_FIXTURE(ProgramTest, "[WGSL] struct type, templates") {
     Build(R"(
         struct MyStruct { 
             a : vec2<f32>,
             b : vec2f,  
             c : vec3<i32>,
+            d : vec4<f32>,
+            e : f32,
+            f : array<f32, 10>
+            h : mat4x4f
         };
     )");
+    ExpectStruct("MyStruct");
+    ExpectStructMember<ast::Vec>("MyStruct::a");
+    ExpectStructMember<ast::Vec>("MyStruct::b");
+    ExpectStructMember<ast::Vec>("MyStruct::c");
+    ExpectStructMember<ast::Vec>("MyStruct::d");
+    ExpectStructMember<ast::Scalar>("MyStruct::e");
+    ExpectStructMember<ast::Array>("MyStruct::f");
+    ExpectStructMember<ast::Matrix>("MyStruct::h");
     ExpectErrNum(0);
 }

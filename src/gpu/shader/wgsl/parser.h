@@ -51,7 +51,7 @@ private:
     Expected<ast::Struct*> Struct();
 
     // Expressions
-    Expected<ast::Expression*> Expression();
+    Expected<ast::Expression*> Expression(bool inTemplate);
     Expected<ast::Expression*> UnaryExpr();
     Expected<ast::Expression*> PrimaryExpr();
     Expected<ast::Expression*> ComponentSwizzleExpr(ast::Expression* lhs);

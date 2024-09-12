@@ -24,6 +24,7 @@ namespace wgsl {
     V(LiteralInitValueTooLarge, "initializer value too large")                 \
     /* Semantic errors */                                                      \
     V(InvalidVarBinding, "this var declaration may not have such type")        \
+    V(InvalidScope, "this declaration cannot appear in the current scope")     \
     V(EmptyStruct, "a struct declaration must have members specified")         \
     V(DuplicateMember, "member redefinition")                                  \
     V(ConstDeclNoInitializer,                                                  \

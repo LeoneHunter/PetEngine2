@@ -221,7 +221,7 @@ Expected<ast::Variable*> Parser::ConstValueDecl() {
     // '=' expression
     EXPECT_C(Tok::Equal, ErrorCode::ConstDeclNoInitializer);
     ast::Expression* initializer = nullptr;
-    EXPECT_UNWRAP(initializer, Expression(), ErrorCode::ExpectedExpr);
+    EXPECT_UNWRAP(initializer, Expression(false), ErrorCode::ExpectedExpr);
     return builder_->CreateConstVar(loc, Ident(ident.loc, ident.Source()),
                                     typeSpecifier, initializer);
 }
@@ -277,7 +277,7 @@ Expected<ast::Variable*> Parser::VarDecl(ast::AttributeList& attributes) {
     // Initializer: '=' expression
     ast::Expression* initializer = nullptr;
     if (Expect(Tok::Equal)) {
-        EXPECT_UNWRAP(initializer, Expression(), ErrorCode::ExpectedExpr);
+        EXPECT_UNWRAP(initializer, Expression(false), ErrorCode::ExpectedExpr);
     }
     return builder_->CreateVar(loc, ident, addrSpace, accessMode, typeSpecifier,
                                attributes, initializer);
@@ -293,7 +293,7 @@ Expected<Ident> Parser::TemplatedIdent() {
     if (Expect(Tok::LessThan)) {
         while (!Expect(Tok::GreaterThan)) {
             ast::Expression* expr = nullptr;
-            EXPECT_UNWRAP(expr, Expression(), ErrorCode::ExpectedExpr);
+            EXPECT_UNWRAP(expr, Expression(true), ErrorCode::ExpectedExpr);
             templ.push_back(expr);
             EXPECT_OPT(Tok::Comma);
         }
@@ -302,7 +302,7 @@ Expected<Ident> Parser::TemplatedIdent() {
 }
 
 // unary_expression | relational_expr ...
-Expected<ast::Expression*> Parser::Expression() {
+Expected<ast::Expression*> Parser::Expression(bool inTemplate) {
     ast::Expression* unary = nullptr;
     EXPECT_UNWRAP(unary, UnaryExpr(), ErrorCode::ExpectedExpr);
     // binary operator
@@ -318,7 +318,6 @@ Expected<ast::Expression*> Parser::Expression() {
         case Tok::Mod: op = OpCode::Mod; break;
         // Relation
         case Tok::LessThan: op = OpCode::Less; break;
-        case Tok::GreaterThan: op = OpCode::Greater; break;
         case Tok::LessThanEqual: op = OpCode::LessEqual; break;
         case Tok::GreaterThanEqual: op = OpCode::GreaterEqual; break;
         case Tok::Equal: op = OpCode::Equal; break;
@@ -332,6 +331,10 @@ Expected<ast::Expression*> Parser::Expression() {
         case Tok::Xor: op = OpCode::BitXor; break;
         case Tok::LeftShift: op = OpCode::BitLsh; break;
         case Tok::RightShift: op = OpCode::BitRsh; break;
+        case Tok::GreaterThan:
+            if (!inTemplate) {
+                op = OpCode::Greater;
+            }
     }
     if (!op) {
         return unary;
@@ -340,7 +343,7 @@ Expected<ast::Expression*> Parser::Expression() {
     // Expect rhs expression
     ast::Expression* lhs = unary;
     ast::Expression* rhs = nullptr;
-    EXPECT_UNWRAP(rhs, Expression(), ErrorCode::ExpectedExpr);
+    EXPECT_UNWRAP(rhs, Expression(inTemplate), ErrorCode::ExpectedExpr);
     return builder_->CreateBinaryExpr(SourceLoc(lhs->GetLoc(), rhs->GetLoc()),
                                       *op, lhs, rhs);
 }
@@ -404,7 +407,7 @@ Expected<ast::Expression*> Parser::PrimaryExpr() {
     // '(' expression ')'
     if (Expect(Tok::OpenParen)) {
         ast::Expression* expr = nullptr;
-        EXPECT_UNWRAP(expr, Expression(), ErrorCode::ExpectedExpr);
+        EXPECT_UNWRAP(expr, Expression(false), ErrorCode::ExpectedExpr);
         EXPECT_TOK(Tok::CloseParen);
         return expr;
     }
@@ -439,7 +442,7 @@ Expected<ast::Expression*> Parser::IdentExpression() {
     if (Expect(Tok::LessThan)) {
         while (!Expect(Tok::GreaterThan)) {
             ast::Expression* expr = nullptr;
-            EXPECT_UNWRAP(expr, Expression(), ErrorCode::ExpectedExpr);
+            EXPECT_UNWRAP(expr, Expression(true), ErrorCode::ExpectedExpr);
             ident.templateList.push_back(expr);
             EXPECT_OPT(Tok::Comma);
         }
@@ -449,7 +452,7 @@ Expected<ast::Expression*> Parser::IdentExpression() {
         ExpressionList args;
         while (!Expect(Tok::CloseParen)) {
             ast::Expression* expr = nullptr;
-            EXPECT_UNWRAP(expr, Expression(), ErrorCode::ExpectedExpr);
+            EXPECT_UNWRAP(expr, Expression(false), ErrorCode::ExpectedExpr);
             args.push_back(expr);
             EXPECT_OPT(Tok::Comma);
         }
@@ -531,7 +534,7 @@ Expected<ast::Attribute*> Parser::Attribute() {
     if (ident.Match("align")) {
         EXPECT_TOK(Tok::OpenParen);
         ast::Expression* expr = nullptr;
-        EXPECT_UNWRAP(expr, Expression(), ErrorCode::ExpectedExpr);
+        EXPECT_UNWRAP(expr, Expression(false), ErrorCode::ExpectedExpr);
         EXPECT_OPT(Tok::Comma);
         EXPECT_TOK(Tok::CloseParen);
         return builder_->CreateAttribute(ident.loc, wgsl::AttributeName::Align,
@@ -542,7 +545,7 @@ Expected<ast::Attribute*> Parser::Attribute() {
     if (ident.Match("align")) {
         EXPECT_TOK(Tok::OpenParen);
         ast::Expression* expr = nullptr;
-        EXPECT_UNWRAP(expr, Expression(), ErrorCode::ExpectedExpr);
+        EXPECT_UNWRAP(expr, Expression(false), ErrorCode::ExpectedExpr);
         EXPECT_OPT(Tok::Comma);
         EXPECT_TOK(Tok::CloseParen);
         return builder_->CreateAttribute(ident.loc,
@@ -606,7 +609,7 @@ Expected<ast::Struct*> Parser::Struct() {
                       ErrorCode::TypeError);
         members.push_back(member);
     }
-    if(members.empty()) {
+    if (members.empty()) {
         return Unexpected(ErrorCode::EmptyStruct);
     }
     return builder_->CreateStruct(structIdent.loc, structIdent, members);

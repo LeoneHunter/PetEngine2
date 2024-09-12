@@ -1,8 +1,8 @@
 #pragma once
-#include "ast_node.h"
 #include "ast_attribute.h"
-#include "program_alloc.h"
+#include "ast_node.h"
 #include "base/string_utils.h"
+#include "program_alloc.h"
 
 namespace wgsl::ast {
 
@@ -163,6 +163,16 @@ constexpr std::string_view to_string(VecKind kind) {
 #undef CASE
 }
 
+constexpr std::optional<VecKind> VecKindFromString(std::string_view str) {
+#define IF_ELSE(NAME, STR)    \
+    if (str == STR)           \
+        return VecKind::NAME; \
+    else
+    VECTOR_KIND_LIST(IF_ELSE)
+    return std::nullopt;
+#undef IF_ELSE
+}
+
 // Builtin vector: vec2, vec3
 class Vec final : public Type {
 public:
@@ -222,6 +232,18 @@ constexpr std::string_view to_string(MatrixKind kind) {
 #undef CASE
 }
 
+constexpr std::optional<MatrixKind> MatrixKindFromString(std::string_view str) {
+#define IF_ELSE(NAME, STR)       \
+    if (str == STR)              \
+        return MatrixKind::NAME; \
+    else
+    MATRIX_KIND_LIST(IF_ELSE)
+    return std::nullopt;
+#undef IF_ELSE
+}
+
+
+
 // Builtin matrix: mat2x3<f32>
 class Matrix final : public Type {
 public:
@@ -268,6 +290,18 @@ constexpr std::string_view to_string(TextureKind kind) {
     }
 #undef CASE
 }
+
+constexpr std::optional<TextureKind> TextureKindFromString(
+    std::string_view str) {
+#define IF_ELSE(NAME, STR)        \
+    if (str == STR)               \
+        return TextureKind::NAME; \
+    else
+    TEXTURE_KIND_LIST(IF_ELSE)
+    return std::nullopt;
+#undef IF_ELSE
+}
+
 
 // Builtin texture
 class Texture final : public Type {
@@ -319,7 +353,10 @@ public:
     const AttributeList attributes;
 
 public:
-    Member(SourceLoc loc, std::string_view name, AttributeList&& attributes)
+    Member(SourceLoc loc,
+           std::string_view name,
+           const Type* type,
+           AttributeList&& attributes)
         : Node(loc, kStaticType)
         , name(name)
         , type(type)
