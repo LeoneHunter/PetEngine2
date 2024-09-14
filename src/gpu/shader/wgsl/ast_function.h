@@ -1,41 +1,74 @@
 #pragma once
-#include "ast_node.h"
 #include "ast_attribute.h"
+#include "ast_node.h"
+#include "ast_variable.h"
 #include "program_alloc.h"
 
-namespace wgsl::ast {
+namespace wgsl {
+
+class FunctionScope;
+
+namespace ast {
 
 class Parameter;
-using ParamList = ProgramVector<const ast::Parameter*>;
+class Statement;
+class SymbolTable;
 
+using ParameterList = ProgramList<const Parameter*>;
+using StatementList = ProgramList<const Statement*>;
+
+// A Function with a scope
 class Function : public Symbol {
 public:
+    const std::string_view name;
     const AttributeList attributes;
-    const ParamList parameters;
+    const ParameterList parameters;
+    const Type* retType;
+    const AttributeList retAttributes;
+    StatementList body;
 
-public:
+    SymbolTable* symbolTable;
+
     constexpr static inline auto kStaticType = NodeType::Function;
 
-    Function(SourceLoc loc, AttributeList&& attributes, ParamList&& params)
+    Function(SourceLoc loc,
+             SymbolTable* symbolTable,
+             std::string_view name,
+             AttributeList&& attributes,
+             ParameterList&& params,
+             const ast::Type* retType,
+             AttributeList&& retAttributes)
         : Symbol(loc, kStaticType)
+        , name(name)
+        , symbolTable(symbolTable)
         , attributes(attributes)
-        , parameters(parameters) {}
+        , parameters(params)
+        , retType(retType)
+        , retAttributes(retAttributes) {}
 
-protected:
-    Function(NodeType nodeType, ParamList&& params)
-        : Symbol(SourceLoc(), nodeType | kStaticType)
-        , attributes(attributes)
-        , parameters(parameters) {}
+    void AddStatement(const ast::Statement* statement) {
+        DASSERT(statement);
+        body.push_back(statement);
+    }
 };
 
-// Builtin function: interpolate, log
-class BuiltinFunction : public Function {
+// Function parameters
+class Parameter final : public Variable {
 public:
+    constexpr static inline auto kStaticType = NodeType::Parameter;
 
-public:
-    constexpr static inline auto kStaticType = NodeType::Function;
-
-    BuiltinFunction(): Function(kStaticType, {}) {}
+    Parameter(SourceLoc loc,
+              std::string_view ident,
+              const Type* type,
+              AttributeList&& attributes)
+        : Variable(loc,
+                   kStaticType,
+                   ident,
+                   type,
+                   std::move(attributes),
+                   nullptr) {}
 };
 
-}  // namespace wgsl::ast
+
+}  // namespace ast
+}  // namespace wgsl

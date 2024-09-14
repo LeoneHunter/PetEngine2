@@ -4,6 +4,8 @@
 #include "program_builder.h"
 
 #include "ast_printer.h"
+#include "ast_scope.h"
+
 #include "base/tree_printer.h"
 
 namespace wgsl {
@@ -21,7 +23,8 @@ Program::Program() {
     // Nested program building doesn't make sense
     DASSERT(!currentProgram);
     currentProgram = this;
-    globalScope_ = alloc_.Allocate<Scope>(nullptr);
+    auto* symbols = alloc_.Allocate<ast::SymbolTable>(nullptr);
+    globalScope_ = alloc_.Allocate<ast::GlobalScope>(symbols);
 }
 
 Program::~Program() {

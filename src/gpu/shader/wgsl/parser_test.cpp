@@ -1,6 +1,11 @@
 #include "base/tree_printer.h"
 #include "program.h"
 
+#include "ast_scope.h"
+#include "ast_variable.h"
+#include "ast_expression.h"
+#include "ast_type.h"
+
 #include <doctest.h>
 
 using namespace wgsl;
@@ -156,17 +161,17 @@ struct ProgramTest {
 
 TEST_CASE("[WGSL] basic errors") {
     ExpectError(" const a = 4 ", ErrorCode::UnexpectedToken);
-    ExpectError(" const a 4; ", ErrorCode::ConstDeclNoInitializer);
+    ExpectError(" const a 4; ", ErrorCode::UnexpectedToken);
     ExpectError(" const a = ; ", ErrorCode::ExpectedExpr);
     ExpectError(" const = 4; ", ErrorCode::UnexpectedToken);
     ExpectError(" const a : = 4; ", ErrorCode::ExpectedType);
     ExpectError(" const a :  ", ErrorCode::ExpectedType);
     ExpectError("  = 4; ", ErrorCode::ExpectedDecl);
     ExpectError(" @invalid const a = 4; ", ErrorCode::InvalidAttribute);
-    ExpectError(" @vertex const a = 4; ", ErrorCode::ConstNoAttr);
+    ExpectError(" @vertex const a = 4; ", ErrorCode::UnexpectedToken);
     // FIXME: Gets ErrorCode::ExpectedIdent
     // ExpectError(" const auto = 3; ", ErrorCode::IdentReserved);
-    ExpectError(" const a : i32; ", ErrorCode::ConstDeclNoInitializer);
+    ExpectError(" const a : i32; ", ErrorCode::UnexpectedToken);
     ExpectError(" const a : p32 = 3; ", ErrorCode::SymbolNotFound);
     ExpectError(" const a = 3; const b : a = 4; ", ErrorCode::IdentNotType);
     ExpectError(" const a : i32 = 3.2f; ", ErrorCode::TypeError);
@@ -310,5 +315,14 @@ TEST_CASE_FIXTURE(ProgramTest, "[WGSL] global var, attributes") {
     ExpectGlobalVar<ast::Scalar>("a");
     ExpectGlobalVar<ast::Scalar>("b");
     ExpectGlobalVar<ast::Scalar>("c");
+    ExpectErrNum(0);
+}
+
+TEST_CASE_FIXTURE(ProgramTest, "[WGSL] func basic") {
+    Build(R"(
+        fn main(a : vec3f)-> vec3f {
+            return a;
+        }
+    )");
     ExpectErrNum(0);
 }

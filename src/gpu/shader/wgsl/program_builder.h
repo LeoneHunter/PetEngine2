@@ -5,6 +5,8 @@
 #include "ast_attribute.h"
 #include "ast_expression.h"
 #include "ast_function.h"
+#include "ast_scope.h"
+#include "ast_statement.h"
 #include "ast_type.h"
 #include "ast_variable.h"
 
@@ -12,8 +14,6 @@
 #include "program.h"
 
 namespace wgsl {
-
-using namespace ast;
 
 // Program builder and validator
 // Performs lexical analysis and validates nodes on creation
@@ -24,10 +24,6 @@ public:
 
     void Build(std::string_view code);
     std::unique_ptr<Program> Finalize();
-
-    void PushGlobalDecl(ast::Variable* var);
-    void PushGlobalDecl(ast::Struct* var);
-    void PushGlobalDecl(ast::Function* fn);
 
 public:
     bool ShouldStopParsing();
@@ -52,104 +48,135 @@ public:
     }
 
 public:
-    Expected<ConstVariable*> CreateConstVar(
+    Expected<const ast::Parameter*> CreateParameter(
         SourceLoc loc,
         const Ident& ident,
-        const std::optional<Ident>& typeSpecifier,
-        const Expression* initializer);
+        const Ident& typeSpecifier,
+        ast::AttributeList& attributes);
+
+    ExpectedVoid DeclareFunction(SourceLoc loc,
+                                 const Ident& ident,
+                                 ast::AttributeList& attributes,
+                                 ast::ParameterList& params,
+                                 const Ident& retTypeSpecifier,
+                                 ast::AttributeList& retAttributes);
+
+    ExpectedVoid CreateCompoundStatement(SourceLoc loc);
+
+    // Indicates the end of a scoped statement
+    void DeclareFuncEnd(SourceLoc loc);
+
+    ExpectedVoid DeclareReturnStatement(SourceLoc loc,
+                                        const ast::Expression* expr);
+
+public:
+    ExpectedVoid DeclareConst(SourceLoc loc,
+                              const Ident& ident,
+                              const std::optional<Ident>& typeSpecifier,
+                              const ast::Expression* initializer);
 
     // 'var' variable declaration
-    Expected<VarVariable*> CreateVar(SourceLoc loc,
-                                     const Ident& ident,
-                                     std::optional<AddressSpace> addrSpace,
-                                     std::optional<AccessMode> accessMode,
-                                     const std::optional<Ident>& typeSpecifier,
-                                     AttributeList& attributes,
-                                     const Expression* initializer);
+    Expected<const ast::VarVariable*> DeclareVariable(
+        SourceLoc loc,
+        const Ident& ident,
+        std::optional<AddressSpace> addrSpace,
+        std::optional<AccessMode> accessMode,
+        const std::optional<Ident>& typeSpecifier,
+        ast::AttributeList& attributes,
+        const ast::Expression* initializer);
 
-    Expected<Struct*> CreateStruct(SourceLoc loc,
-                                   const Ident& ident,
-                                   MemberList& members);
+    Expected<const ast::Struct*> DeclareStruct(SourceLoc loc,
+                                               const Ident& ident,
+                                               ast::MemberList& members);
 
-    Expected<Member*> CreateMember(SourceLoc loc,
-                                   const Ident& ident,
-                                   const Ident& typeSpecifier,
-                                   AttributeList& attributes);
+    Expected<const ast::Member*> CreateMember(SourceLoc loc,
+                                              const Ident& ident,
+                                              const Ident& typeSpecifier,
+                                              ast::AttributeList& attributes);
 
-    Expected<Expression*> CreateBinaryExpr(SourceLoc loc,
-                                           OpCode op,
-                                           const Expression* lhs,
-                                           const Expression* rhs);
+    Expected<const ast::Expression*> CreateBinaryExpr(
+        SourceLoc loc,
+        ast::OpCode op,
+        const ast::Expression* lhs,
+        const ast::Expression* rhs);
 
-    Expected<Expression*> CreateUnaryExpr(SourceLoc loc,
-                                          OpCode op,
-                                          const Expression* rhs);
+    Expected<const ast::Expression*>
+    CreateUnaryExpr(SourceLoc loc, ast::OpCode op, const ast::Expression* rhs);
 
-    Expected<IdentExpression*> CreateIdentExpr(const Ident& ident);
+    Expected<const ast::IdentExpression*> CreateIdentExpr(const Ident& ident);
 
-    Expected<Expression*> CreateFnCallExpr(const Ident& ident,
-                                           const ExpressionList& args);
+    Expected<const ast::Expression*> CreateFnCallExpr(
+        const Ident& ident,
+        const ExpressionList& args);
 
-    Expected<IntLiteralExpression*> CreateIntLiteralExpr(SourceLoc loc,
-                                                         int64_t value,
-                                                         ScalarKind type);
+    Expected<const ast::IntLiteralExpression*>
+    CreateIntLiteralExpr(SourceLoc loc, int64_t value, ast::ScalarKind type);
 
 
-    Expected<FloatLiteralExpression*> CreateFloatLiteralExpr(SourceLoc loc,
-                                                             double value,
-                                                             ScalarKind type);
+    Expected<const ast::FloatLiteralExpression*>
+    CreateFloatLiteralExpr(SourceLoc loc, double value, ast::ScalarKind type);
 
-    Expected<BoolLiteralExpression*> CreateBoolLiteralExpr(SourceLoc loc,
-                                                           bool value);
+    Expected<const ast::BoolLiteralExpression*> CreateBoolLiteralExpr(
+        SourceLoc loc,
+        bool value);
 
-    Expected<ast::Attribute*> CreateAttribute(SourceLoc loc,
-                                              AttributeName attr,
-                                              const Expression* expr = nullptr);
+    Expected<const ast::Attribute*> CreateAttribute(
+        SourceLoc loc,
+        AttributeName attr,
+        const ast::Expression* expr = nullptr);
 
-    Expected<ast::Attribute*> CreateBuiltinAttribute(SourceLoc loc,
-                                                     Builtin value);
+    Expected<const ast::Attribute*> CreateBuiltinAttribute(SourceLoc loc,
+                                                           Builtin value);
 
-    Expected<ast::Attribute*> CreateWorkGroupAttr(SourceLoc loc,
-                                                  const ast::Expression* x,
-                                                  const ast::Expression* y,
-                                                  const ast::Expression* z);
+    Expected<const ast::Attribute*> CreateWorkGroupAttr(
+        SourceLoc loc,
+        const ast::Expression* x,
+        const ast::Expression* y,
+        const ast::Expression* z);
 
 private:
-    Expected<Expression*> ResolveArithmeticUnaryOp(SourceLoc loc,
-                                                   OpCode op,
-                                                   const Expression* rhs);
+    Expected<const ast::Expression*> ResolveArithmeticUnaryOp(
+        SourceLoc loc,
+        ast::OpCode op,
+        const ast::Expression* rhs);
 
-    Expected<Expression*> ResolveLogicalUnaryOp(SourceLoc loc,
-                                                OpCode op,
-                                                const Expression* rhs);
+    Expected<const ast::Expression*> ResolveLogicalUnaryOp(
+        SourceLoc loc,
+        ast::OpCode op,
+        const ast::Expression* rhs);
 
-    Expected<Expression*> ResolveBitwiseUnaryOp(SourceLoc loc,
-                                                OpCode op,
-                                                const Expression* rhs);
+    Expected<const ast::Expression*> ResolveBitwiseUnaryOp(
+        SourceLoc loc,
+        ast::OpCode op,
+        const ast::Expression* rhs);
 
-    Expected<Expression*> ResolveArithmeticBinaryOp(SourceLoc loc,
-                                                    OpCode op,
-                                                    const Expression* lhs,
-                                                    const Expression* rhs);
+    Expected<const ast::Expression*> ResolveArithmeticBinaryOp(
+        SourceLoc loc,
+        ast::OpCode op,
+        const ast::Expression* lhs,
+        const ast::Expression* rhs);
 
-    Expected<Expression*> ResolveLogicalBinaryOp(SourceLoc loc,
-                                                 OpCode op,
-                                                 const Expression* lhs,
-                                                 const Expression* rhs);
+    Expected<const ast::Expression*> ResolveLogicalBinaryOp(
+        SourceLoc loc,
+        ast::OpCode op,
+        const ast::Expression* lhs,
+        const ast::Expression* rhs);
 
-    Expected<Expression*> ResolveBitwiseBinaryOp(SourceLoc loc,
-                                                 OpCode op,
-                                                 const Expression* lhs,
-                                                 const Expression* rhs);
+    Expected<const ast::Expression*> ResolveBitwiseBinaryOp(
+        SourceLoc loc,
+        ast::OpCode op,
+        const ast::Expression* lhs,
+        const ast::Expression* rhs);
 
 
     Expected<const ast::Type*> ResolveTypeName(const Ident& typeSpecifier);
 
     Expected<const ast::Array*> ResolveArray(const Ident& ident);
-    Expected<const ast::Vec*> ResolveVec(const Ident& ident, VecKind kind);
+    Expected<const ast::Vec*> ResolveVec(const Ident& ident, ast::VecKind kind);
     Expected<const ast::Matrix*> ResolveMatrix(const Ident& ident);
-    Expected<const ast::BuiltinFunction*> ResolveBuiltinFunc(
-        const Ident& symbol);
+
+    // Expected<const ast::BuiltinFunction*> ResolveBuiltinFunc(
+    //     const Ident& symbol);
 
 private:
     template <class T>
@@ -172,9 +199,10 @@ private:
         return ErrorCode::Ok;
     }
 
-    Expected<const ast::Scalar*> ResolveBinaryExprTypes(SourceLoc loc,
-                                              const ast::Expression* lhs,
-                                              const ast::Expression* rhs);
+    Expected<const ast::Scalar*> ResolveBinaryExprTypes(
+        SourceLoc loc,
+        const ast::Expression* lhs,
+        const ast::Expression* rhs);
 
     ErrorCode CheckExpressionArg(SourceLoc loc, const ast::Expression* arg);
 
@@ -192,9 +220,84 @@ private:
     void FormatAndAddMsg(SourceLoc loc, ErrorCode code, const std::string& msg);
 
 private:
+    // Helper to track current scope context, function or global,
+    // Adds a declaration or a statement to the current node
+    class Scope {
+    public:
+        void Init(ast::GlobalScope* global) {
+            globalScope_ = global;
+            currentNode_ = global;
+            currentSymbols_ = global->symbolTable;
+        }
+
+        ast::Symbol* FindSymbol(std::string_view name) {
+            return currentSymbols_->FindSymbol(name);
+        }
+
+        template <std::derived_from<ast::Symbol> T>
+        T* FindSymbol(std::string_view name) {
+            if (auto res = currentSymbols_->FindSymbol(name)) {
+                return res->As<T>();
+            }
+            return nullptr;
+        }
+
+        // Declares a symbol in the current scope
+        void Declare(std::string_view name, ast::Symbol* symbol) {
+            if (auto* global = currentNode_->As<ast::GlobalScope>()) {
+                global->Declare(name, symbol);
+            } else if (auto* func = currentNode_->As<ast::Function>()) {
+                func->symbolTable->InsertSymbol(name, symbol);
+            } else {
+                FATAL("current scope is not global nor function");
+            }
+        }
+
+        // Declare global builtin symbol
+        void DeclareBuiltin(std::string_view name, ast::Symbol* symbol) {
+            globalScope_->symbolTable->InsertSymbol(name, symbol);
+        }
+
+        bool IsGlobal() const { return currentNode_->Is<ast::GlobalScope>(); }
+
+        // Opens a new scope with a new symbol table
+        void PushScope(ast::Function* func) {
+            parentNode_ = currentNode_;
+            currentNode_ = func;
+            currentSymbols_ = func->symbolTable;
+        }
+
+        // Closes the current scope
+        void PopScope() {
+            DASSERT(parentNode_);
+            currentNode_ = parentNode_;
+            if (auto* global = currentNode_->As<ast::GlobalScope>()) {
+                currentSymbols_ = global->symbolTable;
+            } else if (auto* func = currentNode_->As<ast::Function>()) {
+                currentSymbols_ = func->symbolTable;
+            } else {
+                FATAL("current scope is not global nor function");
+            }
+        }
+
+        // Adds a statement to the current function
+        void AddStatement(ast::Statement* statement) {
+            DASSERT(currentNode_->Is<ast::Function>());
+            currentNode_->As<ast::Function>()->AddStatement(statement);
+        }
+
+        ast::SymbolTable* GetCurrentSymbolTable() { return currentSymbols_; }
+
+    private:
+        ast::GlobalScope* globalScope_ = nullptr;
+        ast::Node* currentNode_ = nullptr;
+        ast::SymbolTable* currentSymbols_ = nullptr;
+        ast::Node* parentNode_ = nullptr;
+    };
+
+private:
     std::unique_ptr<Program> program_;
-    // Current scope, owned by the program
-    Program::Scope* currentScope_ = nullptr;
+    Scope currentScope_;
     Parser* parser_ = nullptr;
     bool stopParsing_ = false;
 };

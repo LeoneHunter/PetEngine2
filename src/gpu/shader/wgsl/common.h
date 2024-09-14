@@ -22,6 +22,7 @@ namespace wgsl {
     V(IdentReserved, "identifier is reserved")                                 \
     V(ExpectedStorageClass, "const, var, override or let is expected")         \
     V(LiteralInitValueTooLarge, "initializer value too large")                 \
+    V(ExpectedStatement, "expected a statement")                               \
     /* Semantic errors */                                                      \
     V(InvalidVarBinding, "this var declaration may not have such type")        \
     V(InvalidScope, "this declaration cannot appear in the current scope")     \
@@ -198,7 +199,6 @@ constexpr std::string_view to_string(AttributeName attr) {
 //=====================================================//
 // Builtins
 //=====================================================//
-
 #define BUILTINS_LIST(V)                              \
     V(VertexIndex, "vertex_index")                    \
     V(InstanceIndex, "instance_index")                \
@@ -237,15 +237,71 @@ constexpr std::optional<Builtin> BuiltinFromString(std::string_view str) {
 
 
 
+//=====================================================//
 // Keywords
+//=====================================================//
+#define KEYWORD_LIST(V)            \
+    V(Alias, "alias")              \
+    V(Break, "break")              \
+    V(Case, "case")                \
+    V(Const, "const")              \
+    V(ConstAssert, "const_assert") \
+    V(Continue, "continue")        \
+    V(Continuing, "continuing")    \
+    V(Default, "default")          \
+    V(Diagnostic, "diagnostic")    \
+    V(Discard, "discard")          \
+    V(Else, "else")                \
+    V(Enable, "enable")            \
+    V(False, "false")              \
+    V(Fn, "fn")                    \
+    V(For, "for")                  \
+    V(If, "if")                    \
+    V(Let, "let")                  \
+    V(Loop, "loop")                \
+    V(Override, "override")        \
+    V(Requires, "requires")        \
+    V(Return, "return")            \
+    V(Struct, "struct")            \
+    V(Switch, "switch")            \
+    V(True, "true")                \
+    V(Var, "var")                  \
+    V(While, "while")
+
+
 constexpr std::string_view kKeywords[] = {
-    "alias",    "break",      "case",    "const",      "const_assert",
-    "continue", "continuing", "default", "diagnostic", "discard",
-    "else",     "enable",     "false",   "fn",         "for",
-    "if",       "let",        "loop",    "override",   "requires",
-    "return",   "struct",     "switch",  "true",       "var",
-    "while",
+#define V(NAME, STR) STR,
+    KEYWORD_LIST(V)
+#undef V
 };
+
+enum class Keyword {
+#define ENUM(NAME, STR) NAME,
+    KEYWORD_LIST(ENUM)
+#undef ENUM
+};
+
+constexpr std::string_view to_string(Keyword keyword) {
+#define CASE(NAME, STR) \
+    case Keyword::NAME: return STR;
+    switch (keyword) {
+        KEYWORD_LIST(CASE)
+        default: return "";
+    }
+#undef CASE
+}
+
+constexpr std::optional<Keyword> KeywordFromString(std::string_view str) {
+#define CASE(NAME, STR)       \
+    if (str == STR)           \
+        return Keyword::NAME; \
+    else
+    KEYWORD_LIST(CASE)
+    return std::nullopt;
+#undef CASE
+}
+
+
 
 // Reserved identifiers for future use
 // clang-format off

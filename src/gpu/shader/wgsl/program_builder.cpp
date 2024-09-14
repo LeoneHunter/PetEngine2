@@ -1,5 +1,6 @@
 #include "program_builder.h"
 #include "ast_alias.h"
+#include "ast_scope.h"
 #include "parser.h"
 #include "program.h"
 
@@ -13,13 +14,15 @@
         }                                  \
     } while (false)
 
-// Try expression, return if errored
-#define TRY_UNWRAP(out, expr)                    \
+// Expect a result of expr to have a value
+// Else forwards errors up
+#define VALUE_ELSE_RET(VALUE, EXPR)              \
     do {                                         \
-        auto res = expr;                         \
+        auto res = EXPR;                         \
         if (res) {                               \
-            out = *res;                          \
+            VALUE = *res;                        \
         } else {                                 \
+            /* Forward error */                  \
             return std::unexpected(res.error()); \
         }                                        \
     } while (false)
@@ -34,7 +37,11 @@
 
 namespace wgsl {
 
+using namespace ast;
+
 namespace {
+
+constexpr auto kRetVarSymbolName = "__return_variable";
 
 using EvalResult = std::variant<double, int64_t, bool>;
 
@@ -95,13 +102,13 @@ ProgramBuilder::ProgramBuilder() : program_(new Program()) {}
 ProgramBuilder::~ProgramBuilder() {}
 
 void ProgramBuilder::CreateBuiltinSymbols() {
-    Program::Scope& scope = *program_->globalScope_;
+    ast::GlobalScope& scope = *program_->globalScope_;
     Program& program = *program_;
 
     // Predeclare scalars
     const auto declareScalar = [&](ScalarKind kind) {
         auto* type = program.Allocate<ast::Scalar>(kind);
-        scope.InsertSymbol(to_string(kind), type);
+        scope.PreDeclare(to_string(kind), type);
         return type;
     };
     declareScalar(ScalarKind::Bool);
@@ -116,12 +123,12 @@ void ProgramBuilder::CreateBuiltinSymbols() {
                                 std::string_view symbol,
                                 std::string_view alias = "") {
         auto* type = program.Allocate<ast::Vec>(kind, valueType);
-        scope.InsertSymbol(symbol, type);
+        scope.PreDeclare(symbol, type);
 
         if (!alias.empty()) {
             auto* aliasType =
                 program.Allocate<ast::Alias>(SourceLoc(), alias, type);
-            scope.InsertSymbol(alias, aliasType);
+            scope.PreDeclare(alias, aliasType);
         }
     };
     declareVec(ast::VecKind::Vec2, scF32, "vec2<f32>", "vec2f");
@@ -138,12 +145,12 @@ void ProgramBuilder::CreateBuiltinSymbols() {
     const auto declareMat = [&](ast::MatrixKind kind, std::string_view symbol,
                                 std::string_view alias = "") {
         auto* type = program.Allocate<ast::Matrix>(kind, scF32);
-        scope.InsertSymbol(symbol, type);
+        scope.PreDeclare(symbol, type);
 
         if (!alias.empty()) {
             auto* aliasType =
                 program.Allocate<ast::Alias>(SourceLoc(), alias, type);
-            scope.InsertSymbol(alias, aliasType);
+            scope.PreDeclare(alias, aliasType);
         }
     };
     declareMat(ast::MatrixKind::Mat2x2, "mat2x2<f32>", "mat2x2f");
@@ -161,7 +168,7 @@ void ProgramBuilder::Build(std::string_view code) {
     // Copy source code
     program_->sourceCode_ = std::string(code);
     code = program_->sourceCode_;
-    currentScope_ = program_->globalScope_;
+    currentScope_.Init(program_->globalScope_);
     CreateBuiltinSymbols();
 
     auto parser = Parser(code, this);
@@ -174,27 +181,15 @@ std::unique_ptr<Program> ProgramBuilder::Finalize() {
     return std::move(program_);
 }
 
-void ProgramBuilder::PushGlobalDecl(ast::Variable* decl) {
-    program_->globalScope_->PushDecl(decl);
-}
-
-void ProgramBuilder::PushGlobalDecl(ast::Struct* decl) {
-    program_->globalScope_->PushDecl(decl);
-}
-
-void ProgramBuilder::PushGlobalDecl(ast::Function* decl) {
-    program_->globalScope_->PushDecl(decl);
-}
-
 bool ProgramBuilder::ShouldStopParsing() {
     return stopParsing_;
 }
 
-Expected<ConstVariable*> ProgramBuilder::CreateConstVar(
+ExpectedVoid ProgramBuilder::DeclareConst(
     SourceLoc loc,
     const Ident& ident,
     const std::optional<Ident>& typeSpecifier,
-    const Expression* initializer) {
+    const ast::Expression* initializer) {
     // 1. The result type is a result type of the initializer
     // 2. The result type is a user specified type
     // 3. Both are present, check if types are convertible
@@ -246,25 +241,25 @@ Expected<ConstVariable*> ProgramBuilder::CreateConstVar(
         effectiveType = initType;
     }
     // Check identifier
-    EXPECT_TRUE(!currentScope_->FindSymbol(ident.name), loc,
+    EXPECT_TRUE(!currentScope_.FindSymbol(ident.name), loc,
                 ErrorCode::SymbolAlreadyDefined,
                 "identifier '{}' already defined", ident.name);
     auto* decl = program_->Allocate<ConstVariable>(loc, ident.name,
                                                    effectiveType, initializer);
-    currentScope_->InsertSymbol(ident.name, decl);
+    currentScope_.Declare(ident.name, decl);
     LOG_VERBOSE("WGSL: Created ConstVariable node. ident: {}, type: {}",
                 ident.name, to_string(effectiveType->kind));
-    return decl;
+    return Void();
 }
 
-Expected<VarVariable*> ProgramBuilder::CreateVar(
+Expected<const ast::VarVariable*> ProgramBuilder::DeclareVariable(
     SourceLoc loc,
     const Ident& ident,
     std::optional<AddressSpace> srcAddrSpace,
     std::optional<AccessMode> srcAccMode,
     const std::optional<Ident>& typeSpecifier,
-    AttributeList& attributes,
-    const Expression* initializer) {
+    ast::AttributeList& attributes,
+    const ast::Expression* initializer) {
     // The access mode always has a default value, and except for
     //   variables in the storage address space, must not be specified in the
     //   source
@@ -283,14 +278,16 @@ Expected<VarVariable*> ProgramBuilder::CreateVar(
     // Resolve type
     const Ident typeIdent = *typeSpecifier;
     const ast::Type* valueType = nullptr;
+    VALUE_ELSE_RET(valueType, ResolveTypeName(typeIdent));
+    // Check name
+    EXPECT_TRUE(!currentScope_.FindSymbol(ident.name), loc,
+                ErrorCode::SymbolAlreadyDefined,
+                "identifier '{}' already defined", ident.name);
 
-    if (auto res = ResolveTypeName(typeIdent)) {
-        valueType = *res;
-    }
     // Validate global vars: uniform, storage, texture, sampler
     // This variables have a unique subtype and can be used only in specific
     // contexts
-    if (currentScope_->IsGlobal()) {
+    if (currentScope_.IsGlobal()) {
         EXPECT_TRUE(addrSpace != AddressSpace::Function, loc,
                     ErrorCode::InvalidAddrSpace);
         // Global vars should have an explicit type
@@ -331,7 +328,7 @@ Expected<VarVariable*> ProgramBuilder::CreateVar(
         auto* var = program_->Allocate<VarVariable>(
             loc, ident.name, addrSpace, accessMode, valueType,
             std::move(attributes), initializer);
-        currentScope_->InsertSymbol(ident.name, var);
+        currentScope_.Declare(ident.name, var);
         return var;
     }
     // Function scope 'normal' variable
@@ -346,17 +343,105 @@ Expected<VarVariable*> ProgramBuilder::CreateVar(
     auto* var = program_->Allocate<VarVariable>(
         loc, ident.name, addrSpace, accessMode, valueType,
         std::move(attributes), initializer);
-    currentScope_->InsertSymbol(ident.name, var);
+    currentScope_.Declare(ident.name, var);
     return var;
 }
 
-Expected<Struct*> ProgramBuilder::CreateStruct(SourceLoc loc,
-                                               const Ident& ident,
-                                               MemberList& members) {
-    EXPECT_TRUE(!currentScope_->FindSymbol(ident.name), loc,
+//===================================================================//
+
+ExpectedVoid ProgramBuilder::DeclareFunction(
+    SourceLoc loc,
+    const Ident& ident,
+    ast::AttributeList& attributes,
+    ast::ParameterList& params,
+    const Ident& retTypeSpecifier,
+    ast::AttributeList& retAttributes) {
+    // Check name
+    EXPECT_TRUE(!currentScope_.FindSymbol(ident.name), loc,
                 ErrorCode::SymbolAlreadyDefined,
                 "identifier '{}' already defined", ident.name);
-    EXPECT_TRUE(currentScope_->IsGlobal(), loc, ErrorCode::InvalidScope,
+    // Check scope
+    EXPECT_TRUE(currentScope_.IsGlobal(), loc, ErrorCode::InvalidScope,
+                "a function may only be declared in global scope");
+    // Resolve type name
+    const ast::Type* retType = nullptr;
+    VALUE_ELSE_RET(retType, ResolveTypeName(retTypeSpecifier));
+
+    auto* symbols = program_->Allocate<ast::SymbolTable>(
+        currentScope_.GetCurrentSymbolTable());
+    auto* func = program_->Allocate<ast::Function>(
+        loc, symbols, ident.name, std::move(attributes), std::move(params),
+        retType, std::move(retAttributes));
+    currentScope_.Declare(ident.name, func);
+    currentScope_.PushScope(func);
+    // Declare parameters
+    for (const ast::Parameter* param : params) {
+        // TODO: Do we need mutable symbols?
+        currentScope_.Declare(param->ident, const_cast<ast::Parameter*>(param));
+    }
+    // Declare a special return variable for type checking
+    ast::VarVariable* retVar = program_->Allocate<VarVariable>(
+        loc, kRetVarSymbolName, AddressSpace::Function, AccessMode::ReadWrite,
+        retType, std::move(retAttributes), nullptr);
+    currentScope_.Declare(kRetVarSymbolName, retVar);
+    return Void();
+}
+
+void ProgramBuilder::DeclareFuncEnd(SourceLoc loc) {
+    // Check scope
+    if(currentScope_.IsGlobal()) {
+        ReportError(loc, ErrorCode::InvalidScope,
+                    "a statement may only appear in a function context");
+        return;
+    }
+    currentScope_.PopScope();
+}
+
+ExpectedVoid ProgramBuilder::DeclareReturnStatement(
+    SourceLoc loc,
+    const ast::Expression* expr) {
+    // Check scope
+    EXPECT_TRUE(!currentScope_.IsGlobal(), loc, ErrorCode::InvalidScope,
+                "a statement may only appear in a function context");
+    // Check types
+    const auto* retVar =
+        currentScope_.FindSymbol<ast::Variable>(kRetVarSymbolName);
+    DASSERT(retVar);
+    // TODO: Do conversions
+    EXPECT_TRUE(retVar->type == expr->type, loc, ErrorCode::TypeError,
+                "a value of type '{}' cannot be assigned to '{}'",
+                expr->type->name, retVar->type->name);
+    auto* statement = program_->Allocate<ast::ReturnStatement>(loc, expr);
+    currentScope_.AddStatement(statement);
+    return Void();
+}
+
+ExpectedVoid ProgramBuilder::CreateCompoundStatement(SourceLoc loc) {
+    return ExpectedVoid();
+}
+
+Expected<const ast::Parameter*> ProgramBuilder::CreateParameter(
+    SourceLoc loc,
+    const Ident& ident,
+    const Ident& typeSpecifier,
+    AttributeList& attributes) {
+    // Resolve type
+    const ast::Type* type = nullptr;
+    VALUE_ELSE_RET(type, ResolveTypeName(typeSpecifier));
+    return program_->Allocate<ast::Parameter>(loc, ident.name, type,
+                                              std::move(attributes));
+}
+
+//===================================================================//
+
+Expected<const ast::Struct*> ProgramBuilder::DeclareStruct(
+    SourceLoc loc,
+    const Ident& ident,
+    ast::MemberList& members) {
+    EXPECT_TRUE(!currentScope_.FindSymbol(ident.name), loc,
+                ErrorCode::SymbolAlreadyDefined,
+                "identifier '{}' already defined", ident.name);
+    EXPECT_TRUE(currentScope_.IsGlobal(), loc, ErrorCode::InvalidScope,
                 "a struct declaration may not appear in a function scope");
     // Check member name uniqueness
     std::set<std::string_view> identifiers;
@@ -368,17 +453,18 @@ Expected<Struct*> ProgramBuilder::CreateStruct(SourceLoc loc,
     }
     ast::Struct* out =
         program_->Allocate<ast::Struct>(loc, ident.name, std::move(members));
-    currentScope_->InsertSymbol(ident.name, out);
+    currentScope_.Declare(ident.name, out);
     return out;
 }
 
-Expected<Member*> ProgramBuilder::CreateMember(SourceLoc loc,
-                                               const Ident& ident,
-                                               const Ident& typeSpecifier,
-                                               AttributeList& attributes) {
+Expected<const ast::Member*> ProgramBuilder::CreateMember(
+    SourceLoc loc,
+    const Ident& ident,
+    const Ident& typeSpecifier,
+    ast::AttributeList& attributes) {
     // Validate type
     const ast::Type* type = nullptr;
-    TRY_UNWRAP(type, ResolveTypeName(typeSpecifier));
+    VALUE_ELSE_RET(type, ResolveTypeName(typeSpecifier));
     EXPECT_TRUE(!type->Is<ast::Texture>() && !type->Is<ast::Sampler>(), loc,
                 ErrorCode::TypeError,
                 "struct member type must be scalar, array, mat, vec or "
@@ -388,10 +474,11 @@ Expected<Member*> ProgramBuilder::CreateMember(SourceLoc loc,
                                            std::move(attributes));
 }
 
-Expected<Expression*> ProgramBuilder::CreateBinaryExpr(SourceLoc loc,
-                                                       OpCode op,
-                                                       const Expression* lhs,
-                                                       const Expression* rhs) {
+Expected<const ast::Expression*> ProgramBuilder::CreateBinaryExpr(
+    SourceLoc loc,
+    ast::OpCode op,
+    const ast::Expression* lhs,
+    const ast::Expression* rhs) {
     // Base check
     EXPECT_OK(CheckExpressionArg(loc, lhs));
     EXPECT_OK(CheckExpressionArg(loc, rhs));
@@ -405,9 +492,10 @@ Expected<Expression*> ProgramBuilder::CreateBinaryExpr(SourceLoc loc,
 }
 
 // op (ident | literal)
-Expected<Expression*> ProgramBuilder::CreateUnaryExpr(SourceLoc loc,
-                                                      OpCode op,
-                                                      const Expression* rhs) {
+Expected<const ast::Expression*> ProgramBuilder::CreateUnaryExpr(
+    SourceLoc loc,
+    ast::OpCode op,
+    const ast::Expression* rhs) {
     // Basic check that arg is ident or literal
     EXPECT_OK(CheckExpressionArg(loc, rhs));
     if (IsOpArithmetic(op)) {
@@ -423,10 +511,11 @@ Expected<Expression*> ProgramBuilder::CreateUnaryExpr(SourceLoc loc,
 // - A type name: f32, array, MyStruct
 // - A variable: a, my_var
 // - A function: my_fn(), calc(1, 3)
-Expected<IdentExpression*> ProgramBuilder::CreateIdentExpr(const Ident& ident) {
+Expected<const ast::IdentExpression*> ProgramBuilder::CreateIdentExpr(
+    const Ident& ident) {
     // ident (expression, expression*)?
     const bool templated = !ident.templateList.empty();
-    const ast::Symbol* symbol = currentScope_->FindSymbol(ident.name);
+    const ast::Symbol* symbol = currentScope_.FindSymbol(ident.name);
     // Check symbol
     if (symbol && !templated) {
         if (const auto* type = symbol->As<ast::Type>()) {
@@ -444,22 +533,23 @@ Expected<IdentExpression*> ProgramBuilder::CreateIdentExpr(const Ident& ident) {
     if (auto res = ResolveTypeName(ident)) {
         return program_->Allocate<ast::IdentExpression>(ident.loc, *res);
     }
+    // TODO: Implement builtin functions
     // Could be a builtin function
     // interpolate, log2
-    if (auto res = ResolveBuiltinFunc(ident)) {
-        return program_->Allocate<ast::IdentExpression>(ident.loc, *res);
-    }
+    // if (auto res = ResolveBuiltinFunc(ident)) {
+    //     return program_->Allocate<ast::IdentExpression>(ident.loc, *res);
+    // }
     // Not a type, variable or function -> error
     return ReportError(ident.loc, ErrorCode::SymbolNotFound,
                        "identifier '{}' is undefined", ident.name);
 }
 
 // ident <template> (args, *)
-Expected<Expression*> ProgramBuilder::CreateFnCallExpr(
+Expected<const ast::Expression*> ProgramBuilder::CreateFnCallExpr(
     const Ident& ident,
     const ExpressionList& args) {
 
-    const ast::Symbol* symbol = currentScope_->FindSymbol(ident.name);
+    const ast::Symbol* symbol = currentScope_.FindSymbol(ident.name);
     if (!symbol) {
         return ReportError(ident.loc, ErrorCode::SymbolNotFound,
                            "symbol '{}' not found in the current scope",
@@ -470,12 +560,12 @@ Expected<Expression*> ProgramBuilder::CreateFnCallExpr(
     return std::unexpected(ErrorCode::Unimplemented);
 }
 
-Expected<IntLiteralExpression*> ProgramBuilder::CreateIntLiteralExpr(
+Expected<const ast::IntLiteralExpression*> ProgramBuilder::CreateIntLiteralExpr(
     SourceLoc loc,
     int64_t value,
     ScalarKind type) {
 
-    const ast::Symbol* typeNode = currentScope_->FindSymbol(to_string(type));
+    const ast::Symbol* typeNode = currentScope_.FindSymbol(to_string(type));
     DASSERT(typeNode && typeNode->Is<ast::Type>());
     // Check for overflow for result type
     if (type == ScalarKind::U32) {
@@ -492,12 +582,12 @@ Expected<IntLiteralExpression*> ProgramBuilder::CreateIntLiteralExpr(
         loc, typeNode->As<ast::Type>(), value);
 }
 
-Expected<FloatLiteralExpression*> ProgramBuilder::CreateFloatLiteralExpr(
-    SourceLoc loc,
-    double value,
-    ScalarKind type) {
+Expected<const ast::FloatLiteralExpression*>
+ProgramBuilder::CreateFloatLiteralExpr(SourceLoc loc,
+                                       double value,
+                                       ScalarKind type) {
 
-    const ast::Symbol* typeNode = currentScope_->FindSymbol(to_string(type));
+    const ast::Symbol* typeNode = currentScope_.FindSymbol(to_string(type));
     DASSERT(typeNode && typeNode->Is<ast::Type>());
     // Check for overflow for result type
     if (type == ScalarKind::F32 || type == ScalarKind::Float) {
@@ -512,16 +602,15 @@ Expected<FloatLiteralExpression*> ProgramBuilder::CreateFloatLiteralExpr(
         loc, typeNode->As<ast::Type>(), value);
 }
 
-Expected<BoolLiteralExpression*> ProgramBuilder::CreateBoolLiteralExpr(
-    SourceLoc loc,
-    bool value) {
-
-    ast::Type* type = currentScope_->FindType(to_string(ScalarKind::Bool));
+Expected<const ast::BoolLiteralExpression*>
+ProgramBuilder::CreateBoolLiteralExpr(SourceLoc loc, bool value) {
+    const auto* type =
+        currentScope_.FindSymbol<ast::Scalar>(to_string(ScalarKind::Bool));
     DASSERT(type);
     return program_->Allocate<BoolLiteralExpression>(loc, type, value);
 }
 
-Expected<ast::Attribute*> ProgramBuilder::CreateWorkGroupAttr(
+Expected<const ast::Attribute*> ProgramBuilder::CreateWorkGroupAttr(
     SourceLoc loc,
     const ast::Expression* x,
     const ast::Expression* y,
@@ -542,10 +631,10 @@ Expected<ast::Attribute*> ProgramBuilder::CreateWorkGroupAttr(
                                                        *zval);
 }
 
-Expected<ast::Attribute*> ProgramBuilder::CreateAttribute(
+Expected<const ast::Attribute*> ProgramBuilder::CreateAttribute(
     SourceLoc loc,
     wgsl::AttributeName attr,
-    const Expression* expr) {
+    const ast::Expression* expr) {
     // Valueless attributes
     switch (attr) {
         case AttributeName::MustUse:
@@ -572,7 +661,7 @@ Expected<ast::Attribute*> ProgramBuilder::CreateAttribute(
     return program_->Allocate<ast::ScalarAttribute>(loc, attr, *value);
 }
 
-Expected<ast::Attribute*> ProgramBuilder::CreateBuiltinAttribute(
+Expected<const ast::Attribute*> ProgramBuilder::CreateBuiltinAttribute(
     SourceLoc loc,
     Builtin value) {
     return program_->Allocate<ast::BuiltinAttribute>(loc, value);
@@ -584,7 +673,7 @@ Expected<const ast::Type*> ProgramBuilder::ResolveTypeName(
     const Ident& typeSpecifier) {
 
     auto [loc, name, templateList] = typeSpecifier;
-    const ast::Symbol* symbol = currentScope_->FindSymbol(name);
+    const ast::Symbol* symbol = currentScope_.FindSymbol(name);
     const ast::Type* type = nullptr;
     // Process templated type
     // Parse top level template name: vec2, array, mat2x3
@@ -632,16 +721,16 @@ Expected<const ast::Type*> ProgramBuilder::ResolveTypeName(
     return type;
 }
 
-Expected<const ast::BuiltinFunction*> ProgramBuilder::ResolveBuiltinFunc(
-    const Ident& symbol) {
-    // TODO: Implement
-    return std::unexpected(ErrorCode::Ok);
-}
+// Expected<const ast::BuiltinFunction*> ProgramBuilder::ResolveBuiltinFunc(
+//     const Ident& symbol) {
+//     // TODO: Implement
+//     return std::unexpected(ErrorCode::Ok);
+// }
 
-Expected<Expression*> ProgramBuilder::ResolveArithmeticUnaryOp(
+Expected<const ast::Expression*> ProgramBuilder::ResolveArithmeticUnaryOp(
     SourceLoc loc,
-    OpCode op,
-    const Expression* arg) {
+    ast::OpCode op,
+    const ast::Expression* arg) {
 
     DASSERT(arg);
     DASSERT(arg->type);
@@ -676,10 +765,10 @@ Expected<Expression*> ProgramBuilder::ResolveArithmeticUnaryOp(
     return program_->Allocate<UnaryExpression>(loc, arg->type, op, arg);
 }
 
-Expected<Expression*> ProgramBuilder::ResolveLogicalUnaryOp(
+Expected<const ast::Expression*> ProgramBuilder::ResolveLogicalUnaryOp(
     SourceLoc loc,
-    OpCode op,
-    const Expression* arg) {
+    ast::OpCode op,
+    const ast::Expression* arg) {
 
     DASSERT(arg);
     DASSERT(arg->type);
@@ -703,10 +792,10 @@ Expected<Expression*> ProgramBuilder::ResolveLogicalUnaryOp(
     return program_->Allocate<UnaryExpression>(loc, scalar, op, arg);
 }
 
-Expected<Expression*> ProgramBuilder::ResolveBitwiseUnaryOp(
+Expected<const ast::Expression*> ProgramBuilder::ResolveBitwiseUnaryOp(
     SourceLoc loc,
-    OpCode op,
-    const Expression* arg) {
+    ast::OpCode op,
+    const ast::Expression* arg) {
 
     DASSERT(arg);
     DASSERT(arg->type);
@@ -740,14 +829,14 @@ Expected<Expression*> ProgramBuilder::ResolveBitwiseUnaryOp(
     return program_->Allocate<UnaryExpression>(loc, scalar, op, arg);
 }
 
-Expected<Expression*> ProgramBuilder::ResolveArithmeticBinaryOp(
+Expected<const ast::Expression*> ProgramBuilder::ResolveArithmeticBinaryOp(
     SourceLoc loc,
-    OpCode op,
-    const Expression* lhs,
-    const Expression* rhs) {
+    ast::OpCode op,
+    const ast::Expression* lhs,
+    const ast::Expression* rhs) {
 
     const ast::Scalar* commonType = nullptr;
-    TRY_UNWRAP(commonType, ResolveBinaryExprTypes(loc, lhs, rhs));
+    VALUE_ELSE_RET(commonType, ResolveBinaryExprTypes(loc, lhs, rhs));
 
     if (!commonType->IsArithmetic()) {
         return ReportError(loc, ErrorCode::InvalidArg,
@@ -783,15 +872,15 @@ Expected<Expression*> ProgramBuilder::ResolveArithmeticBinaryOp(
     return program_->Allocate<BinaryExpression>(loc, commonType, lhs, op, rhs);
 }
 
-Expected<Expression*> ProgramBuilder::ResolveLogicalBinaryOp(
+Expected<const ast::Expression*> ProgramBuilder::ResolveLogicalBinaryOp(
     SourceLoc loc,
-    OpCode op,
-    const Expression* lhs,
-    const Expression* rhs) {
+    ast::OpCode op,
+    const ast::Expression* lhs,
+    const ast::Expression* rhs) {
 
     const ast::Scalar* commonType = nullptr;
-    TRY_UNWRAP(commonType, ResolveBinaryExprTypes(loc, lhs, rhs));
-    const auto symbol = currentScope_->FindSymbol("bool");
+    VALUE_ELSE_RET(commonType, ResolveBinaryExprTypes(loc, lhs, rhs));
+    const auto symbol = currentScope_.FindSymbol("bool");
     DASSERT(symbol);
     const ast::Scalar* returnType = symbol->As<ast::Scalar>();
 
@@ -812,14 +901,14 @@ Expected<Expression*> ProgramBuilder::ResolveLogicalBinaryOp(
     return program_->Allocate<BinaryExpression>(loc, returnType, lhs, op, rhs);
 }
 
-Expected<Expression*> ProgramBuilder::ResolveBitwiseBinaryOp(
+Expected<const ast::Expression*> ProgramBuilder::ResolveBitwiseBinaryOp(
     SourceLoc loc,
     OpCode op,
-    const Expression* lhs,
-    const Expression* rhs) {
+    const ast::Expression* lhs,
+    const ast::Expression* rhs) {
 
     const ast::Scalar* commonType = nullptr;
-    TRY_UNWRAP(commonType, ResolveBinaryExprTypes(loc, lhs, rhs));
+    VALUE_ELSE_RET(commonType, ResolveBinaryExprTypes(loc, lhs, rhs));
 
     if (!commonType->IsInteger()) {
         return ReportError(loc, ErrorCode::InvalidArg,
@@ -886,13 +975,13 @@ Expected<const ast::Array*> ProgramBuilder::ResolveArray(const Ident& ident) {
             std::format("array<{},{}>", scalar->name, arraySize));
         // Create a symbol for a type
         // Check if already defined
-        const ast::Symbol* symbol = currentScope_->FindSymbol(fullTypeName);
+        const ast::Symbol* symbol = currentScope_.FindSymbol(fullTypeName);
         if (symbol && symbol->Is<ast::Array>()) {
             return symbol->As<ast::Array>();
         }
         ast::Array* type =
             program_->Allocate<ast::Array>(scalar, arraySize, fullTypeName);
-        currentScope_->InsertSymbol(fullTypeName, type);
+        currentScope_.DeclareBuiltin(fullTypeName, type);
         return type;
     }
     return ReportError(params[0]->GetLoc(), ErrorCode::InvalidArg,
@@ -913,7 +1002,7 @@ Expected<const ast::Vec*> ProgramBuilder::ResolveVec(const Ident& ident,
         std::format("{}<{}>", ident.name, valueType->name);
 
     // All vec types are predeclared
-    const ast::Symbol* symbol = currentScope_->FindSymbol(fullName);
+    const ast::Symbol* symbol = currentScope_.FindSymbol(fullName);
     DASSERT(symbol && symbol->Is<ast::Vec>());
     return symbol->As<ast::Vec>();
 }
@@ -933,13 +1022,10 @@ Expected<const ast::Matrix*> ProgramBuilder::ResolveMatrix(const Ident& ident) {
         std::format("{}<{}>", ident.name, valueType->name);
 
     // All matrix types are predeclared
-    const ast::Symbol* symbol = currentScope_->FindSymbol(fullName);
+    const ast::Symbol* symbol = currentScope_.FindSymbol(fullName);
     DASSERT(symbol && symbol->Is<ast::Vec>());
     return symbol->As<ast::Matrix>();
 }
-
-
-//=========================================================================//
 
 Expected<const ast::Scalar*> ProgramBuilder::ResolveBinaryExprTypes(
     SourceLoc loc,
@@ -970,6 +1056,8 @@ Expected<const ast::Scalar*> ProgramBuilder::ResolveBinaryExprTypes(
     }
     return resultType;
 }
+
+//=========================================================================//
 
 ErrorCode ProgramBuilder::CheckExpressionArg(SourceLoc loc,
                                              const ast::Expression* arg) {

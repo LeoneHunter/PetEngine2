@@ -11,6 +11,8 @@ namespace ast {
 class Variable;
 class Expression;
 class Attribute;
+class Parameter;
+class Function;
 class IntLiteralExpression;
 class BoolLiteralExpression;
 class FloatLiteralExpression;
@@ -21,7 +23,12 @@ class Struct;
 class Program;
 class ProgramBuilder;
 
-using ExpressionList = std::vector<ast::Expression*>;
+using ExpressionList = std::vector<const ast::Expression*>;
+
+// Helper to be used with std::expected when no return value is needed
+// Could be in three states: Ok, Unmatched, Errored
+struct Void {};
+using ExpectedVoid = Expected<Void>;
 
 // Parsed template elaborated identifier
 // : ident ( '<' template_arg_expression ( ',' expression )* ',' ? '>' )?
@@ -41,26 +48,33 @@ public:
     std::string_view GetLine(uint32_t line);
 
 private:
-    // Variables
-    Expected<ast::Variable*> GlobalVariable();
-    Expected<ast::Variable*> GlobValueDecl(ast::AttributeList& attributes);
-    Expected<ast::Variable*> ConstValueDecl();
-    Expected<ast::Variable*> OverrideValueDecl(ast::AttributeList& attributes);
-    Expected<ast::Variable*> VarDecl(ast::AttributeList& attributes);
-    Expected<ast::Attribute*> Attribute();
-    Expected<ast::Struct*> Struct();
+    ExpectedVoid GlobalDecl();
+
+    // Statements
+    ExpectedVoid Statement();
+    ExpectedVoid CompoundStatement();
+
+    ExpectedVoid ConstValueDecl();
+    ExpectedVoid OverrideValueDecl(ast::AttributeList& attributes);
+    ExpectedVoid VariableDecl(ast::AttributeList& attributes);
+
+    ExpectedVoid FunctionDecl(ast::AttributeList& attributes);
+    ExpectedVoid StructDecl();
+    Expected<const ast::Parameter*> ParameterDecl();
 
     // Expressions
-    Expected<ast::Expression*> Expression(bool inTemplate);
-    Expected<ast::Expression*> UnaryExpr();
-    Expected<ast::Expression*> PrimaryExpr();
-    Expected<ast::Expression*> ComponentSwizzleExpr(ast::Expression* lhs);
-    Expected<ast::Expression*> IdentExpression();
+    Expected<const ast::Expression*> Expression(bool inTemplate);
+    Expected<const ast::Expression*> UnaryExpr();
+    Expected<const ast::Expression*> PrimaryExpr();
+    Expected<const ast::Expression*> ComponentSwizzleExpr(
+        const ast::Expression* lhs);
+    Expected<const ast::Expression*> IdentExpression();
 
-    Expected<ast::IntLiteralExpression*> IntLiteralExpr();
-    Expected<ast::FloatLiteralExpression*> FloatLiteralExpr();
-    Expected<ast::BoolLiteralExpression*> BoolLiteralExpr();
+    Expected<const ast::IntLiteralExpression*> IntLiteralExpr();
+    Expected<const ast::FloatLiteralExpression*> FloatLiteralExpr();
+    Expected<const ast::BoolLiteralExpression*> BoolLiteralExpr();
 
+    Expected<const ast::Attribute*> Attribute();
     Expected<Ident> TemplatedIdent();
 
 private:
@@ -77,6 +91,8 @@ private:
     std::unexpected<ErrorCode> Unexpected(Token::Kind kind);
     std::unexpected<ErrorCode> Unmatched();
 
+    ExpectedVoid Ok() { return Void(); }
+
     template <class... T>
     bool PeekAny(T... tokens) {
         return (Peek(tokens) || ...);
@@ -84,12 +100,11 @@ private:
 
     // Try match with current token
     bool Peek(Token::Kind kind);
-    bool PeekKeyword(std::string_view name);
-    bool PeekWith(Token::Kind kind, std::string_view val);
-    bool PeekValue(std::string_view val);
+    bool Peek(Keyword Keyword);
     Token Peek() { return token_; }
     // Try to match current token, advance if matched
     bool Expect(Token::Kind kind);
+    bool Expect(Keyword keyword);
     // Move to the next token (after Peek())
     Token Advance();
     // Get last token (before Next())

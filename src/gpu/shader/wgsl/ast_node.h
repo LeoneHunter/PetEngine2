@@ -7,50 +7,68 @@
 namespace wgsl::ast {
 
 // Node type and type flags for casting
-#define NODE_TYPE_LIST(V)                           \
-    V(Node, 1, "node")                              \
-    V(Symbol, 2, "symbol")                          \
-    /* Types */                                     \
-    V(Type, 3, "type")                              \
-    V(Scalar, 4, "scalar")                          \
-    V(Vector, 5, "vec")                             \
-    V(Array, 6, "array")                            \
-    V(Matrix, 7, "mat")                             \
-    V(Texture, 8, "texture")                        \
-    V(Sampler, 9, "sampler")                        \
-    V(Alias, 10, "alias")                           \
-    V(Struct, 11, "struct")                         \
-    V(Member, 12, "member")                         \
-    V(Function, 13, "function")                     \
-    /* Expressions */                               \
-    V(Expression, 20, "expression")                 \
-    V(UnaryExpression, 21, "unary expression")      \
-    V(BinaryExpression, 22, "binary expression")    \
-    V(LiteralExpression, 23, "literal expression")  \
-    V(FloatLiteralExpression, 24, "float literal")  \
-    V(IntLiteralExpression, 25, "int literal")      \
-    V(BoolLiteralExpression, 26, "bool literal")    \
-    V(IdentExpression, 27, "identifier expression") \
-    /* Variables */                                 \
-    V(Variable, 30, "variable")                     \
-    V(OverrideVariable, 31, "override variable")    \
-    V(ConstVariable, 32, "const value")             \
-    V(VarVariable, 33, "var variable")              \
-    /* Attributes */                                \
-    V(Attribute, 34, "attribute")                   \
-    V(ScalarAttribute, 35, "scalar attribute")      \
-    V(BuiltinAttribute, 36, "builtin attribute")    \
-    V(WorkgroupAttribute, 37, "worgroup attribute")
+#define NODE_TYPE_LIST(V)         \
+    V(Node, 1)                    \
+    V(Symbol, 2)                  \
+    /* Types */                   \
+    V(Type, 3)                    \
+    V(Scalar, 4)                  \
+    V(Vector, 5)                  \
+    V(Array, 6)                   \
+    V(Matrix, 7)                  \
+    V(Texture, 8)                 \
+    V(Sampler, 9)                 \
+    V(Alias, 10)                  \
+    V(Struct, 11)                 \
+    V(Member, 12)                 \
+    V(Function, 13)               \
+    /* Expressions */             \
+    V(Expression, 20)             \
+    V(UnaryExpression, 21)        \
+    V(BinaryExpression, 22)       \
+    V(LiteralExpression, 23)      \
+    V(FloatLiteralExpression, 24) \
+    V(IntLiteralExpression, 25)   \
+    V(BoolLiteralExpression, 26)  \
+    V(IdentExpression, 27)        \
+    /* Variables */               \
+    V(Variable, 30)               \
+    V(OverrideVariable, 31)       \
+    V(ConstVariable, 32)          \
+    V(VarVariable, 33)            \
+    V(Parameter, 34)              \
+    /* Attributes */              \
+    V(Attribute, 35)              \
+    V(ScalarAttribute, 36)        \
+    V(BuiltinAttribute, 37)       \
+    V(WorkgroupAttribute, 38)     \
+    /* Statement */               \
+    V(Statement, 39)              \
+    V(CompoundStatement, 40)      \
+    V(AssignStatement, 41)        \
+    V(ReturnStatement, 43)        \
+    V(CallStatement, 44)          \
+    V(IfStatement, 45)            \
+    V(SwitchStatement, 46)        \
+    V(LoopStatement, 47)          \
+    V(ForStatement, 48)           \
+    V(WhileStatement, 49)         \
+    V(BreakStatement, 50)         \
+    V(ContinueStatement, 51)      \
+    V(DiscardStatement, 52)       \
+    V(ScopedStatement, 53)        \
+    /* Scope */                   \
+    V(GlobalScope, 63)
 
 enum class NodeType : uint64_t {
-#define ENUM(NAME, BIT, STR) NAME = 1ULL << BIT,
+#define ENUM(NAME, BIT) NAME = 1ULL << BIT,
     NODE_TYPE_LIST(ENUM)
 #undef ENUM
 };
 
 constexpr std::string_view to_string(NodeType type) {
-#define CASE(NAME, BIT, STR) \
-    case NodeType::NAME: return STR;
+#define CASE(NAME, BIT) \
+    case NodeType::NAME: return #NAME;
     switch (type) {
         NODE_TYPE_LIST(CASE)
         default: return "";
