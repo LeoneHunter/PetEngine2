@@ -81,14 +81,15 @@ namespace wgsl {
 
 // If result of the expr is void (...)
 #define IF_VOID(EXPR, ...)                                \
-    {                                                  \
+    {                                                     \
         auto res = EXPR;                                  \
         if (res) {                                        \
             __VA_ARGS__;                                  \
         } else if (res.error() != ErrorCode::Unmatched) { \
             return Unexpected(res.error());               \
         }                                                 \
-    } void()
+    }                                                     \
+    void()
 
 // Expect not an error
 #define VOID_ELSE_RET(EXPR)                 \
@@ -259,13 +260,9 @@ ExpectedVoid Parser::FunctionDecl(ast::AttributeList& attributes) {
     // Parse scope
     EXPECT_TOKEN(Tok::OpenBrace);
     while (!Expect(Tok::CloseBrace)) {
-        IF_VOID(Statement(), continue);
-        // TODO: Parse attributes
-        ast::AttributeList attrList;
-        IF_VOID(VariableDecl(attrList), continue);
-        return Unexpected(ErrorCode::ExpectedStatement);
+        VOID_ELSE_RET_ERR(Statement(), ErrorCode::ExpectedStatement);
     }
-    builder_->DeclareFuncEnd(GetLastToken().loc);
+    builder_->DeclareScopeEnd(GetLastToken().loc);
     return Void();
 }
 
@@ -300,8 +297,8 @@ Expected<const ast::Parameter*> Parser::ParameterDecl() {
 //   | discard
 //   | return
 ExpectedVoid Parser::Statement() {
-    while (Peek(Tok::Semicolon)) {
-        Advance();
+    if (Expect(Tok::Semicolon)) {
+        return Void();
     }
     //  'return' expression? ';'
     if (Expect(Keyword::Return)) {
@@ -312,7 +309,19 @@ ExpectedVoid Parser::Statement() {
         EXPECT_TOKEN(Tok::Semicolon);
         return Void();
     }
-    return Unexpected(ErrorCode::ExpectedStatement);
+    // 'if' expression {} ('else_if' {})* ('else' {})?
+    if (Peek(Keyword::If)) {
+        VOID_ELSE_RET(IfStatement());
+        return Void();
+    }
+    if (Peek(Keyword::Var)) {
+        // TODO: Parse attributes
+        ast::AttributeList attrList;
+        VOID_ELSE_RET(VariableDecl(attrList));
+        EXPECT_TOKEN(Tok::Semicolon);
+        return Void();
+    }
+    return Unmatched();
 }
 
 // compound_statement:
@@ -340,6 +349,51 @@ ExpectedVoid Parser::CompoundStatement() {
         // | const_assert_statement ';'
     }
     return Unexpected(ErrorCode::UnexpectedToken);
+}
+
+ExpectedVoid Parser::IfStatement() {
+    if (!Peek(Keyword::If)) {
+        return Unmatched();
+    }
+    const SourceLoc loc = GetLastToken().loc;
+    // If statements are linked together in a forward list
+    ast::IfStatement* prevIf = nullptr;
+
+    for (;;) {
+        // 'if' ...
+        if (Expect(Keyword::If)) {
+            const ast::Expression* expr = nullptr;
+            VALUE_ELSE_RET_ERR(expr, Expression(false),
+                               ErrorCode::ExpectedExpr);
+            VALUE_ELSE_RET(prevIf,
+                           builder_->DeclareIfClause(loc, expr, prevIf));
+        }
+        // '{' ...
+        EXPECT_TOKEN(Tok::OpenBrace);
+        while (!Expect(Tok::CloseBrace)) {
+            VOID_ELSE_RET(Statement());
+        }
+        // '}' ...
+        builder_->DeclareScopeEnd(GetLastToken().loc);
+
+        if(!Expect(Keyword::Else)) {
+            break;
+        }
+        // 'else' ...
+        if(Peek(Keyword::If)) {
+            // 'if' ...
+            continue;
+        } else {
+            // '{' ...
+            EXPECT_TOKEN(Tok::OpenBrace);
+            builder_->DeclareElseClause(loc, prevIf);
+            while (!Expect(Tok::CloseBrace)) {
+                VOID_ELSE_RET(Statement());
+            }
+            break;
+        }
+    }
+    return Void();
 }
 
 
@@ -421,13 +475,10 @@ ExpectedVoid Parser::OverrideValueDecl(ast::AttributeList& attributes) {
                       "'override' variables not implemented");
 }
 
-// 'var' template_list? ident ( : type)? ( '=' expression )? ';'
+// 'var' template_list? ident ( : type)? ( '=' expression )?
 ExpectedVoid Parser::VariableDecl(ast::AttributeList& attributes) {
-    // 'var'
-    if (!Peek(Keyword::Var)) {
-        return Unmatched();
-    }
-    const SourceLoc loc = Advance().loc;
+    MATCH_TOKEN(Keyword::Var);
+    const SourceLoc loc = GetLastToken().loc;
     std::optional<AddressSpace> addrSpace;
     std::optional<AccessMode> accessMode;
     // The address space is specified first, as one of the predeclared address
@@ -489,6 +540,7 @@ Expected<Ident> Parser::TemplatedIdent() {
 }
 
 // unary_expression | relational_expr ...
+// TODO: Parse relational expressions separatly. a < b, a == b
 Expected<const ast::Expression*> Parser::Expression(bool inTemplate) {
     const ast::Expression* unary = nullptr;
     VALUE_ELSE_RET(unary, UnaryExpr());
@@ -548,13 +600,8 @@ Expected<const ast::Expression*> Parser::UnaryExpr() {
     const ast::Expression* primary = nullptr;
     MAYBE_VALUE(primary, PrimaryExpr());
     if (primary) {
-        auto res2 = ComponentSwizzleExpr(primary);
-        if (res2) {
-            return *res2;
-        }
-        if (res2.error() == ErrorCode::Unmatched) {
-            return primary;
-        }
+        MAYBE_VALUE(primary, ComponentSwizzleExpr(primary));
+        return primary;
     }
     // Unary operator
     Token opToken = Peek();
@@ -608,13 +655,25 @@ Expected<const ast::Expression*> Parser::PrimaryExpr() {
 //   | '[' expression ']' component_or_swizzle_specifier ?
 Expected<const ast::Expression*> wgsl::Parser::ComponentSwizzleExpr(
     const ast::Expression* lhs) {
-    if (Peek(Tok::Period)) {
-        return Unexpected(ErrorCode::Unimplemented);
+
+    if (Expect(Tok::Period)) {
+        EXPECT_TOKEN(Tok::Ident);
+        const auto ident = Ident{GetLastToken().loc, GetLastToken().Source()};
+        const ast::Expression* accessExpr = nullptr;
+        VALUE_ELSE_RET(accessExpr, builder_->CreateDotAccessExpr(lhs, ident));
+        // The result of the rightmost access is the final result
+        // I.e. a.b.c -> expr_c(expr_b(expr_a))
+        return ComponentSwizzleExpr(accessExpr);
     }
-    if (Peek(Tok::OpenBracket)) {
-        return Unexpected(ErrorCode::Unimplemented);
+    if (Expect(Tok::OpenBracket)) {
+        const ast::Expression* expr = nullptr;
+        VALUE_ELSE_RET_ERR(expr, Expression(false), ErrorCode::ExpectedExpr);
+        EXPECT_TOKEN(Tok::CloseBracket);
+        const ast::Expression* accessExpr = nullptr;
+        VALUE_ELSE_RET(accessExpr, builder_->CreateArrayAccessExpr(lhs, expr));
+        return ComponentSwizzleExpr(accessExpr);
     }
-    return Unmatched();
+    return lhs;
 }
 
 // : ident template_elaborated_ident.post.ident
@@ -627,12 +686,23 @@ Expected<const ast::Expression*> Parser::IdentExpression() {
     ident.loc = tok.loc;
     ident.name = tok.Source();
     // Template parameter list: '<'
-    if (Expect(Tok::LessThan)) {
-        while (!Expect(Tok::GreaterThan)) {
-            const ast::Expression* expr = nullptr;
-            VALUE_ELSE_RET_ERR(expr, Expression(true), ErrorCode::ExpectedExpr);
-            ident.templateList.push_back(expr);
-            MAYBE_TOKEN(Tok::Comma);
+    if (Peek(Tok::LessThan)) {
+        const bool isTemplateName = [&] {
+            for (const auto name : kTemplateNames) {
+                if (name == ident.name) {
+                    return true;
+                }
+            }
+            return false;
+        }();
+        if (isTemplateName) {
+            while (!Expect(Tok::GreaterThan)) {
+                const ast::Expression* expr = nullptr;
+                VALUE_ELSE_RET_ERR(expr, Expression(true),
+                                   ErrorCode::ExpectedExpr);
+                ident.templateList.push_back(expr);
+                MAYBE_TOKEN(Tok::Comma);
+            }
         }
     }
     // function call

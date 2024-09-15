@@ -53,6 +53,7 @@ private:
     // Statements
     ExpectedVoid Statement();
     ExpectedVoid CompoundStatement();
+    ExpectedVoid IfStatement();
 
     ExpectedVoid ConstValueDecl();
     ExpectedVoid OverrideValueDecl(ast::AttributeList& attributes);

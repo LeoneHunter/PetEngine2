@@ -12,10 +12,9 @@ namespace ast {
 
 class Parameter;
 class Statement;
-class SymbolTable;
+class ScopedStatement;
 
 using ParameterList = ProgramList<const Parameter*>;
-using StatementList = ProgramList<const Statement*>;
 
 // A Function with a scope
 class Function : public Symbol {
@@ -25,14 +24,12 @@ public:
     const ParameterList parameters;
     const Type* retType;
     const AttributeList retAttributes;
-    StatementList body;
-
-    SymbolTable* symbolTable;
+    ScopedStatement* body;
 
     constexpr static inline auto kStaticType = NodeType::Function;
 
     Function(SourceLoc loc,
-             SymbolTable* symbolTable,
+             ScopedStatement* scope,
              std::string_view name,
              AttributeList&& attributes,
              ParameterList&& params,
@@ -40,16 +37,11 @@ public:
              AttributeList&& retAttributes)
         : Symbol(loc, kStaticType)
         , name(name)
-        , symbolTable(symbolTable)
+        , body(scope)
         , attributes(attributes)
         , parameters(params)
         , retType(retType)
         , retAttributes(retAttributes) {}
-
-    void AddStatement(const ast::Statement* statement) {
-        DASSERT(statement);
-        body.push_back(statement);
-    }
 };
 
 // Function parameters

@@ -6,7 +6,7 @@ namespace wgsl {
 
 class GlobalScope;
 class FunctionScope;
-class BlockScope;
+class SymbolTable;
 
 namespace ast {
 
@@ -24,16 +24,20 @@ protected:
 };
 
 // Statement with scope: if, while, for, compound, etc
+// Has a SymbolTable (hash table) with declared symbols in that scope
 class ScopedStatement : public Statement {
 public:
-    BlockScope* scope;
+    SymbolTable* symbols;
     ProgramList<Statement*> statements;
 
     constexpr static auto kStaticType = NodeType::ScopedStatement;
 
+    ScopedStatement(SourceLoc loc, SymbolTable* symbols)
+        : Statement(loc, kStaticType), symbols(symbols) {}
+
 protected:
-    ScopedStatement(SourceLoc loc, NodeType nodeType, BlockScope* scope)
-        : Statement(loc, nodeType | kStaticType) {}
+    ScopedStatement(SourceLoc loc, NodeType nodeType, SymbolTable* symbols)
+        : Statement(loc, nodeType | kStaticType), symbols(symbols) {}
 };
 
 // Statement group wrapped in parens { ... }
@@ -41,8 +45,8 @@ class CompoundStatement final : public ScopedStatement {
 public:
     constexpr static auto kStaticType = NodeType::CompoundStatement;
 
-    CompoundStatement(SourceLoc loc, BlockScope* scope)
-        : ScopedStatement(loc, kStaticType, scope) {}
+    CompoundStatement(SourceLoc loc, SymbolTable* symbols)
+        : ScopedStatement(loc, kStaticType, symbols) {}
 };
 
 // return expression;
@@ -67,6 +71,26 @@ public:
                     const VarVariable* var,
                     const Expression* expr)
         : Statement(loc, kStaticType), var(var), expr(expr) {}
+};
+
+// If else clause chain
+class IfStatement : public ScopedStatement {
+public:
+    const Expression* expr;
+    // Another IfStatement or CompoundStatement for else
+    ScopedStatement* next;
+
+    constexpr static auto kStaticType = NodeType::IfStatement;
+
+    IfStatement(SourceLoc loc, const Expression* expr, SymbolTable* symbols)
+        : ScopedStatement(loc, kStaticType, symbols)
+        , expr(expr)
+        , next(nullptr) {}
+
+    void AppendElse(ScopedStatement* clause) {
+        DASSERT(!next);
+        next = clause;
+    }
 };
 
 }  // namespace ast

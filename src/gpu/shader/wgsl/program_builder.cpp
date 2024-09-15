@@ -27,6 +27,14 @@
         }                                        \
     } while (false)
 
+#define VOID_ELSE_RET(EXPR)                      \
+    do {                                         \
+        auto res = EXPR;                         \
+        if (!res) {                              \
+            return std::unexpected(res.error()); \
+        }                                        \
+    } while (false)
+
 // Check boolean expr, return if false
 #define EXPECT_TRUE(expr, ...)               \
     do {                                     \
@@ -122,7 +130,7 @@ void ProgramBuilder::CreateBuiltinSymbols() {
     const auto declareVec = [&](ast::VecKind kind, Scalar* valueType,
                                 std::string_view symbol,
                                 std::string_view alias = "") {
-        auto* type = program.Allocate<ast::Vec>(kind, valueType);
+        auto* type = program.Allocate<ast::Vec>(kind, valueType, symbol);
         scope.PreDeclare(symbol, type);
 
         if (!alias.empty()) {
@@ -275,10 +283,6 @@ Expected<const ast::VarVariable*> ProgramBuilder::DeclareVariable(
     if (addrSpace == AddressSpace::Storage && !srcAccMode) {
         accessMode = AccessMode::Read;
     }
-    // Resolve type
-    const Ident typeIdent = *typeSpecifier;
-    const ast::Type* valueType = nullptr;
-    VALUE_ELSE_RET(valueType, ResolveTypeName(typeIdent));
     // Check name
     EXPECT_TRUE(!currentScope_.FindSymbol(ident.name), loc,
                 ErrorCode::SymbolAlreadyDefined,
@@ -301,6 +305,11 @@ Expected<const ast::VarVariable*> ProgramBuilder::DeclareVariable(
         // TODO: Implement private address space
         EXPECT_TRUE(addrSpace != AddressSpace::Private, loc,
                     ErrorCode::Unimplemented);
+
+        // Resolve type
+        const Ident typeIdent = *typeSpecifier;
+        const ast::Type* valueType = nullptr;
+        VALUE_ELSE_RET(valueType, ResolveTypeName(typeIdent));
         EXPECT_TRUE(valueType, loc, ErrorCode::InvalidVarBinding,
                     "this var declaration requires an explicit type");
 
@@ -336,10 +345,19 @@ Expected<const ast::VarVariable*> ProgramBuilder::DeclareVariable(
                 ErrorCode::InvalidAddrSpace,
                 "this var address space may only be 'function' or empty");
 
+    const ast::Type* valueType = nullptr;
 
-    // TODO: Match initializer type with the specified type
-    if (initializer) {
+    // Type check
+    if (typeSpecifier) {
+        const Ident typeIdent = *typeSpecifier;
+        VALUE_ELSE_RET(valueType, ResolveTypeName(typeIdent));
+        EXPECT_TRUE(initializer->type == valueType, loc, ErrorCode::TypeError,
+                    "a value of type '{}' cannot be assigned to the type '{}'",
+                    initializer->type->name, valueType->name);
+    } else {
+        valueType = initializer->type;
     }
+
     auto* var = program_->Allocate<VarVariable>(
         loc, ident.name, addrSpace, accessMode, valueType,
         std::move(attributes), initializer);
@@ -369,11 +387,12 @@ ExpectedVoid ProgramBuilder::DeclareFunction(
 
     auto* symbols = program_->Allocate<ast::SymbolTable>(
         currentScope_.GetCurrentSymbolTable());
+    auto* scope = program_->Allocate<ast::ScopedStatement>(loc, symbols);
     auto* func = program_->Allocate<ast::Function>(
-        loc, symbols, ident.name, std::move(attributes), std::move(params),
+        loc, scope, ident.name, std::move(attributes), std::move(params),
         retType, std::move(retAttributes));
     currentScope_.Declare(ident.name, func);
-    currentScope_.PushScope(func);
+    currentScope_.PushScope(scope);
     // Declare parameters
     for (const ast::Parameter* param : params) {
         // TODO: Do we need mutable symbols?
@@ -387,9 +406,9 @@ ExpectedVoid ProgramBuilder::DeclareFunction(
     return Void();
 }
 
-void ProgramBuilder::DeclareFuncEnd(SourceLoc loc) {
+void ProgramBuilder::DeclareScopeEnd(SourceLoc loc) {
     // Check scope
-    if(currentScope_.IsGlobal()) {
+    if (currentScope_.IsGlobal()) {
         ReportError(loc, ErrorCode::InvalidScope,
                     "a statement may only appear in a function context");
         return;
@@ -407,17 +426,46 @@ ExpectedVoid ProgramBuilder::DeclareReturnStatement(
     const auto* retVar =
         currentScope_.FindSymbol<ast::Variable>(kRetVarSymbolName);
     DASSERT(retVar);
-    // TODO: Do conversions
-    EXPECT_TRUE(retVar->type == expr->type, loc, ErrorCode::TypeError,
-                "a value of type '{}' cannot be assigned to '{}'",
-                expr->type->name, retVar->type->name);
+    VOID_ELSE_RET(CheckTypes(loc, retVar->type, expr->type));
     auto* statement = program_->Allocate<ast::ReturnStatement>(loc, expr);
     currentScope_.AddStatement(statement);
     return Void();
 }
 
+Expected<ast::IfStatement*> ProgramBuilder::DeclareIfClause(
+    SourceLoc loc,
+    const ast::Expression* expr,
+    ast::IfStatement* prevIf) {
+    // expression : bool
+    const auto* scalar = expr->type->As<ast::Scalar>();
+    EXPECT_TRUE(scalar && scalar->IsBool(), loc, ErrorCode::InvalidArg,
+                "'if' expression type must be a 'bool'");
+
+    auto* symbols = program_->Allocate<ast::SymbolTable>(
+        currentScope_.GetCurrentSymbolTable());
+    auto* clause = program_->Allocate<ast::IfStatement>(loc, expr, symbols);
+    // Continuation clause: else if
+    if (prevIf) {
+        DASSERT(!prevIf->next);
+        prevIf->AppendElse(clause);
+    } else {
+        currentScope_.AddStatement(clause);
+    }
+    currentScope_.PushScope(clause);
+    return clause;
+}
+
+ExpectedVoid ProgramBuilder::DeclareElseClause(SourceLoc loc,
+                                               ast::IfStatement* prevIf) {
+    auto* symbols = program_->Allocate<ast::SymbolTable>(
+        currentScope_.GetCurrentSymbolTable());
+    auto* elseClause = program_->Allocate<ast::CompoundStatement>(loc, symbols);
+    prevIf->AppendElse(elseClause);
+    return Void();
+}
+
 ExpectedVoid ProgramBuilder::CreateCompoundStatement(SourceLoc loc) {
-    return ExpectedVoid();
+    return Void();
 }
 
 Expected<const ast::Parameter*> ProgramBuilder::CreateParameter(
@@ -542,6 +590,83 @@ Expected<const ast::IdentExpression*> ProgramBuilder::CreateIdentExpr(
     // Not a type, variable or function -> error
     return ReportError(ident.loc, ErrorCode::SymbolNotFound,
                        "identifier '{}' is undefined", ident.name);
+}
+
+Expected<const ast::Expression*> ProgramBuilder::CreateDotAccessExpr(
+    const ast::Expression* lhs,
+    const Ident& ident) {
+    const auto loc = ident.loc;
+    // a.b
+    if (const auto* structType = lhs->type->As<ast::Struct>()) {
+        // Assert that the struct 'a' has the member 'b'
+        const auto* member = [&] {
+            for (const ast::Member* member : structType->members) {
+                if (member->name == ident.name) {
+                    return member;
+                }
+            }
+            return (const ast::Member*)nullptr;
+        }();
+        EXPECT_TRUE(member, loc, ErrorCode::InvalidArg,
+                    "struct '{}' has no member '{}'", structType->name,
+                    ident.name);
+        return program_->Allocate<ast::MemberAccessExpr>(ident.loc, lhs,
+                                                         member);
+    }
+    // vec.xyz
+    if (const auto* vecType = lhs->type->As<ast::Vec>()) {
+        const auto& str = ident.name;
+        DASSERT(str.size() <= 4);
+        auto swizzleVec = std::vector<ast::VecComponent>();
+        for (uint32_t i = 0; i < str.size(); ++i) {
+            const auto res =
+                VecComponentFromString(std::string_view(&str[i], 1));
+            if (!res || res.value() == VecComponent::None) {
+                return ReportError(loc, ErrorCode::InvalidArg,
+                                   "invalid swizzle specifier '{}'", str[i]);
+            }
+            EXPECT_TRUE(vecType->HasComponent(res.value()), loc,
+                        ErrorCode::InvalidArg,
+                        "invalid swizzle components for a '{}'", vecType->name);
+            swizzleVec.push_back(res.value());
+        }
+        // Get result type:
+        //   vec2f.xy -> vec2f
+        //   vec4f.xy -> vec2f
+        const std::string resultTypeName =
+            vecType->GetSwizzleTypeName(swizzleVec.size());
+        DASSERT(!resultTypeName.empty());
+        const auto* resultType =
+            currentScope_.FindSymbol<ast::Type>(resultTypeName);
+        DASSERT(resultType);
+
+        return program_->Allocate<ast::SwizzleExpr>(ident.loc, resultType, lhs,
+                                                    swizzleVec);
+    }
+    return ReportError(
+        ident.loc, ErrorCode::InvalidArg,
+        "operator '.' may be applied only to vector or struct types");
+}
+
+Expected<const ast::Expression*> ProgramBuilder::CreateArrayAccessExpr(
+    const ast::Expression* lhs,
+    const ast::Expression* indexExpr) {
+    // a[index_expr]
+    // a -> array type
+    const auto* arr = lhs->type->As<ast::Array>();
+    EXPECT_TRUE(arr, lhs->GetLoc(), ErrorCode::InvalidArg,
+                "this expression cannot be applied to the type '{}'",
+                lhs->type->name);
+    // index_expr -> scalar_type
+    const auto* scalar = indexExpr->type->As<ast::Scalar>();
+    EXPECT_TRUE(scalar, lhs->GetLoc(), ErrorCode::InvalidArg,
+                "array index must be an integer scalar type");
+    // scalar_type -> u32, i32
+    EXPECT_TRUE(scalar->IsInteger(), lhs->GetLoc(), ErrorCode::InvalidArg,
+                "array index must be an integer scalar type");
+
+    return program_->Allocate<ast::ArrayIndexExpr>(
+        lhs->GetLoc(), arr->valueType, lhs, indexExpr);
 }
 
 // ident <template> (args, *)
@@ -942,6 +1067,7 @@ Expected<const ast::Expression*> ProgramBuilder::ResolveBitwiseBinaryOp(
     return program_->Allocate<BinaryExpression>(loc, commonType, lhs, op, rhs);
 }
 
+// TODO: Implement dynamic arrays
 Expected<const ast::Array*> ProgramBuilder::ResolveArray(const Ident& ident) {
     auto [loc, name, params] = ident;
     // Basic validation
@@ -951,10 +1077,17 @@ Expected<const ast::Array*> ProgramBuilder::ResolveArray(const Ident& ident) {
                 ErrorCode::InvalidTemplateParam, "expected a type specifier");
     EXPECT_TRUE(params[1]->Is<ast::IntLiteralExpression>(), loc,
                 ErrorCode::InvalidTemplateParam, "expected a const value");
+
     const auto* identExpr = params[0]->As<ast::IdentExpression>();
     EXPECT_TRUE(identExpr->symbol->Is<ast::Type>(), loc,
                 ErrorCode::InvalidTemplateParam, "expected a type specifier");
+
     const auto* valueType = identExpr->symbol->As<ast::Type>();
+    const bool isInvalidType =
+        valueType->Is<ast::Texture>() || valueType->Is<ast::Sampler>();
+    EXPECT_TRUE(!isInvalidType, loc, ErrorCode::InvalidTemplateParam,
+                "array type may not be a texture, sampler or a dynamic array");
+
     const auto* literal = params[1]->As<ast::IntLiteralExpression>();
     const int64_t arraySize = literal->value;
     EXPECT_TRUE(arraySize > 0, loc, ErrorCode::InvalidTemplateParam,
@@ -966,26 +1099,23 @@ Expected<const ast::Array*> ProgramBuilder::ResolveArray(const Ident& ident) {
     // - an atomic type
     // - an array type having a creation-fixed footprint
     // - a structure type having a creation-fixed footprint.
-    if (auto* scalar = valueType->As<ast::Scalar>()) {
-        if (literal->value > std::numeric_limits<uint32_t>::max()) {
-            return ReportError(params[0]->GetLoc(), ErrorCode::InvalidArg,
-                               "size of the static array is too large");
-        }
-        const std::string_view fullTypeName = program_->EmbedString(
-            std::format("array<{},{}>", scalar->name, arraySize));
-        // Create a symbol for a type
-        // Check if already defined
-        const ast::Symbol* symbol = currentScope_.FindSymbol(fullTypeName);
-        if (symbol && symbol->Is<ast::Array>()) {
-            return symbol->As<ast::Array>();
-        }
-        ast::Array* type =
-            program_->Allocate<ast::Array>(scalar, arraySize, fullTypeName);
-        currentScope_.DeclareBuiltin(fullTypeName, type);
-        return type;
+    // TODO: Struct and array types should be of fixed size
+    if (literal->value > std::numeric_limits<uint32_t>::max()) {
+        return ReportError(params[0]->GetLoc(), ErrorCode::InvalidArg,
+                           "size of the static array is too large");
     }
-    return ReportError(params[0]->GetLoc(), ErrorCode::InvalidArg,
-                       "expected a scalar type");
+    const auto fullTypeName = program_->EmbedString(
+        std::format("array<{},{}>", valueType->name, arraySize));
+    // Create a symbol for a type
+    // Check if already defined
+    const ast::Symbol* symbol = currentScope_.FindSymbol(fullTypeName);
+    if (symbol && symbol->Is<ast::Array>()) {
+        return symbol->As<ast::Array>();
+    }
+    auto* type =
+        program_->Allocate<ast::Array>(valueType, arraySize, fullTypeName);
+    currentScope_.DeclareBuiltin(fullTypeName, type);
+    return type;
 }
 
 Expected<const ast::Vec*> ProgramBuilder::ResolveVec(const Ident& ident,
@@ -1055,6 +1185,33 @@ Expected<const ast::Scalar*> ProgramBuilder::ResolveBinaryExprTypes(
         resultType = rhsType;
     }
     return resultType;
+}
+
+ExpectedVoid ProgramBuilder::CheckTypes(SourceLoc loc,
+                                        const ast::Type* lhs,
+                                        const ast::Type* rhs) {
+    DASSERT(lhs && rhs);
+    if (lhs == rhs) {
+        return Void();
+    }
+    const auto* lhsScalar = lhs->As<ast::Scalar>();
+    const auto* rhsScalar = rhs->As<ast::Scalar>();
+    if (!lhsScalar || !rhsScalar) {
+        return ReportError(loc, ErrorCode::TypeError,
+                           "types '{}' and '{}' are incompatible", lhs->name,
+                           rhs->name);
+    }
+    // Get conversion rank
+    constexpr uint32_t kMax = std::numeric_limits<uint32_t>::max();
+    const auto lr = lhsScalar->GetConversionRankTo(rhsScalar);
+    const auto rl = rhsScalar->GetConversionRankTo(lhsScalar);
+    // Not convertible to each other
+    if (lr == kMax && rl == kMax) {
+        return ReportError(loc, ErrorCode::TypeError,
+                           "types '{}' and '{}' are incompatible", lhs->name,
+                           rhs->name);
+    }
+    return Void();
 }
 
 //=========================================================================//

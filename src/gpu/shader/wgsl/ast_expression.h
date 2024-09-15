@@ -1,10 +1,14 @@
 #pragma once
+#include "ast_function.h"
 #include "ast_node.h"
 #include "ast_type.h"
 #include "ast_variable.h"
-#include "ast_function.h"
 
 namespace wgsl::ast {
+
+class Function;
+class Struct;
+class Member;
 
 // Builtin operators
 #define OP_CODES(V)       \
@@ -99,8 +103,6 @@ constexpr bool IsOpBitwise(OpCode op) {
     }
 }
 
-class Function;
-
 // rhs of an assignement or statement
 // A unit of computation
 class Expression : public Node {
@@ -110,22 +112,20 @@ public:
     // Result type of the expression after all conversions
     const ast::Type* type = nullptr;
 
-public:
     template <class T>
     std::optional<T> TryGetConstValueAs() const;
 
-protected:
     Expression(SourceLoc loc, NodeType nodeType, const Type* type)
         : Node(loc, nodeType | kStaticType), type(type) {}
 };
 
+// Unary expression: !, ~, -
 class UnaryExpression final : public Expression {
 public:
+    constexpr static inline auto kStaticType = NodeType::UnaryExpression;
+
     const Expression* rhs;
     OpCode op;
-
-public:
-    constexpr static inline auto kStaticType = NodeType::UnaryExpression;
 
     UnaryExpression(SourceLoc loc,
                     const Type* type,
@@ -138,14 +138,14 @@ public:
     constexpr bool IsBitwise() { return IsOpBitwise(op); }
 };
 
+// Binary expression: * / - = > < etc.
 class BinaryExpression final : public Expression {
 public:
+    constexpr static inline auto kStaticType = NodeType::BinaryExpression;
+
     const Expression* lhs;
     const Expression* rhs;
     OpCode op;
-
-public:
-    constexpr static inline auto kStaticType = NodeType::BinaryExpression;
 
     BinaryExpression(SourceLoc loc,
                      const Type* type,
@@ -164,7 +164,6 @@ class LiteralExpression : public Expression {
 public:
     constexpr static inline auto kStaticType = NodeType::LiteralExpression;
 
-protected:
     LiteralExpression(SourceLoc loc, NodeType nodeType, const Type* type)
         : Expression(loc, nodeType | kStaticType, type) {}
 };
@@ -175,7 +174,6 @@ class IntLiteralExpression final : public LiteralExpression {
 public:
     int64_t value;
 
-public:
     constexpr static inline auto kStaticType = NodeType::IntLiteralExpression;
 
     IntLiteralExpression(SourceLoc loc, const Type* type, int64_t value)
@@ -188,7 +186,6 @@ class FloatLiteralExpression final : public LiteralExpression {
 public:
     double value;
 
-public:
     constexpr static inline auto kStaticType = NodeType::FloatLiteralExpression;
 
     FloatLiteralExpression(SourceLoc loc, const Type* type, double value)
@@ -200,7 +197,6 @@ class BoolLiteralExpression : public LiteralExpression {
 public:
     bool value;
 
-public:
     constexpr static inline auto kStaticType = NodeType::BoolLiteralExpression;
 
     BoolLiteralExpression(SourceLoc loc, const Type* type, bool value)
@@ -214,7 +210,6 @@ public:
     // Variable Type or Function
     const ast::Symbol* symbol;
 
-public:
     IdentExpression(SourceLoc loc, const ast::Variable* var)
         : Expression(loc, kStaticType, var->type), symbol(var) {}
 
@@ -223,6 +218,73 @@ public:
 
     IdentExpression(SourceLoc loc, const ast::Function* func)
         : Expression(loc, kStaticType, nullptr), symbol(func) {}
+};
+
+
+
+// Struct access expression: struct.member
+class MemberAccessExpr final : public Expression {
+public:
+    constexpr static inline auto kStaticType = NodeType::MemberAccessExpr;
+    const Expression* expr;
+    const Member* member;
+
+    MemberAccessExpr(SourceLoc loc,
+                     const Expression* expr,
+                     const Member* member)
+        : Expression(loc, kStaticType, member->type)
+        , expr(expr)
+        , member(member) {}
+};
+
+
+
+// Vector components swizzle op expr; a.x, a.xyz, a.rgba
+class SwizzleExpr final : public Expression {
+public:
+    constexpr static inline auto kStaticType = NodeType::SwizzleExpr;
+
+    const Expression* lhs;
+    const std::array<VecComponent, 4> swizzle;
+
+    SwizzleExpr(SourceLoc loc,
+                const Type* type,
+                const Expression* lhs,
+                VecComponent x,
+                VecComponent y = VecComponent::None,
+                VecComponent z = VecComponent::None,
+                VecComponent w = VecComponent::None)
+        : Expression(loc, kStaticType, type), lhs(lhs), swizzle{x, y, z, w} {}
+
+    SwizzleExpr(SourceLoc loc,
+                const Type* type,
+                const Expression* lhs,
+                std::span<VecComponent> span)
+        : Expression(loc, kStaticType, type), lhs(lhs), swizzle{[&] {
+            std::array<VecComponent, 4> buf{};
+            for (uint32_t i = 0; i < span.size() && i < 4; ++i) {
+                buf[i] = span[i];
+            }
+            return buf;
+        }()} {}
+};
+
+
+
+// Array accessed by index
+class ArrayIndexExpr final : public Expression {
+public:
+    constexpr static inline auto kStaticType = NodeType::ArrayIndexExpr;
+    const Expression* array;
+    const Expression* indexExpr;
+
+    ArrayIndexExpr(SourceLoc loc,
+                   const Type* type,
+                   const Expression* arr,
+                   const Expression* indexExpr)
+        : Expression(loc, kStaticType, type)
+        , array(arr)
+        , indexExpr(indexExpr) {}
 };
 
 }  // namespace wgsl::ast

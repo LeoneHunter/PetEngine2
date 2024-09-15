@@ -173,6 +173,37 @@ constexpr std::optional<VecKind> VecKindFromString(std::string_view str) {
 #undef IF_ELSE
 }
 
+
+// Vector types swizzle component names
+#define VECTOR_COMPONENT_LIST(V) \
+    V(None, "")                  \
+    V(R, "r")                    \
+    V(G, "g")                    \
+    V(B, "b")                    \
+    V(A, "a")                    \
+    V(X, "x")                    \
+    V(Y, "y")                    \
+    V(Z, "z")                    \
+    V(W, "w")
+
+enum class VecComponent : uint8_t {
+#define ENUM(NAME, STR) NAME,
+    VECTOR_COMPONENT_LIST(ENUM)
+#undef ENUM
+};
+
+constexpr std::optional<VecComponent> VecComponentFromString(
+    std::string_view str) {
+#define V(NAME, STR)               \
+    if (str == STR)                \
+        return VecComponent::NAME; \
+    else
+    VECTOR_COMPONENT_LIST(V)
+    return std::nullopt;
+#undef V
+}
+
+
 // Builtin vector: vec2, vec3
 class Vec final : public Type {
 public:
@@ -182,10 +213,48 @@ public:
 public:
     constexpr static auto kStaticType = NodeType::Vector;
 
-    Vec(VecKind kind, const Scalar* valueType)
-        : Type({}, kStaticType, to_string(kind))
-        , kind(kind)
-        , valueType(valueType) {}
+    Vec(VecKind kind, const Scalar* valueType, std::string_view name)
+        : Type({}, kStaticType, name), kind(kind), valueType(valueType) {}
+
+    constexpr bool HasComponent(VecComponent component) const {
+        switch (kind) {
+            case VecKind::Vec2: {
+                return component != VecComponent::B &&
+                       component != VecComponent::A &&
+                       component != VecComponent::Z &&
+                       component != VecComponent::W;
+            }
+            case VecKind::Vec3: {
+                return component != VecComponent::A &&
+                       component != VecComponent::W;
+            }
+        }
+        return true;
+    }
+
+    constexpr std::string GetSwizzleTypeName(uint8_t numComponents) const {
+        switch (kind) {
+            case VecKind::Vec4: {
+                if (numComponents == 4) {
+                    return std::string(valueType->name);
+                }
+            }
+            case VecKind::Vec3: {
+                if (numComponents == 3) {
+                    return std::format("vec3<{}>", valueType->name);
+                }
+            }
+            case VecKind::Vec2: {
+                if (numComponents == 2) {
+                    return std::format("vec2<{}>", valueType->name);
+                }
+            }
+            default: {
+                return std::string(valueType->name);
+            }
+        }
+        return "";
+    }
 };
 
 

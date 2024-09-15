@@ -23,14 +23,17 @@ namespace wgsl::ast {
     V(Member, 12)                 \
     V(Function, 13)               \
     /* Expressions */             \
-    V(Expression, 20)             \
-    V(UnaryExpression, 21)        \
-    V(BinaryExpression, 22)       \
-    V(LiteralExpression, 23)      \
-    V(FloatLiteralExpression, 24) \
-    V(IntLiteralExpression, 25)   \
-    V(BoolLiteralExpression, 26)  \
-    V(IdentExpression, 27)        \
+    V(Expression, 15)             \
+    V(UnaryExpression, 16)        \
+    V(BinaryExpression, 17)       \
+    V(LiteralExpression, 18)      \
+    V(FloatLiteralExpression, 19) \
+    V(IntLiteralExpression, 20)   \
+    V(BoolLiteralExpression, 21)  \
+    V(IdentExpression, 22)        \
+    V(MemberAccessExpr, 23)       \
+    V(SwizzleExpr, 24)            \
+    V(ArrayIndexExpr, 25)         \
     /* Variables */               \
     V(Variable, 30)               \
     V(OverrideVariable, 31)       \

@@ -64,10 +64,18 @@ public:
     ExpectedVoid CreateCompoundStatement(SourceLoc loc);
 
     // Indicates the end of a scoped statement
-    void DeclareFuncEnd(SourceLoc loc);
+    void DeclareScopeEnd(SourceLoc loc);
 
     ExpectedVoid DeclareReturnStatement(SourceLoc loc,
                                         const ast::Expression* expr);
+
+    // Declares a 'if' statement "header" and opens a new scope
+    Expected<ast::IfStatement*> DeclareIfClause(SourceLoc loc,
+                                                const ast::Expression* expr,
+                                                ast::IfStatement* prevIf);
+
+    // Declares a continuation of the previous 'if' clause
+    ExpectedVoid DeclareElseClause(SourceLoc loc, ast::IfStatement* prevIf);
 
 public:
     ExpectedVoid DeclareConst(SourceLoc loc,
@@ -104,6 +112,14 @@ public:
     CreateUnaryExpr(SourceLoc loc, ast::OpCode op, const ast::Expression* rhs);
 
     Expected<const ast::IdentExpression*> CreateIdentExpr(const Ident& ident);
+
+    Expected<const ast::Expression*> CreateDotAccessExpr(
+        const ast::Expression* lhs,
+        const Ident& ident);
+
+    Expected<const ast::Expression*> CreateArrayAccessExpr(
+        const ast::Expression* lhs,
+        const ast::Expression* index);
 
     Expected<const ast::Expression*> CreateFnCallExpr(
         const Ident& ident,
@@ -206,6 +222,11 @@ private:
 
     ErrorCode CheckExpressionArg(SourceLoc loc, const ast::Expression* arg);
 
+    // Checks that two types are compatible
+    ExpectedVoid CheckTypes(SourceLoc loc,
+                            const ast::Type* lhs,
+                            const ast::Type* rhs);
+
     void CreateBuiltinSymbols();
 
     std::unexpected<ErrorCode> ReportErrorImpl(SourceLoc loc,
@@ -246,8 +267,8 @@ private:
         void Declare(std::string_view name, ast::Symbol* symbol) {
             if (auto* global = currentNode_->As<ast::GlobalScope>()) {
                 global->Declare(name, symbol);
-            } else if (auto* func = currentNode_->As<ast::Function>()) {
-                func->symbolTable->InsertSymbol(name, symbol);
+            } else if (auto* func = currentNode_->As<ast::ScopedStatement>()) {
+                func->symbols->InsertSymbol(name, symbol);
             } else {
                 FATAL("current scope is not global nor function");
             }
@@ -261,10 +282,10 @@ private:
         bool IsGlobal() const { return currentNode_->Is<ast::GlobalScope>(); }
 
         // Opens a new scope with a new symbol table
-        void PushScope(ast::Function* func) {
+        void PushScope(ast::ScopedStatement* scope) {
             parentNode_ = currentNode_;
-            currentNode_ = func;
-            currentSymbols_ = func->symbolTable;
+            currentNode_ = scope;
+            currentSymbols_ = scope->symbols;
         }
 
         // Closes the current scope
@@ -273,17 +294,18 @@ private:
             currentNode_ = parentNode_;
             if (auto* global = currentNode_->As<ast::GlobalScope>()) {
                 currentSymbols_ = global->symbolTable;
-            } else if (auto* func = currentNode_->As<ast::Function>()) {
-                currentSymbols_ = func->symbolTable;
+            } else if (auto* func = currentNode_->As<ast::ScopedStatement>()) {
+                currentSymbols_ = func->symbols;
             } else {
                 FATAL("current scope is not global nor function");
             }
         }
 
-        // Adds a statement to the current function
+        // Adds a statement to the current function or block
         void AddStatement(ast::Statement* statement) {
-            DASSERT(currentNode_->Is<ast::Function>());
-            currentNode_->As<ast::Function>()->AddStatement(statement);
+            DASSERT(!currentNode_->Is<ast::GlobalScope>());
+            currentNode_->As<ast::ScopedStatement>()->statements.push_back(
+                statement);
         }
 
         ast::SymbolTable* GetCurrentSymbolTable() { return currentSymbols_; }

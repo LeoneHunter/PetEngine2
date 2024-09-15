@@ -1,10 +1,10 @@
 #include "base/tree_printer.h"
 #include "program.h"
 
-#include "ast_scope.h"
-#include "ast_variable.h"
 #include "ast_expression.h"
+#include "ast_scope.h"
 #include "ast_type.h"
+#include "ast_variable.h"
 
 #include <doctest.h>
 
@@ -320,8 +320,43 @@ TEST_CASE_FIXTURE(ProgramTest, "[WGSL] global var, attributes") {
 
 TEST_CASE_FIXTURE(ProgramTest, "[WGSL] func basic") {
     Build(R"(
-        fn main(a : vec3f)-> vec3f {
+        fn func(a : vec3f)-> vec3f {
             return a;
+        }
+    )");
+    ExpectErrNum(0);
+}
+
+TEST_CASE_FIXTURE(ProgramTest, "[WGSL] complex component access") {
+    Build(R"(
+        struct Middle {
+            bottom : vec2f,
+        };
+
+        struct Top {
+            middle : array<Middle, 10>,
+        };
+
+        var<storage> top : Top;
+        
+        fn func(a : vec3u)-> f32 {
+            var index : u32 = a.x;
+            return top.middle[index].bottom.x;
+        }
+    )");
+    ExpectErrNum(0);
+}
+
+TEST_CASE_FIXTURE(ProgramTest, "[WGSL] if statement") {
+    Build(R"(
+        fn compare(a : u32, b : u32)-> i32 {
+            if (a > b) {
+                return 1;
+            } else if (a < b) {
+                return -1;
+            } else {
+                return 0;
+            }
         }
     )");
     ExpectErrNum(0);
