@@ -152,8 +152,17 @@ private:
     }
 
     constexpr Token ParseLetter() {
+        const uint32_t start = Pos();
+        SourceLoc loc = Loc();
+        while (Match(CharKind::Digit, CharKind::Letter, '_')) {
+            Advance();
+        }
+        const uint32_t len = Pos() - start;
+        const auto tok = Token(Token::Kind::Ident, SourceLoc(loc, len),
+                               MakeStringView(start, start + len));
+        // Check if this ident is a keyword
         for (const std::string_view keyword : kKeywords) {
-            if (Match(keyword)) {
+            if (tok.Source() == keyword) {
                 const auto out = Token(Token::Kind::Keyword,
                                        SourceLoc(Loc(), keyword.size()),
                                        &Peek(), keyword.size());
@@ -161,8 +170,9 @@ private:
                 return out;
             }
         }
+        // Check if this ident is a reserved ident
         for (const std::string_view reserved : kReserved) {
-            if (Match(reserved)) {
+            if (tok.Source() == reserved) {
                 const auto out = Token(Token::Kind::Reserved,
                                        SourceLoc(Loc(), reserved.size()),
                                        &Peek(), reserved.size());
@@ -170,8 +180,9 @@ private:
                 return out;
             }
         }
+        // Check if this ident is a builtint variable name
         for (const std::string_view builtin : kBuiltinValues) {
-            if (Match(builtin)) {
+            if (tok.Source() == builtin) {
                 const auto out = Token(Token::Kind::Builtin,
                                        SourceLoc(Loc(), builtin.size()),
                                        &Peek(), builtin.size());
@@ -179,14 +190,7 @@ private:
                 return out;
             }
         }
-        const uint32_t start = Pos();
-        SourceLoc loc = Loc();
-        while (Match(CharKind::Digit, CharKind::Letter, '_')) {
-            Advance();
-        }
-        const uint32_t len = Pos() - start;
-        return Token(Token::Kind::Ident, SourceLoc(loc, len),
-                     MakeStringView(start, start + len));
+        return tok;
     }
 
     constexpr Token ParsePunctuation() {
