@@ -669,20 +669,26 @@ Expected<const ast::Expression*> ProgramBuilder::CreateArrayAccessExpr(
         lhs->GetLoc(), arr->valueType, lhs, indexExpr);
 }
 
-// ident <template> (args, *)
+// ident ('<' template '>')? '(' (args, )* ')'
 Expected<const ast::Expression*> ProgramBuilder::CreateFnCallExpr(
     const Ident& ident,
     const ExpressionList& args) {
-
+    // Check if user defined
     const ast::Symbol* symbol = currentScope_.FindSymbol(ident.name);
-    if (!symbol) {
-        return ReportError(ident.loc, ErrorCode::SymbolNotFound,
-                           "symbol '{}' not found in the current scope",
-                           ident.name);
+    EXPECT_TRUE(symbol, ident.loc, ErrorCode::SymbolNotFound,
+                "symbol '{}' not found in the current scope", ident.name);
+    // Check if is 'function'
+    const bool isFunction =
+        symbol->Is<ast::Function>() || symbol->Is<ast::BuiltinFunction>();
+    EXPECT_TRUE(isFunction, ident.loc, ErrorCode::SymbolNotFound,
+                "symbol '{}' is not a valid function name", ident.name);
+
+    if (symbol->Is<ast::BuiltinFunction>()) {
+        return ResolveBuiltinFunc(symbol->As<ast::BuiltinFunction>(), ident,
+                                  args);
+    } else {
     }
-    // Symbol could be a user function or a builtin type generator
-    // I.e. user_fn(a, b) or vec2u(2, 2)
-    return std::unexpected(ErrorCode::Unimplemented);
+    return ReportError(ident.loc, ErrorCode::Unimplemented);
 }
 
 Expected<const ast::IntLiteralExpression*> ProgramBuilder::CreateIntLiteralExpr(
@@ -1155,6 +1161,63 @@ Expected<const ast::Matrix*> ProgramBuilder::ResolveMatrix(const Ident& ident) {
     const ast::Symbol* symbol = currentScope_.FindSymbol(fullName);
     DASSERT(symbol && symbol->Is<ast::Vec>());
     return symbol->As<ast::Matrix>();
+}
+
+Expected<const ast::Expression*> ProgramBuilder::ResolveBuiltinFunc(
+    const ast::BuiltinFunction* func,
+    const Ident& ident,
+    const ExpressionList& args) {
+    // Create input signature
+    std::vector<const ast::Type*> inputSig;
+    for (const ast::Expression* arg : args) {
+        inputSig.push_back(arg->type);
+    }
+
+    // Algorithm outline:
+
+    // Input:
+    //   ident0 (ident1 : Type1, ident2 : Type2)
+    // Fn call:
+    //   fn ident0 (Type1, Type2) -> Type3
+    // Result:
+    //   result_type : Type3
+
+    // - Find the function by the name 'ident0'
+    struct FuncFamily {
+        struct Signature {
+            std::vector<ast::Type*> paramTypes;
+            ast::Type* retType;
+        };
+        struct Template {};
+
+        std::string_view name;
+        std::vector<Signature> overloads;
+
+        bool Match(ast::Type* param0, ast::Type* param1) { return false; }
+    };
+
+    // - Create an input signature from arguments
+    //   (Type1, Type2)
+
+    // - Look for signatures that could match the input one
+    //   Rank them by the number of types matched and
+    //     a conversion rank for param types: Float -> f32 = 2
+
+    // - If have exact match:
+    //   Create a node with the funcion, return the function result type
+
+    // - If have partial match
+    //   For each partial match calculate conversion rank
+    //   Compare conversion ranks for all overloads
+    //   - If has an overload with the lowest rank:
+    //       select that overload
+    //   - Else:
+    //       report multiple overloads error
+
+    // - If no match:
+    //   Report error
+
+    return ReportError(func->GetLoc(), ErrorCode::Unimplemented);
 }
 
 Expected<const ast::Scalar*> ProgramBuilder::ResolveBinaryExprTypes(

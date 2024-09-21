@@ -80,7 +80,7 @@ struct ProgramTest {
     void Build(std::string_view code) { program = Program::Create(code); }
 
     template <class T>
-    void ExpectGlobalVar(std::string_view s) {
+    void ExpectVar(std::string_view s) {
         auto* symbol = program->FindSymbol(s);
         EXPECT(symbol);
         auto* var = symbol->As<ast::VarVariable>();
@@ -312,9 +312,9 @@ TEST_CASE_FIXTURE(ProgramTest, "[WGSL] global var, attributes") {
         @binding(1) @group(0) var<storage, read_write> b : i32;
         @binding(2) @group(0) var<storage, read_write> c : u32;
     )");
-    ExpectGlobalVar<ast::Scalar>("a");
-    ExpectGlobalVar<ast::Scalar>("b");
-    ExpectGlobalVar<ast::Scalar>("c");
+    ExpectVar<ast::Scalar>("a");
+    ExpectVar<ast::Scalar>("b");
+    ExpectVar<ast::Scalar>("c");
     ExpectErrNum(0);
 }
 
@@ -344,6 +344,11 @@ TEST_CASE_FIXTURE(ProgramTest, "[WGSL] complex component access") {
             return top.middle[index].bottom.x;
         }
     )");
+    ExpectStruct("Middle");
+    ExpectStructMember<ast::Vec>("Middle::bottom");
+    ExpectStruct("Top");
+    ExpectStructMember<ast::Array>("Top::middle");
+    ExpectVar<ast::Struct>("top");
     ExpectErrNum(0);
 }
 

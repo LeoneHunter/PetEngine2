@@ -191,8 +191,10 @@ private:
     Expected<const ast::Vec*> ResolveVec(const Ident& ident, ast::VecKind kind);
     Expected<const ast::Matrix*> ResolveMatrix(const Ident& ident);
 
-    // Expected<const ast::BuiltinFunction*> ResolveBuiltinFunc(
-    //     const Ident& symbol);
+    Expected<const ast::Expression*> ResolveBuiltinFunc(
+        const ast::BuiltinFunction* func,
+        const Ident& ident,
+        const ExpressionList& args);
 
 private:
     template <class T>
