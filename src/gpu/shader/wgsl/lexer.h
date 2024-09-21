@@ -29,13 +29,16 @@ public:
     }
 
     Token ParseNext() {
-        while (!IsEof() && !Match(CharKind::Digit, CharKind::Letter,
-                                  CharKind::Punctuation)) {
-            SkipBlankspace();
-            SkipComment();
-        }
-        if (IsEof()) {
-            return Token::EOF(Loc());
+        for(;;) {
+            if(Match("//", "/*")) {
+                SkipComment();
+            } else if(Match(CharKind::LineBreak, CharKind::Space)) {
+                SkipBlankspace();
+            } else if(IsEof()) {
+                return Token::EOF(Loc());
+            } else {
+                break;
+            }
         }
         switch (GetKind()) {
             case CharKind::Digit: return ParseDigit();
@@ -158,36 +161,27 @@ private:
             Advance();
         }
         const uint32_t len = Pos() - start;
-        const auto tok = Token(Token::Kind::Ident, SourceLoc(loc, len),
-                               MakeStringView(start, start + len));
+        auto tok = Token(Token::Kind::Ident, SourceLoc(loc, len),
+                         MakeStringView(start, start + len));
         // Check if this ident is a keyword
         for (const std::string_view keyword : kKeywords) {
             if (tok.Source() == keyword) {
-                const auto out = Token(Token::Kind::Keyword,
-                                       SourceLoc(Loc(), keyword.size()),
-                                       &Peek(), keyword.size());
-                Advance(keyword.size());
-                return out;
+                tok.kind = Token::Kind::Keyword;
+                return tok;
             }
         }
         // Check if this ident is a reserved ident
         for (const std::string_view reserved : kReserved) {
             if (tok.Source() == reserved) {
-                const auto out = Token(Token::Kind::Reserved,
-                                       SourceLoc(Loc(), reserved.size()),
-                                       &Peek(), reserved.size());
-                Advance(reserved.size());
-                return out;
+                tok.kind = Token::Kind::Reserved;
+                return tok;
             }
         }
         // Check if this ident is a builtint variable name
         for (const std::string_view builtin : kBuiltinValues) {
             if (tok.Source() == builtin) {
-                const auto out = Token(Token::Kind::Builtin,
-                                       SourceLoc(Loc(), builtin.size()),
-                                       &Peek(), builtin.size());
-                Advance(builtin.size());
-                return out;
+                tok.kind = Token::Kind::Builtin;
+                return tok;
             }
         }
         return tok;
