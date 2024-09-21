@@ -44,3 +44,5 @@ test(
         base
         wgsl
 )
+
+add_subdirectory(signature_parser)

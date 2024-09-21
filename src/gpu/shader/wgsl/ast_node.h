@@ -22,6 +22,7 @@ namespace wgsl::ast {
     V(Struct, 11)                 \
     V(Member, 12)                 \
     V(Function, 13)               \
+    V(BuiltinFunction, 14)        \
     /* Expressions */             \
     V(Expression, 15)             \
     V(UnaryExpression, 16)        \
