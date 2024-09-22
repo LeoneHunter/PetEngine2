@@ -1,0 +1,22 @@
+#=======================================================
+# gfx module
+#=======================================================
+module(
+    NAME
+        gfx
+    HDRS
+        canvas.h
+        common.h
+        font_cache.h
+        font.h
+        shaper.h
+    SRCS
+        canvas.cpp
+        shaper.cpp
+        font.cpp
+        font_cache.cpp
+    DEPS
+        gpu
+        thirdparty::harfbuzz
+        thirdparty::freetype
+)

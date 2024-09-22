@@ -1,0 +1,37 @@
+module(
+    NAME
+        base
+    HDRS
+        common.h
+        command_line.h
+        buddy_alloc.h
+        pooled_alloc.h
+        intrusive_list.h
+        bump_alloc.h
+        error.h
+        log.h
+        math_util.h
+        tree_printer.h
+        rtti.h
+        string_utils.h
+        util.h
+        win_minimal.h
+        bench.h
+        threading.h
+    SRCS
+        bench.cpp
+        log.cpp
+        tree_printer.cpp
+        win_minimal.cpp
+        string_utils.cpp
+        threading.cpp
+)
+
+test(
+    NAME
+        util
+    SRCS
+        util_test.cpp
+    DEPS
+        base
+)

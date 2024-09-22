@@ -1,0 +1,74 @@
+
+module(
+    NAME
+        d3d12
+    HDRS
+        d3d12/buffer.h
+        d3d12/common.h
+        d3d12/context.h
+        d3d12/descriptor_heap.h
+        d3d12/device.h
+        d3d12/pipeline_state.h
+        d3d12/heap_allocator.h
+        d3d12/slab_allocator_heap.h
+        d3d12/slab_allocator.h
+        d3d12/texture.h
+        d3d12/swap_chain.h
+    SRCS
+        d3d12/buffer.cpp
+        d3d12/context.cpp
+        d3d12/descriptor_heap.cpp
+        d3d12/device.cpp
+        d3d12/pipeline_state.cpp
+        d3d12/swap_chain.cpp
+        d3d12/texture.cpp
+    DEPS
+        base
+        d3d12.lib 
+        dxgi.lib 
+        d3dcompiler.lib
+        dxguid.lib
+        thirdparty::dx_headers
+)
+
+module(
+    NAME
+        shader
+    HDRS
+        shader/shader_dsl.h
+        shader/hlsl_codegen.h
+        shader/shader_dsl_ast.h
+        shader/hlsl_compiler.h
+    SRCS
+        shader/hlsl_codegen.cpp
+        shader/hlsl_compiler.cpp
+    DEPS
+        base
+        d3d12
+)
+
+module(
+    NAME
+        gpu
+    HDRS
+        common.h
+        gpu.h
+    DEPS
+        base
+        d3d12
+        shader
+)
+
+test(
+    NAME
+        gpu
+    SRCS
+        shader/shader_dsl_test.cpp
+        d3d12/d3d12_test.cpp
+        d3d12/slab_allocator_test.cpp
+    DEPS
+        shader
+        d3d12
+)
+
+add_subdirectory(shader/wgsl)
