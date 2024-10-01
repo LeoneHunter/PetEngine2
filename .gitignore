@@ -3,7 +3,17 @@
 [Bb]uild/
 [Dd]ocs/
 vs/
-thirdparty/
+
+# Thirdparty dependencies
+thirdparty/*
+!thirdparty/CMakeLists.txt
+!thirdparty/utf8-decoder
+
+# Custom harfbuzz project file
+!thirdparty/harfbuzz
+thirdparty/harfbuzz/*
+!thirdparty/harfbuzz/CMakeLists.txt
+
 # Test data
 test/filesystem_view_test/
 
