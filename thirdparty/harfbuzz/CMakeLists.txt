@@ -1,13 +1,30 @@
-# Modified to be used only with MSVC/Windows/x86 for PetEngine2
+
 cmake_minimum_required(VERSION 3.12)
 project(harfbuzz)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+
+# Fetch the source
+FetchContent_Declare(
+	harfbuzz
+	GIT_REPOSITORY https://github.com/harfbuzz/harfbuzz.git 
+  SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/harfbuzz"
+	GIT_TAG "10.0.1"
+	GIT_SHALLOW TRUE
+)
+
+FetchContent_GetProperties(harfbuzz)
+if(NOT harfbuzz_POPULATED)
+  FetchContent_Populate(harfbuzz)
+endif()
+
+
+
 include_directories(AFTER
-  ${PROJECT_SOURCE_DIR}/src
-  ${PROJECT_BINARY_DIR}/src
+  ${PROJECT_SOURCE_DIR}/harfbuzz/src
+  ${PROJECT_BINARY_DIR}/harfbuzz/src
 )
 
 # Include freetype
@@ -79,7 +96,9 @@ add_definitions(
 )
 add_definitions(-bigobj)
 
-file(READ meson.build MESONBUILD)
+set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/harfbuzz/src)
+
+file(READ ${SOURCE_DIR}/meson.build MESONBUILD)
 string(REGEX MATCH "version: '(([0-9]+)\\.([0-9]+)\\.([0-9]+))'," HB_VERSION_MATCH ${MESONBUILD})
 set(HB_VERSION ${CMAKE_MATCH_1})
 set(HB_VERSION_MAJOR ${CMAKE_MATCH_2})
@@ -88,154 +107,155 @@ set(HB_VERSION_MICRO ${CMAKE_MATCH_4})
 
 # Define sources and headers of the project
 # use amalgam source
-set (project_sources ${PROJECT_SOURCE_DIR}/src/harfbuzz.cc) 
+
+set (project_sources ${SOURCE_DIR}/harfbuzz.cc) 
 
 if(ALL_SOURCES) 
   set(project_sources
-    ${PROJECT_SOURCE_DIR}/src/OT/Var/VARC/VARC.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-aat-layout.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-aat-map.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-blob.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-buffer-serialize.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-buffer-verify.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-buffer.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-common.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-coretext.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-directwrite.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-draw.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-face-builder.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-face.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-fallback-shape.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-font.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ft.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-gdi.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-glib.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-graphite2.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-map.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-number.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-cff1-table.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-cff2-table.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-color.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-face.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-font.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-layout.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-map.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-math.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-meta.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-metrics.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-name.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shape-fallback.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shape-normalize.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shape.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shaper-arabic.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shaper-default.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shaper-hangul.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shaper-hebrew.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shaper-indic-table.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shaper-indic.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shaper-khmer.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shaper-myanmar.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shaper-syllabic.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shaper-thai.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shaper-use.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-shaper-vowel-constraints.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-tag.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ot-var.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-outline.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-paint-extents.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-paint.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-set.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-shape-plan.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-shape.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-shaper.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-static.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-style.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-ucd.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-unicode.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-uniscribe.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-wasm-api.cc
-    ${PROJECT_SOURCE_DIR}/src/hb-wasm-shape.cc
+    ${SOURCE_DIR}/OT/Var/VARC/VARC.cc
+    ${SOURCE_DIR}/hb-aat-layout.cc
+    ${SOURCE_DIR}/hb-aat-map.cc
+    ${SOURCE_DIR}/hb-blob.cc
+    ${SOURCE_DIR}/hb-buffer-serialize.cc
+    ${SOURCE_DIR}/hb-buffer-verify.cc
+    ${SOURCE_DIR}/hb-buffer.cc
+    ${SOURCE_DIR}/hb-common.cc
+    ${SOURCE_DIR}/hb-coretext.cc
+    ${SOURCE_DIR}/hb-directwrite.cc
+    ${SOURCE_DIR}/hb-draw.cc
+    ${SOURCE_DIR}/hb-face-builder.cc
+    ${SOURCE_DIR}/hb-face.cc
+    ${SOURCE_DIR}/hb-fallback-shape.cc
+    ${SOURCE_DIR}/hb-font.cc
+    ${SOURCE_DIR}/hb-ft.cc
+    ${SOURCE_DIR}/hb-gdi.cc
+    ${SOURCE_DIR}/hb-glib.cc
+    ${SOURCE_DIR}/hb-graphite2.cc
+    ${SOURCE_DIR}/hb-map.cc
+    ${SOURCE_DIR}/hb-number.cc
+    ${SOURCE_DIR}/hb-ot-cff1-table.cc
+    ${SOURCE_DIR}/hb-ot-cff2-table.cc
+    ${SOURCE_DIR}/hb-ot-color.cc
+    ${SOURCE_DIR}/hb-ot-face.cc
+    ${SOURCE_DIR}/hb-ot-font.cc
+    ${SOURCE_DIR}/hb-ot-layout.cc
+    ${SOURCE_DIR}/hb-ot-map.cc
+    ${SOURCE_DIR}/hb-ot-math.cc
+    ${SOURCE_DIR}/hb-ot-meta.cc
+    ${SOURCE_DIR}/hb-ot-metrics.cc
+    ${SOURCE_DIR}/hb-ot-name.cc
+    ${SOURCE_DIR}/hb-ot-shape-fallback.cc
+    ${SOURCE_DIR}/hb-ot-shape-normalize.cc
+    ${SOURCE_DIR}/hb-ot-shape.cc
+    ${SOURCE_DIR}/hb-ot-shaper-arabic.cc
+    ${SOURCE_DIR}/hb-ot-shaper-default.cc
+    ${SOURCE_DIR}/hb-ot-shaper-hangul.cc
+    ${SOURCE_DIR}/hb-ot-shaper-hebrew.cc
+    ${SOURCE_DIR}/hb-ot-shaper-indic-table.cc
+    ${SOURCE_DIR}/hb-ot-shaper-indic.cc
+    ${SOURCE_DIR}/hb-ot-shaper-khmer.cc
+    ${SOURCE_DIR}/hb-ot-shaper-myanmar.cc
+    ${SOURCE_DIR}/hb-ot-shaper-syllabic.cc
+    ${SOURCE_DIR}/hb-ot-shaper-thai.cc
+    ${SOURCE_DIR}/hb-ot-shaper-use.cc
+    ${SOURCE_DIR}/hb-ot-shaper-vowel-constraints.cc
+    ${SOURCE_DIR}/hb-ot-tag.cc
+    ${SOURCE_DIR}/hb-ot-var.cc
+    ${SOURCE_DIR}/hb-outline.cc
+    ${SOURCE_DIR}/hb-paint-extents.cc
+    ${SOURCE_DIR}/hb-paint.cc
+    ${SOURCE_DIR}/hb-set.cc
+    ${SOURCE_DIR}/hb-shape-plan.cc
+    ${SOURCE_DIR}/hb-shape.cc
+    ${SOURCE_DIR}/hb-shaper.cc
+    ${SOURCE_DIR}/hb-static.cc
+    ${SOURCE_DIR}/hb-style.cc
+    ${SOURCE_DIR}/hb-ucd.cc
+    ${SOURCE_DIR}/hb-unicode.cc
+    ${SOURCE_DIR}/hb-uniscribe.cc
+    ${SOURCE_DIR}/hb-wasm-api.cc
+    ${SOURCE_DIR}/hb-wasm-shape.cc
   )
 endif()
 
 set(subset_project_sources
-  ${PROJECT_SOURCE_DIR}/src/hb-number.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-number.hh
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-cff1-table.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-cff2-table.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-post-table-v2subset.hh
-  ${PROJECT_SOURCE_DIR}/src/hb-static.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-cff-common.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-cff-common.hh
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-cff1.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-cff2.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-input.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-input.hh
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-instancer-iup.hh
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-instancer-iup.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-instancer-solver.hh
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-instancer-solver.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-accelerator.hh
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-plan.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-plan.hh
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-plan-member-list.hh
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-repacker.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-subset.cc
-  ${PROJECT_SOURCE_DIR}/src/hb-subset.hh
-  ${PROJECT_SOURCE_DIR}/src/hb-repacker.hh
-  ${PROJECT_SOURCE_DIR}/src/graph/graph.hh
-  ${PROJECT_SOURCE_DIR}/src/graph/gsubgpos-graph.hh
-  ${PROJECT_SOURCE_DIR}/src/graph/gsubgpos-context.hh
-  ${PROJECT_SOURCE_DIR}/src/graph/gsubgpos-context.cc
-  ${PROJECT_SOURCE_DIR}/src/graph/coverage-graph.hh
-  ${PROJECT_SOURCE_DIR}/src/graph/classdef-graph.hh
-  ${PROJECT_SOURCE_DIR}/src/graph/pairpos-graph.hh
-  ${PROJECT_SOURCE_DIR}/src/graph/markbasepos-graph.hh
-  ${PROJECT_SOURCE_DIR}/src/graph/split-helpers.hh
-  ${PROJECT_SOURCE_DIR}/src/graph/serialize.hh
-  ${PROJECT_SOURCE_DIR}/src/OT/Color/COLR/colrv1-closure.hh
+  ${SOURCE_DIR}/hb-number.cc
+  ${SOURCE_DIR}/hb-number.hh
+  ${SOURCE_DIR}/hb-ot-cff1-table.cc
+  ${SOURCE_DIR}/hb-ot-cff2-table.cc
+  ${SOURCE_DIR}/hb-ot-post-table-v2subset.hh
+  ${SOURCE_DIR}/hb-static.cc
+  ${SOURCE_DIR}/hb-subset-cff-common.cc
+  ${SOURCE_DIR}/hb-subset-cff-common.hh
+  ${SOURCE_DIR}/hb-subset-cff1.cc
+  ${SOURCE_DIR}/hb-subset-cff2.cc
+  ${SOURCE_DIR}/hb-subset-input.cc
+  ${SOURCE_DIR}/hb-subset-input.hh
+  ${SOURCE_DIR}/hb-subset-instancer-iup.hh
+  ${SOURCE_DIR}/hb-subset-instancer-iup.cc
+  ${SOURCE_DIR}/hb-subset-instancer-solver.hh
+  ${SOURCE_DIR}/hb-subset-instancer-solver.cc
+  ${SOURCE_DIR}/hb-subset-accelerator.hh
+  ${SOURCE_DIR}/hb-subset-plan.cc
+  ${SOURCE_DIR}/hb-subset-plan.hh
+  ${SOURCE_DIR}/hb-subset-plan-member-list.hh
+  ${SOURCE_DIR}/hb-subset-repacker.cc
+  ${SOURCE_DIR}/hb-subset.cc
+  ${SOURCE_DIR}/hb-subset.hh
+  ${SOURCE_DIR}/hb-repacker.hh
+  ${SOURCE_DIR}/graph/graph.hh
+  ${SOURCE_DIR}/graph/gsubgpos-graph.hh
+  ${SOURCE_DIR}/graph/gsubgpos-context.hh
+  ${SOURCE_DIR}/graph/gsubgpos-context.cc
+  ${SOURCE_DIR}/graph/coverage-graph.hh
+  ${SOURCE_DIR}/graph/classdef-graph.hh
+  ${SOURCE_DIR}/graph/pairpos-graph.hh
+  ${SOURCE_DIR}/graph/markbasepos-graph.hh
+  ${SOURCE_DIR}/graph/split-helpers.hh
+  ${SOURCE_DIR}/graph/serialize.hh
+  ${SOURCE_DIR}/OT/Color/COLR/colrv1-closure.hh
 )
 set(project_headers
-  ${PROJECT_SOURCE_DIR}/src/hb-aat-layout.h
-  ${PROJECT_SOURCE_DIR}/src/hb-aat.h
-  ${PROJECT_SOURCE_DIR}/src/hb-blob.h
-  ${PROJECT_SOURCE_DIR}/src/hb-buffer.h
-  ${PROJECT_SOURCE_DIR}/src/hb-common.h
-  ${PROJECT_SOURCE_DIR}/src/hb-cplusplus.hh
-  ${PROJECT_SOURCE_DIR}/src/hb-deprecated.h
-  ${PROJECT_SOURCE_DIR}/src/hb-draw.h
-  ${PROJECT_SOURCE_DIR}/src/hb-face.h
-  ${PROJECT_SOURCE_DIR}/src/hb-font.h
-  ${PROJECT_SOURCE_DIR}/src/hb-map.h
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-color.h
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-deprecated.h
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-font.h
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-layout.h
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-math.h
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-meta.h
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-metrics.h
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-name.h
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-shape.h
-  ${PROJECT_SOURCE_DIR}/src/hb-ot-var.h
-  ${PROJECT_SOURCE_DIR}/src/hb-ot.h
-  ${PROJECT_SOURCE_DIR}/src/hb-paint.h
-  ${PROJECT_SOURCE_DIR}/src/hb-set.h
-  ${PROJECT_SOURCE_DIR}/src/hb-shape-plan.h
-  ${PROJECT_SOURCE_DIR}/src/hb-shape.h
-  ${PROJECT_SOURCE_DIR}/src/hb-style.h
-  ${PROJECT_SOURCE_DIR}/src/hb-unicode.h
-  ${PROJECT_SOURCE_DIR}/src/hb-version.h
-  ${PROJECT_SOURCE_DIR}/src/hb.h
+  ${SOURCE_DIR}/hb-aat-layout.h
+  ${SOURCE_DIR}/hb-aat.h
+  ${SOURCE_DIR}/hb-blob.h
+  ${SOURCE_DIR}/hb-buffer.h
+  ${SOURCE_DIR}/hb-common.h
+  ${SOURCE_DIR}/hb-cplusplus.hh
+  ${SOURCE_DIR}/hb-deprecated.h
+  ${SOURCE_DIR}/hb-draw.h
+  ${SOURCE_DIR}/hb-face.h
+  ${SOURCE_DIR}/hb-font.h
+  ${SOURCE_DIR}/hb-map.h
+  ${SOURCE_DIR}/hb-ot-color.h
+  ${SOURCE_DIR}/hb-ot-deprecated.h
+  ${SOURCE_DIR}/hb-ot-font.h
+  ${SOURCE_DIR}/hb-ot-layout.h
+  ${SOURCE_DIR}/hb-ot-math.h
+  ${SOURCE_DIR}/hb-ot-meta.h
+  ${SOURCE_DIR}/hb-ot-metrics.h
+  ${SOURCE_DIR}/hb-ot-name.h
+  ${SOURCE_DIR}/hb-ot-shape.h
+  ${SOURCE_DIR}/hb-ot-var.h
+  ${SOURCE_DIR}/hb-ot.h
+  ${SOURCE_DIR}/hb-paint.h
+  ${SOURCE_DIR}/hb-set.h
+  ${SOURCE_DIR}/hb-shape-plan.h
+  ${SOURCE_DIR}/hb-shape.h
+  ${SOURCE_DIR}/hb-style.h
+  ${SOURCE_DIR}/hb-unicode.h
+  ${SOURCE_DIR}/hb-version.h
+  ${SOURCE_DIR}/hb.h
 )
 set(subset_project_headers
-  ${PROJECT_SOURCE_DIR}/src/hb-subset.h
-  ${PROJECT_SOURCE_DIR}/src/hb-subset-repacker.h
+  ${SOURCE_DIR}/hb-subset.h
+  ${SOURCE_DIR}/hb-subset-repacker.h
 )
 
 list(APPEND THIRD_PARTY_LIBS ${FREETYPE_LIBRARIES})
 include_directories(AFTER ${FREETYPE_INCLUDE_DIRS})
 
-list(APPEND project_headers ${PROJECT_SOURCE_DIR}/src/hb-ft.h)
+list(APPEND project_headers ${SOURCE_DIR}/hb-ft.h)
 
 # So check_funcs can find its headers
 set(CMAKE_REQUIRED_INCLUDES ${CMAKE_REQUIRED_INCLUDES} ${FREETYPE_INCLUDE_DIRS})

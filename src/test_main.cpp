@@ -1,6 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #include "base/command_line.h"
-#include "thirdparty/doctest/doctest.h"
+#include <doctest/doctest.h>
 
 int main(int argc, char** argv) {
     CommandLine::Set(argc, argv);

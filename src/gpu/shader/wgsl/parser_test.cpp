@@ -6,7 +6,7 @@
 #include "ast_type.h"
 #include "ast_variable.h"
 
-#include <doctest.h>
+#include <doctest/doctest.h>
 
 using namespace wgsl;
 using namespace ast;
