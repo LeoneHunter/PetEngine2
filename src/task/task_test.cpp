@@ -1,5 +1,5 @@
 #include "task.h"
-#include "thirdparty/doctest/doctest.h"
+#include <doctest/doctest.h>
 
 #include "base/threading.h"
 #include "task_tracker.h"

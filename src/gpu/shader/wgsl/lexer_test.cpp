@@ -1,5 +1,5 @@
 #include "lexer.h"
-#include <doctest.h>
+#include <doctest/doctest.h>
 
 using namespace wgsl;
 using Kind = Token::Kind;

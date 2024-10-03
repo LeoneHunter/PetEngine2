@@ -3,7 +3,7 @@
 #include "common.h"
 #include "device.h"
 
-#include <doctest.h>
+#include <doctest/doctest.h>
 
 #include <map>
 

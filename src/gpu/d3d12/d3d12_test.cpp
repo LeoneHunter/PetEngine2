@@ -4,7 +4,7 @@
 
 #include <map>
 
-#include <doctest.h>
+#include <doctest/doctest.h>
 
 using namespace gpu::d3d12;
 

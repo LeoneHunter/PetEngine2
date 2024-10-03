@@ -2,7 +2,7 @@
 #include "hlsl_compiler.h"
 #include "shader_dsl_api.h"
 
-#include "thirdparty/doctest/doctest.h"
+#include <doctest/doctest.h>
 
 using namespace gpu;
 

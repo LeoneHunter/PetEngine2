@@ -4,7 +4,7 @@
 #include "vector_types.h"
 #include "bump_alloc.h"
 
-#include <doctest.h>
+#include <doctest/doctest.h>
 
 namespace {
 

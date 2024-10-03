@@ -1,5 +1,5 @@
 #include "future.h"
-#include "thirdparty/doctest/doctest.h"
+#include <doctest/doctest.h>
 
 #include <thread>
 
