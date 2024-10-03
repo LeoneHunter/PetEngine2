@@ -5,6 +5,7 @@
 #include "base/common.h"
 #include "base/util.h"
 #include "base/ref_counted.h"
+#include "base/tree_printer.h"
 #include "style.h"
 
 using Point = Vec2<float>;

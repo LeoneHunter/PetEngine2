@@ -182,7 +182,8 @@ public:
             memcpy(dst, src, size);
             dst += size;
         }
-        auto result = device->CreateBuffer(data.size());
+        auto result =
+            device->CreateBuffer(data.size(), gpu::BufferUsage::Vertex);
         DASSERT(result);
         ctx_->WriteBuffer(result->Get(), data);
         return *result;
@@ -206,7 +207,8 @@ public:
             memcpy(dst, src, size);
             dst += size;
         }
-        auto result = device->CreateBuffer(data.size());
+        auto result =
+            device->CreateBuffer(data.size(), gpu::BufferUsage::Index);
         DASSERT(result);
         ctx_->WriteBuffer(result->Get(), data);
         return *result;
@@ -224,7 +226,8 @@ public:
                 viewport_.Top(), viewport_.Right(), viewport_.Bottom(),
                 viewport_.Left());
 
-            auto result = device->CreateBuffer(projMat.Data().size());
+            auto result = device->CreateBuffer(projMat.Data().size(),
+                                               gpu::BufferUsage::Uniform);
             DASSERT(result);
             ctx->WriteBuffer(result->Get(), projMat.Data());
             return *result;

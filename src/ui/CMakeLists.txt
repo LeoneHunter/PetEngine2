@@ -20,6 +20,9 @@ module(
     DEPS
         base
         gfx_legacy
+    COPTS
+        /wd4456
+        /wd4189
 )
 
 # test(

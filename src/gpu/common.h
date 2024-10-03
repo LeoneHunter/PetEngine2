@@ -6,7 +6,7 @@
 namespace gpu {
 
 template <class T>
-using ExpectedRef = Expected<RefCountedPtr<T>>;
+using ExpectedRef = std::expected<RefCountedPtr<T>, GenericErrorCode>;
 
 // Helper macro that asserts that the ExpectedRef is successful
 // Usage: RefCountedPtr<Device> device = TRY(Device::Create());
