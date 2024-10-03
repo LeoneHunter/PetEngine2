@@ -40,26 +40,9 @@ executable(
         base
         thirdparty::freetype
         thirdparty::harfbuzz
-    COPTS
-        /utf8
+        thirdparty::imgui
 )
 
-
-#=======================================================
-# Canvas sample
-# Shows a rectange on a window using gfx::Canvas
-#=======================================================
-executable(
-    NAME
-        canvas_sample
-    SRCS
-        canvas_sample.cpp
-    DEPS
-        base 
-        gfx
-        gfx_legacy
-        gpu
-)
 
 #=======================================================
 # GPU sample
