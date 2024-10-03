@@ -106,6 +106,9 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86|x86_64|AMD64|amd64|i386|i686")
     target_compile_definitions(common_config INTERFACE "HAVE_SSE4_1")
 endif()
 
+# Put executables into /bin
+set(OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+
 
 # =============================================================
 # Adds a module (library) to a project
@@ -168,7 +171,7 @@ function(module)
             ${ARG_DEFINES}
         )
         target_compile_options(${ARG_NAME}
-            PRIVATE
+            PUBLIC
             ${ARG_COPTS}
         )
         target_include_directories(${ARG_NAME}
@@ -220,11 +223,11 @@ function(executable)
     target_compile_options(${ARG_NAME} PRIVATE ${ARG_COPTS})
     set_target_properties(${ARG_NAME} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY_DEBUG
-        ${CMAKE_SOURCE_DIR}/bin
+        ${OUTPUT_DIRECTORY}
         RUNTIME_OUTPUT_DIRECTORY_RELEASE
-        ${CMAKE_SOURCE_DIR}/bin
+        ${OUTPUT_DIRECTORY}
         RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO
-        ${CMAKE_SOURCE_DIR}/bin
+        ${OUTPUT_DIRECTORY}
         OUTPUT_NAME
         ${ARG_NAME}$<$<CONFIG:Debug>:_d>
     )
@@ -244,11 +247,11 @@ function(create_test_host)
     )
     set_target_properties(test_host PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY_DEBUG
-        ${CMAKE_SOURCE_DIR}/bin
+        ${OUTPUT_DIRECTORY}
         RUNTIME_OUTPUT_DIRECTORY_RELEASE
-        ${CMAKE_SOURCE_DIR}/bin
+        ${OUTPUT_DIRECTORY}
         RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO
-        ${CMAKE_SOURCE_DIR}/bin
+        ${OUTPUT_DIRECTORY}
         OUTPUT_NAME
         test_host$<$<CONFIG:Debug>:_d>
     )

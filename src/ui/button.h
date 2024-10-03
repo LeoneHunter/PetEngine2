@@ -106,85 +106,85 @@ private:
 class ButtonBuilder {
 public:
     auto& ID(StringID inID) {
-        container.ID(inID);
+        container_.ID(inID);
         return *this;
     }
     auto& SizeFixed(float2 size) {
-        container.SizeFixed(size);
+        container_.SizeFixed(size);
         return *this;
     }
     auto& SizeMode(SizeMode mode) {
-        container.SizeMode(mode);
+        container_.SizeMode(mode);
         return *this;
     }
     auto& SizeMode(AxisMode x, AxisMode y) {
-        container.SizeMode(x, y);
+        container_.SizeMode(x, y);
         return *this;
     }
     auto& PositionFloat(Point inPos) {
-        container.PositionFloat(inPos);
+        container_.PositionFloat(inPos);
         return *this;
     }
     auto& StyleClass(StringID styleName) {
-        styleClass = styleName;
+        styleClass_ = styleName;
         return *this;
     }
     auto& ClipContent(bool bClip) {
-        container.ClipContent(bClip);
+        container_.ClipContent(bClip);
         return *this;
     }
     auto& AlignContent(Alignment x, Alignment y) {
-        alignX = x;
-        alignY = y;
+        alignX_ = x;
+        alignY_ = y;
         return *this;
     }
     auto& Text(const std::string& text) {
-        this->text = text;
+        text_ = text;
         return *this;
     }
     auto& Tooltip(const std::string& text) {
-        tooltipText = text;
+        tooltipText_ = text;
         return *this;
     }
     auto& OnPress(const ButtonEventFunc& callback) {
-        this->callback = callback;
+        callback_ = callback;
         return *this;
     }
     auto& Child(std::unique_ptr<Widget>&& child) {
-        this->child = std::move(child);
+        child_ = std::move(child);
         return *this;
     }
 
     std::unique_ptr<Button> New() {
-        auto child = this->child ? std::move(this->child)
-                                 : std::make_unique<TextBox>(text);
+        auto child = child_ ? std::move(this->child_)
+                                 : std::make_unique<TextBox>(text_);
 
-        if (alignX != Alignment::Start || alignY != Alignment::Start) {
-            child = Aligned::New(alignX, alignY, std::move(child));
+        if (alignX_ != Alignment::Start || alignY_ != Alignment::Start) {
+            child = Aligned::New(alignX_, alignY_, std::move(child));
         }
-        child = container.StyleClass(styleClass).Child(std::move(child)).New();
+        child = container_.StyleClass(styleClass_).Child(std::move(child)).New();
 
-        if (!tooltipText.empty()) {
+        if (!tooltipText_.empty()) {
             child = TooltipPortal::New(
-                [text = tooltipText](const TooltipBuildContext& ctx) {
+                [text = tooltipText_](const TooltipBuildContext& ctx) {
                     return TextTooltipBuilder().Text(text).New();
                 },
                 std::move(child));
         }
-        std::unique_ptr<Button> out(new Button(callback));
+        std::unique_ptr<Button> out(new Button(callback_));
         out->Parent(std::move(child));
         return out;
     }
 
 private:
-    Alignment alignX = Alignment::Start;
-    Alignment alignY = Alignment::Start;
-    ButtonEventFunc callback;
-    ContainerBuilder container;
-    std::string text;
-    std::string tooltipText;
-    StringID styleClass = "Button";
-    std::unique_ptr<Widget> child;
+    Alignment alignX_ = Alignment::Start;
+    Alignment alignY_ = Alignment::Start;
+    ButtonEventFunc callback_;
+    ContainerBuilder container_;
+    std::string text_;
+    std::string tooltipText_;
+    StringID styleClass_ = "Button";
+    std::unique_ptr<Widget> child_;
 };
 
 inline ButtonBuilder Button::Build() {

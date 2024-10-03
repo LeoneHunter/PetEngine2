@@ -1,10 +1,10 @@
 #include <iostream>
 #include <ranges>
 
-#include "ui/ui.h"
 #include "base/rtti.h"
 #include "base/threading.h"
 #include "base/win_minimal.h"
+#include "ui/ui.h"
 
 
 using namespace ui;
@@ -151,9 +151,9 @@ public:
         s.Add<BoxStyle>("Pressed", "Normal").FillColor(hoveredColor);
         s.Add<BoxStyle>("Selected", "Normal").FillColor(hoveredColor);
         {
-            auto& s = theme->Add("Frame");
-            s.Add<LayoutStyle>().Margins(5, 5).Paddings(5, 5);
-            s.Add<BoxStyle>().FillColor(frameColor).Rounding(6);
+            auto& frame = theme->Add("Frame");
+            frame.Add<LayoutStyle>().Margins(5, 5).Paddings(5, 5);
+            frame.Add<BoxStyle>().FillColor(frameColor).Rounding(6);
         }
     }
 
@@ -346,16 +346,11 @@ private:
     ScrollViewState scrollViewState_;
 };
 
-
-constexpr auto kTestDir = "test/filesystem_view_test";
-
 void RunUI() {
     g_Application = Application::Create("Filesystem UI test", 1800, 900);
     SetDarkTheme(g_Application->GetTheme());
-
-	// Assumes we're in /bin
-    auto app = std::make_unique<FilesystemView>(
-        CommandLine::GetWorkingDir().parent_path() / kTestDir);
+    // Make a view of children in the working directory
+    auto app = std::make_unique<FilesystemView>(CommandLine::GetWorkingDir());
     g_Application->Parent(StatefulWidget::New(app.get()));
     g_Application->Run();
 }

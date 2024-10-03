@@ -92,10 +92,10 @@ public:
         uint32_t index = 0;
 
         for (auto& item : items_) {
-            if (auto* i = item->As<PopupMenuItem>()) {
-                i->Bind(this, index);
-            } else if (auto* i = item->As<PopupSubmenuItem>()) {
-                i->Bind(this, index);
+            if (auto* popupItem = item->As<PopupMenuItem>()) {
+                popupItem->Bind(this, index);
+            } else if (auto* submenuItem = item->As<PopupSubmenuItem>()) {
+                submenuItem->Bind(this, index);
             } else {
                 DASSERT_M(false,
                           "Popup menu content items should be of class "
@@ -118,8 +118,6 @@ public:
 
     std::unique_ptr<Widget> Build(std::unique_ptr<Widget>&&) override {
         std::vector<std::unique_ptr<Widget>> out;
-        uint32_t index = 0;
-
         for (auto& item : items_) {
             out.push_back(StatefulWidget::New(item.get()));
         }

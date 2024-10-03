@@ -19,30 +19,30 @@ using TooltipBuilderFunc =
  */
 struct TextTooltipBuilder {
     TextTooltipBuilder& Text(const std::string& text) {
-        this->text = text;
+        text_ = text;
         return *this;
     }
     TextTooltipBuilder& ClipText(bool bClip) {
-        bClipText = bClip;
+        bClipText_ = bClip;
         return *this;
     }
     TextTooltipBuilder& StyleClass(StringID styleName) {
-        styleClass = styleName;
+        styleClass_ = styleName;
         return *this;
     }
 
     std::unique_ptr<Widget> New() {
         return Container::Build()
-            .StyleClass(styleClass)
-            .ClipContent(bClipText)
-            .Child(TextBox::New(text))
+            .StyleClass(styleClass_)
+            .ClipContent(bClipText_)
+            .Child(TextBox::New(text_))
             .New();
     }
 
 private:
-    StringID styleClass = "Tooltip";
-    std::string text;
-    bool bClipText = false;
+    StringID styleClass_ = "Tooltip";
+    std::string text_;
+    bool bClipText_ = false;
 };
 
 /*

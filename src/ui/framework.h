@@ -1132,12 +1132,12 @@ public:
         if (!child_)
             return VisitResult::Continue();
 
-        const auto result = visitor(child_.get());
+        auto result = visitor(child_.get());
         if (!result.shouldContinue)
             return VisitResult::Exit();
 
         if (bRecursive && !result.shouldSkipChildren) {
-            const auto result = child_->VisitChildren(visitor, bRecursive);
+            result = child_->VisitChildren(visitor, bRecursive);
             if (!result.shouldContinue)
                 return VisitResult::Exit();
         }
@@ -1279,12 +1279,12 @@ public:
     VisitResult VisitChildren(const WidgetVisitor& visitor,
                               bool bRecursive = false) final {
         for (auto& child : children_) {
-            const auto result = visitor(child.get());
+            VisitResult result = visitor(child.get());
             if (!result.shouldContinue)
                 return VisitResult::Exit();
 
             if (bRecursive && !result.shouldSkipChildren) {
-                const auto result = child->VisitChildren(visitor, bRecursive);
+                result = child->VisitChildren(visitor, bRecursive);
                 if (!result.shouldContinue)
                     return VisitResult::Exit();
             }

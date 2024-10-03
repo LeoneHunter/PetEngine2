@@ -26,6 +26,53 @@ executable(
         thirdparty::imgui
 )
 
+# Create a testing directory tree
+add_custom_command(
+    TARGET filesystem_ui_sample
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory 
+        "${OUTPUT_DIRECTORY}/test_dir_tree"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child1"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child1/child4"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child1/child5"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child1/child6"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child1/child7"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child1/child8"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child1/child9"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child1/child10"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child1/child11"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child1/child12"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child1/child13"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child1/child14"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child2"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child2/child4"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child2/child5"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child2/child6"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child2/child7"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child2/child8"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child2/child9"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child2/child10"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child2/child11"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child2/child12"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child2/child13"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child2/child14"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child3"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child3/child1"
+            "${OUTPUT_DIRECTORY}/test_dir_tree/child3/child2"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child4"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child5"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child6"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child7"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child8"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child9"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child10"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child11"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child12"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child13"
+        "${OUTPUT_DIRECTORY}/test_dir_tree/child14"
+)
+
+
 
 #=======================================================
 # Freetype Example cli
