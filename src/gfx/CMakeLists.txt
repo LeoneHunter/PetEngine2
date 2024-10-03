@@ -19,4 +19,5 @@ module(
         gpu
         thirdparty::harfbuzz
         thirdparty::freetype
+        thirdparty::imgui
 )

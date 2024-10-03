@@ -26,28 +26,8 @@ add_library(thirdparty::dx_headers ALIAS dx_headers)
 #=======================================================
 # ImGui
 #=======================================================
-FetchContent_Declare(
-	imgui
-	GIT_REPOSITORY https://github.com/ocornut/imgui.git
-	SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/imgui"
-	GIT_TAG v1.88
-	GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(imgui)
-
-add_library(ImGui STATIC)
-target_include_directories(ImGui PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/imgui>
-	# For imconfig.h including math_util.h for vec conversions
-	${CMAKE_SOURCE_DIR}
-)
-target_sources(ImGui PUBLIC 
-	imgui/imgui.cpp 
-	imgui/imgui_draw.cpp 
-	imgui/imgui_tables.cpp
-	imgui/imgui_widgets.cpp
-)
-add_library(thirdparty::imgui ALIAS ImGui)
+add_subdirectory(imgui)
+add_library(thirdparty::imgui ALIAS imgui)
 
 
 #=======================================================

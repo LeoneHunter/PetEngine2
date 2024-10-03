@@ -9,6 +9,10 @@ thirdparty/*
 !thirdparty/CMakeLists.txt
 !thirdparty/utf8-decoder
 
+# imgui
+!thirdparty/imgui
+thirdparty/imgui/imgui
+
 # Custom harfbuzz project file
 !thirdparty/harfbuzz
 thirdparty/harfbuzz/*

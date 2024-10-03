@@ -2,8 +2,9 @@
 #include "base/util.h"
 #include "gfx/common.h"
 
-#include "thirdparty/imgui/imgui.h"
-#include "thirdparty/imgui/imgui_internal.h"
+#include <imgui/imgui.h>
+#include <imgui/imgui_internal.h>
+
 #include "thirdparty/utf8-decoder/utf8-decoder.h"
 
 #include <ft2build.h>

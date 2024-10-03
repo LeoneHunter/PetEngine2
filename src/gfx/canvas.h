@@ -2,8 +2,8 @@
 #include "common.h"
 #include "shaper.h"
 
-#include "thirdparty/imgui/imgui.h"
-#include "thirdparty/imgui/imgui_internal.h"
+#include <imgui/imgui.h>
+#include <imgui/imgui_internal.h>
 
 #include <expected>
 #include <stack>

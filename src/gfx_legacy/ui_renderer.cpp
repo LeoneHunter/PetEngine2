@@ -31,10 +31,9 @@
 
 #undef DrawText
 
-#include "thirdparty/imgui/imgui.h"
-#include "thirdparty/imgui/imgui_internal.h"
-
-
+// #define IMGUI_USER_CONFIG "gfx_legacy/imgui_config.h"
+#include <imgui/imgui.h>
+#include <imgui/imgui_internal.h>
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;

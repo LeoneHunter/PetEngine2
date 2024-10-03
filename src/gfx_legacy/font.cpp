@@ -2,8 +2,9 @@
 #include "base/common.h"
 #include "base/string_utils.h"
 
-#include "thirdparty/imgui/imgui.h"
-#include "thirdparty/imgui/imgui_internal.h"
+// #define IMGUI_USER_CONFIG "imgui_config.h"
+#include <imgui/imgui.h>
+#include <imgui/imgui_internal.h>
 
 #include <filesystem>
 #include <map>
