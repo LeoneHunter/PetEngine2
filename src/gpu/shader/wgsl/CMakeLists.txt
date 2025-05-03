@@ -8,6 +8,7 @@ module(
         program_builder.cpp
         ast_printer.cpp
         program_alloc.cpp
+        builtin.cpp
     HDRS
         parser.h
         program.h
@@ -22,6 +23,7 @@ module(
         ast_expression.h
         ast_variable.h
         ast_function.h
+        builtin.h
     DEPS
         base
 )
@@ -42,6 +44,15 @@ test(
         parser_test.cpp
     DEPS
         base
+        wgsl
+)
+
+test(
+    NAME
+        wgsl_builtin
+    SRCS
+        builtin_test.cpp
+    DEPS
         wgsl
 )
 
