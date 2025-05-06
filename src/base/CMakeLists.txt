@@ -18,6 +18,7 @@ module(
         win_minimal.h
         bench.h
         threading.h
+        ring_buffer.h
     SRCS
         bench.cpp
         log.cpp
@@ -32,6 +33,15 @@ test(
         util
     SRCS
         util_test.cpp
+    DEPS
+        base
+)
+
+test(
+    NAME
+        ring_buffer
+    SRCS
+        ring_buffer_test.cpp
     DEPS
         base
 )
