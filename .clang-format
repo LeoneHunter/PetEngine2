@@ -1,0 +1,15 @@
+﻿---
+BasedOnStyle: Chromium
+AccessModifierOffset: '-2'
+BreakConstructorInitializers: BeforeComma
+ColumnLimit: '80'
+IndentWidth: '2'
+ContinuationIndentWidth: '2'
+TabWidth: '2'
+KeepEmptyLinesAtTheStartOfBlocks: 'true'
+AllowShortCaseLabelsOnASingleLine: 'true'
+Language: Cpp
+MaxEmptyLinesToKeep: '2'
+Standard: Auto
+UseTab: Never
+...
