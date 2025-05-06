@@ -25,3 +25,12 @@ test(
     DEPS
         task
 )
+
+test(
+    NAME
+        channel_test
+    SRCS
+        channel_test.cpp
+    DEPS
+        base
+)
