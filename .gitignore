@@ -27,4 +27,3 @@ test/filesystem_view_test/
 # Visual Studio and VSCode cache/options directory
 .vs/
 .vscode/
-.clang-format
