@@ -1,0 +1,16 @@
+module(
+    NAME
+        gfx2
+    HDRS
+        common.h
+        glyph_cache.h
+        font.h
+    SRCS
+        font.cpp
+        glyph_cache.cpp
+    DEPS
+        base
+        thirdparty::freetype
+        thirdparty::zlib
+        thirdparty::libpng
+)

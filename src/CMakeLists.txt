@@ -3,6 +3,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(base)
 add_subdirectory(gfx)
+add_subdirectory(gfx2)
 add_subdirectory(gfx_legacy)
 add_subdirectory(gpu)
 add_subdirectory(task)
@@ -88,6 +89,30 @@ executable(
         thirdparty::freetype
         thirdparty::harfbuzz
         thirdparty::imgui
+)
+
+executable(
+    NAME
+        freetype_rasterizer_sample
+    SRCS
+        freetype_rasterizer_sample.cpp
+    DEPS
+        thirdparty::freetype
+        thirdparty::zlib
+        thirdparty::libpng
+)
+
+executable(
+    NAME
+        font_library_sample
+    SRCS
+        font_library_sample.cpp
+    DEPS
+        base
+        gfx2
+        thirdparty::freetype
+        thirdparty::zlib
+        thirdparty::libpng
 )
 
 
